@@ -28,5 +28,5 @@ AGENTS.md
 .pnpm-store/
 
 # Lock file (uncomment to commit, locking skill versions for team)
-# skify.lock.json
+# asr.lock.json
 

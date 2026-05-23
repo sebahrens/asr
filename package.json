@@ -1,5 +1,5 @@
 {
-  "name": "skify",
+  "name": "asr",
   "version": "0.1.0",
   "description": "Self-hosted Agent Skills Registry",
   "type": "module",
@@ -9,11 +9,10 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
-    "test": "pnpm --filter @skify/core test && pnpm --filter @skify/worker test",
+    "test": "pnpm --filter @asr/core test",
     "test:e2e": "node ./scripts/e2e-docker.mjs",
-    "cli": "pnpm --filter @skify/cli",
-    "worker": "pnpm --filter @skify/worker",
-    "web": "pnpm --filter @skify/web"
+    "cli": "pnpm --filter @asr/cli",
+    "web": "pnpm --filter @asr/web"
   },
   "devDependencies": {
     "turbo": "^2.3.0",

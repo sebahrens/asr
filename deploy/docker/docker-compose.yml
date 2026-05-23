@@ -1,30 +1,26 @@
-services:
-  api:
-    build:
-      context: ./api
-      dockerfile: ../Dockerfile.api
-    ports:
-      - "8787:8787"
-    environment:
-      - API_TOKEN=${API_TOKEN}
-      - ALLOW_ANONYMOUS_READ=${ALLOW_ANONYMOUS_READ}
-      - DATA_DIR=/data
-      - PORT=8787
-    volumes:
-      - skills-data:/data
-    restart: unless-stopped
+# asr dev stack
+#
+# Phase 1 (see SPEC.md) will add:
+#   - api    → built from packages/submission, exposed on :3001 (Hono + Flowcraft + SQLite)
+#   - web    → built from packages/web,        exposed on :5173 (React 19 + Vite)
+#
+# Until packages/submission/ exists, this compose file brings up Forgejo only
+# so the API service can be developed against a real Forgejo instance from the start.
+# See specs/deployment.md for the canonical dev stack definition.
 
-  web:
-    build:
-      context: ../..
-      dockerfile: deploy/docker/Dockerfile
-      args:
-        - VITE_API_URL=http://localhost:8787
+services:
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:15
+    container_name: asr-forgejo
     ports:
       - "3000:3000"
-    depends_on:
-      - api
+      - "2222:22"
+    volumes:
+      - ./data/forgejo:/data
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - FORGEJO__server__ROOT_URL=http://localhost:3000
+      - FORGEJO__server__SSH_PORT=2222
+      - FORGEJO__service__DISABLE_REGISTRATION=true
     restart: unless-stopped
-
-volumes:
-  skills-data:

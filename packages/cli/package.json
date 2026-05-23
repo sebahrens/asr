@@ -1,19 +1,19 @@
 {
-  "name": "@skify/cli",
+  "name": "@asr/cli",
   "version": "0.2.1",
   "type": "module",
   "files": [
     "dist"
   ],
   "bin": {
-    "skify": "./dist/index.js"
+    "asr": "./dist/index.js"
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
     "dev": "tsup src/index.ts --format esm --watch"
   },
   "dependencies": {
-    "@skify/core": "workspace:*",
+    "@asr/core": "workspace:*",
     "commander": "^12.1.0",
     "picocolors": "^1.1.0",
     "ora": "^8.1.0",

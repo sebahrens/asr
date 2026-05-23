@@ -54,7 +54,7 @@ pnpm build
 CORE_VERSION=$(get_version packages/core)
 NEW_CORE_VERSION=$(bump_version "$CORE_VERSION" "$BUMP")
 
-echo -e "${YELLOW}Publishing @skify/core: $CORE_VERSION -> $NEW_CORE_VERSION${NC}"
+echo -e "${YELLOW}Publishing @asr/core: $CORE_VERSION -> $NEW_CORE_VERSION${NC}"
 set_version packages/core "$NEW_CORE_VERSION"
 cd packages/core
 pnpm publish --access public --no-git-checks
@@ -64,7 +64,7 @@ cd ../..
 CLI_VERSION=$(get_version packages/cli)
 NEW_CLI_VERSION=$(bump_version "$CLI_VERSION" "$BUMP")
 
-echo -e "${YELLOW}Publishing @skify/cli: $CLI_VERSION -> $NEW_CLI_VERSION${NC}"
+echo -e "${YELLOW}Publishing @asr/cli: $CLI_VERSION -> $NEW_CLI_VERSION${NC}"
 set_version packages/cli "$NEW_CLI_VERSION"
 cd packages/cli
 pnpm publish --access public --no-git-checks
@@ -77,7 +77,7 @@ git commit -m "release: v$NEW_CLI_VERSION"
 git tag "v$NEW_CLI_VERSION"
 
 echo -e "${GREEN}Published successfully!${NC}"
-echo -e "  @skify/core@$NEW_CORE_VERSION"
-echo -e "  @skify/cli@$NEW_CLI_VERSION"
+echo -e "  @asr/core@$NEW_CORE_VERSION"
+echo -e "  @asr/cli@$NEW_CLI_VERSION"
 echo ""
 echo -e "${YELLOW}Run 'git push && git push --tags' to push to remote${NC}"

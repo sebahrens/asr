@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+function stripFrontmatter(content: string): string {
+  return content.replace(/^---\n[\s\S]*?\n---\n*/, '');
+}
 
 interface Skill {
   id: string;
@@ -67,7 +72,7 @@ export default function App() {
 
   function copyInstallCmd() {
     if (!selected) return;
-    const cmd = `npx skify add ${selected.owner}/${selected.repo}/${selected.name}`;
+    const cmd = `npx akr add ${selected.owner}/${selected.repo}/${selected.name}`;
     navigator.clipboard.writeText(cmd);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -77,37 +82,11 @@ export default function App() {
 
   return (
     <>
-      <div className="bg-grid" />
-      <div className="bg-glow bg-glow-1" />
-      <div className="bg-glow bg-glow-2" />
-
+      <div className="brand-stripe" />
       <header>
         <div className="container">
           <div className="logo">
-            <svg className="logo-icon" width="32" height="32" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="bolt-main" x1="20%" y1="0%" x2="80%" y2="100%">
-                  <stop offset="0%" stopColor="#00F5FF"/>
-                  <stop offset="100%" stopColor="#FF006E"/>
-                </linearGradient>
-                <linearGradient id="bolt-highlight" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.5"/>
-                  <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0"/>
-                </linearGradient>
-                <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur stdDeviation="2.5" result="blur"/>
-                  <feMerge>
-                    <feMergeNode in="blur"/>
-                    <feMergeNode in="SourceGraphic"/>
-                  </feMerge>
-                </filter>
-              </defs>
-              <path d="M38 2L10 34H26L18 62L54 26H36L38 2Z" fill="url(#bolt-main)" opacity="0.3" filter="url(#glow)"/>
-              <path d="M38 2L10 34H26L18 62L54 26H36L38 2Z" fill="url(#bolt-main)"/>
-              <path d="M38 2L22 22H32L26 38L44 26H36L38 2Z" fill="url(#bolt-highlight)"/>
-              <path d="M36 8L34 24" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.7"/>
-            </svg>
-            <span>skify</span>
+            <img src="/logo.svg" alt="Skill Registry" />
           </div>
 
           <div className="search-wrapper">
@@ -132,11 +111,11 @@ export default function App() {
         <div className="container">
           <div className="hero">
             <h1>
-              Agent <span className="highlight">Skills</span> Kit
+              Agent <span className="highlight">Skill</span> Registry
             </h1>
             <p>
               Browse, search and install skills for AI coding agents.
-              Works with Cursor, Claude Code, Codex and more.
+              Works with Office Companion, Codex, Cursor and more.
             </p>
             <div className="stats">
               <div className="stat">
@@ -222,13 +201,13 @@ export default function App() {
             </div>
             <div className="modal-body">
               <div className="install-cmd">
-                <code>npx skify add {selected.owner}/{selected.repo}/{selected.name}</code>
+                <code>npx akr add {selected.owner}/{selected.repo}/{selected.name}</code>
                 <button className="copy-btn" onClick={copyInstallCmd}>
                   {copied ? '✓ Copied' : 'Copy'}
                 </button>
               </div>
               <div className="skill-content">
-                <ReactMarkdown>{selected.content || selected.description}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripFrontmatter(selected.content || selected.description)}</ReactMarkdown>
               </div>
             </div>
           </div>

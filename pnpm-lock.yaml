@@ -17,7 +17,7 @@ importers:
 
   packages/cli:
     dependencies:
-      '@skify/core':
+      '@asr/core':
         specifier: workspace:*
         version: link:../core
       commander:

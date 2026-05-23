@@ -11,7 +11,7 @@ import {
   downloadSkillFiles,
   generateAgentsMd,
   parseSkillMd,
-} from '@skify/core';
+} from '@asr/core';
 import { getConfig, setConfig, getTargetDir } from './config.js';
 import { recordInstall, removeFromLock, getAllInstalled } from './lockfile.js';
 
@@ -43,11 +43,11 @@ function getRegistryAuthOrExit(overrideToken?: string): { registry: string; toke
   const config = getConfig();
   const token = overrideToken || config.token;
   if (!config.registry) {
-    console.log(pc.yellow('No registry configured. Use: skify config set registry <url>'));
+    console.log(pc.yellow('No registry configured. Use: asr config set registry <url>'));
     process.exit(1);
   }
   if (!token) {
-    console.log(pc.yellow('No token configured. Use: skify config set token <token>'));
+    console.log(pc.yellow('No token configured. Use: asr config set token <token>'));
     process.exit(1);
   }
   return { registry: config.registry, token };
@@ -56,7 +56,7 @@ function getRegistryAuthOrExit(overrideToken?: string): { registry: string; toke
 const program = new Command();
 
 program
-  .name('skify')
+  .name('asr')
   .description('Agent Skills Kit - install & manage AI agent skills')
   .version('0.1.0');
 
@@ -67,7 +67,7 @@ program
   .action(async (options) => {
     const config = getConfig();
     if (!config.registry) {
-      console.log(pc.yellow('No registry configured. Use: skify config set registry <url>'));
+      console.log(pc.yellow('No registry configured. Use: asr config set registry <url>'));
       return;
     }
 
@@ -121,7 +121,7 @@ program
           console.log(`    ${pc.dim(skill.description)}`);
         }
       }
-      console.log(pc.dim(`\nUse ${pc.cyan('skify list <repo>')} to see skills in a repo`));
+      console.log(pc.dim(`\nUse ${pc.cyan('asr list <repo>')} to see skills in a repo`));
     } catch (err) {
       spinner.fail('Search failed');
       console.error(pc.red(String(err)));
@@ -173,7 +173,7 @@ program
       for (const skill of skills) {
         console.log(`  - ${pc.green(skill)}`);
       }
-      console.log(pc.dim(`\nUse ${pc.cyan(`skify add ${repo}/<skill>`)} to install`));
+      console.log(pc.dim(`\nUse ${pc.cyan(`asr add ${repo}/<skill>`)} to install`));
     } catch (err) {
       spinner.fail('Failed to list skills');
       console.error(pc.red(String(err)));
@@ -516,11 +516,11 @@ program
   .action(async (source) => {
     const config = getConfig();
     if (!config.registry) {
-      console.log(pc.yellow('No registry configured. Use: skify config set registry <url>'));
+      console.log(pc.yellow('No registry configured. Use: asr config set registry <url>'));
       process.exit(1);
     }
     if (!config.token) {
-      console.log(pc.yellow('No token configured. Use: skify config set token <token>'));
+      console.log(pc.yellow('No token configured. Use: asr config set token <token>'));
       process.exit(1);
     }
 
@@ -648,7 +648,7 @@ program
     if (action === 'create') {
       const name = options.name || value;
       if (!name) {
-        console.log(pc.yellow('Usage: skify token create <name> --permissions read,publish'));
+        console.log(pc.yellow('Usage: asr token create <name> --permissions read,publish'));
         process.exit(1);
       }
       const permissions = String(options.permissions || 'read')
@@ -683,7 +683,7 @@ program
     if (action === 'revoke') {
       const tokenId = value;
       if (!tokenId) {
-        console.log(pc.yellow('Usage: skify token revoke <token-id>'));
+        console.log(pc.yellow('Usage: asr token revoke <token-id>'));
         process.exit(1);
       }
       const spinner = ora('Revoking token...').start();
@@ -704,7 +704,7 @@ program
       }
     }
 
-    console.log(pc.yellow('Usage: skify token list | create <name> --permissions read,publish | revoke <token-id>'));
+    console.log(pc.yellow('Usage: asr token list | create <name> --permissions read,publish | revoke <token-id>'));
     process.exit(1);
   });
 
@@ -723,7 +723,7 @@ program
       setConfig(key as 'registry' | 'token' | 'githubToken' | 'defaultTarget', value);
       console.log(pc.green(`Set ${key} = ${value}`));
     } else {
-      console.log(pc.yellow('Usage: skify config get [key] | set <key> <value>'));
+      console.log(pc.yellow('Usage: asr config get [key] | set <key> <value>'));
     }
   });
 
