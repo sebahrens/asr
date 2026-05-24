@@ -33,15 +33,32 @@ const timeoutBufferMs = 60_000;
 const validSeverities = new Set<ScanSeverity>(['critical', 'high', 'medium', 'low']);
 
 const defaultRunContainer: RunContainer = async (command, args, options) => {
-  const { stdout, stderr } = await execFileAsync(command, args, {
-    timeout: options.timeout,
-    env: options.env,
-  });
+  try {
+    const { stdout, stderr } = await execFileAsync(command, args, {
+      timeout: options.timeout,
+      env: options.env,
+    });
 
-  return {
-    stdout: String(stdout),
-    stderr: String(stderr),
-  };
+    return {
+      stdout: String(stdout),
+      stderr: String(stderr),
+    };
+  } catch (error) {
+    const failed = error as NodeJS.ErrnoException & {
+      code?: number | string;
+      stdout?: string | Buffer;
+      stderr?: string | Buffer;
+    };
+
+    if (failed.code === 1 && failed.stdout) {
+      return {
+        stdout: String(failed.stdout),
+        stderr: failed.stderr ? String(failed.stderr) : undefined,
+      };
+    }
+
+    throw error;
+  }
 };
 
 export async function runScanner(
@@ -80,6 +97,22 @@ function buildDockerArgs(input: RunScannerInput, outputDir: string, scannerImage
     `${input.extractedDir}:/scan/input:ro`,
     '-v',
     `${outputDir}:/scan/output`,
+    '--env',
+    'SUBMISSION_ID',
+    '--env',
+    'CONTENT_HASH',
+    '--env',
+    'SCANNER_IMAGE',
+    '--env',
+    'SCAN_SEVERITY_THRESHOLD',
+    '--env',
+    'SCAN_TIMEOUT_SECONDS',
+    '--env',
+    'SCAN_SIGNING_KEY',
+    '--env',
+    'VERACODE_API_KEY_ID',
+    '--env',
+    'VERACODE_API_KEY_SECRET',
     scannerImage,
   ];
 }
@@ -140,7 +173,23 @@ function assertSignature(report: ScanReport, signingKey: string | undefined): vo
 
 function signReport(report: ScanReport, signingKey: string): string {
   const { signature: _signature, ...unsignedReport } = report;
-  return createHmac('sha256', signingKey).update(JSON.stringify(unsignedReport)).digest('hex');
+  return createHmac('sha256', signingKey).update(canonicalJson(unsignedReport)).digest('hex');
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalJson(item)).join(',')}]`;
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+      .join(',')}}`;
+  }
+
+  return JSON.stringify(value);
 }
 
 function requiredEnv(name: string): string {
