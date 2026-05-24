@@ -6,16 +6,28 @@ import { authMiddleware } from './auth/middleware.js';
 import type { AuthVariables } from './auth/types.js';
 import { getEnv } from './env.js';
 import { healthRoutes } from './http/health.js';
+import { createWorkflowRoutes, type WorkflowRouteOptions } from './http/workflow.js';
 
 assertAuthModeAllowed();
 
 const env = getEnv();
 
-export const app = new Hono<{ Variables: AuthVariables }>();
+export interface CreateAppOptions {
+  workflow?: WorkflowRouteOptions;
+}
 
-app.use('*', authMiddleware({ authMode: env.AUTH_MODE }));
-app.route('/health', healthRoutes);
-app.route('/healthz', healthRoutes);
+export function createApp(options: CreateAppOptions = {}) {
+  const app = new Hono<{ Variables: AuthVariables }>();
+
+  app.use('*', authMiddleware({ authMode: env.AUTH_MODE }));
+  app.route('/health', healthRoutes);
+  app.route('/healthz', healthRoutes);
+  app.route('/submissions', createWorkflowRoutes(options.workflow));
+
+  return app;
+}
+
+export const app = createApp();
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   serve({

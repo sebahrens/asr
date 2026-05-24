@@ -50,7 +50,7 @@ const defaultRunContainer: RunContainer = async (command, args, options) => {
       stderr?: string | Buffer;
     };
 
-    if (failed.code === 1 && failed.stdout) {
+    if (String(failed.code) === '1' && failed.stdout) {
       return {
         stdout: String(failed.stdout),
         stderr: failed.stderr ? String(failed.stderr) : undefined,
