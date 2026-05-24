@@ -7,6 +7,8 @@ interface ForgejoClientInternals {
   cfg: ForgejoConfig;
   upload: Octokit;
   merge: Octokit;
+  createOrGetBranch(branch: string): Promise<string>;
+  putFile(branch: string, path: string, content: Buffer, submissionId: string): Promise<string>;
 }
 
 const internals = (client: ForgejoClient): ForgejoClientInternals =>
@@ -37,6 +39,98 @@ describe('ForgejoClient', () => {
     expect(client.upload).not.toBe(client.merge);
     expect(octokitBaseUrl(client.upload)).toBe(cfg.baseUrl);
     expect(octokitBaseUrl(client.merge)).toBe(cfg.baseUrl);
+  });
+
+  it('creates a submission branch from the configured default branch', async () => {
+    const client = internals(new ForgejoClient(cfg));
+    const uploadRequest = vi.spyOn(client.upload, 'request').mockResolvedValueOnce({
+      data: { commit: { id: 'created-head-sha' } },
+    } as never);
+
+    await expect(client.createOrGetBranch('submit/sub-1')).resolves.toBe('created-head-sha');
+
+    expect(uploadRequest).toHaveBeenCalledWith('POST /repos/{owner}/{repo}/branches', {
+      owner: 'asr',
+      repo: 'skills',
+      new_branch_name: 'submit/sub-1',
+      old_branch_name: 'main',
+    });
+  });
+
+  it('fetches the branch head sha when submission branch creation conflicts', async () => {
+    const client = internals(new ForgejoClient(cfg));
+    const uploadRequest = vi
+      .spyOn(client.upload, 'request')
+      .mockRejectedValueOnce({ status: 409 })
+      .mockResolvedValueOnce({ data: { commit: { id: 'existing-head-sha' } } } as never);
+
+    await expect(client.createOrGetBranch('submit/sub-1')).resolves.toBe('existing-head-sha');
+
+    expect(uploadRequest).toHaveBeenNthCalledWith(1, 'POST /repos/{owner}/{repo}/branches', {
+      owner: 'asr',
+      repo: 'skills',
+      new_branch_name: 'submit/sub-1',
+      old_branch_name: 'main',
+    });
+    expect(uploadRequest).toHaveBeenNthCalledWith(
+      2,
+      'GET /repos/{owner}/{repo}/branches/{branch}',
+      {
+        owner: 'asr',
+        repo: 'skills',
+        branch: 'submit/sub-1',
+      },
+    );
+  });
+
+  it('puts file content on the submission branch with a deterministic commit message', async () => {
+    const client = internals(new ForgejoClient(cfg));
+    const uploadRequest = vi.spyOn(client.upload, 'request').mockResolvedValueOnce({
+      data: { commit: { sha: 'file-commit-sha' } },
+    } as never);
+
+    await expect(
+      client.putFile('submit/sub-1', 'skills/acme/demo/SKILL.md', Buffer.from('skill'), 'sub-1'),
+    ).resolves.toBe('file-commit-sha');
+
+    expect(uploadRequest).toHaveBeenCalledWith('PUT /repos/{owner}/{repo}/contents/{path}', {
+      owner: 'asr',
+      repo: 'skills',
+      path: 'skills/acme/demo/SKILL.md',
+      message: 'submit: skills/acme/demo/SKILL.md (sub-1)',
+      content: Buffer.from('skill').toString('base64'),
+      branch: 'submit/sub-1',
+    });
+  });
+
+  it('returns the current branch head sha when putting a file conflicts', async () => {
+    const client = internals(new ForgejoClient(cfg));
+    const uploadRequest = vi
+      .spyOn(client.upload, 'request')
+      .mockRejectedValueOnce({ status: 409 })
+      .mockResolvedValueOnce({ data: { commit: { id: 'current-head-sha' } } } as never);
+
+    await expect(
+      client.putFile('submit/sub-1', 'skills/acme/demo/SKILL.md', Buffer.from('skill'), 'sub-1'),
+    ).resolves.toBe('current-head-sha');
+
+    expect(uploadRequest).toHaveBeenNthCalledWith(1, 'PUT /repos/{owner}/{repo}/contents/{path}', {
+      owner: 'asr',
+      repo: 'skills',
+      path: 'skills/acme/demo/SKILL.md',
+      message: 'submit: skills/acme/demo/SKILL.md (sub-1)',
+      content: Buffer.from('skill').toString('base64'),
+      branch: 'submit/sub-1',
+    });
+    expect(uploadRequest).toHaveBeenNthCalledWith(
+      2,
+      'GET /repos/{owner}/{repo}/branches/{branch}',
+      {
+        owner: 'asr',
+        repo: 'skills',
+        branch: 'submit/sub-1',
+      },
+    );
   });
 
   it('uploads a generic package artifact with the upload token', async () => {
