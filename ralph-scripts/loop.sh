@@ -3,7 +3,7 @@
 # Agent Skills Registry (ASR) - Ralph Loop Runner
 #
 # This script and its PROMPT_*.md prompts live in <repo>/ralph-scripts/
-# and operate on the asr repo at $PROJECT_DIR (default ~/projects/aks,
+# and operate on the asr repo at $PROJECT_DIR (default ~/projects/asr,
 # override with PROJECT_DIR=/path/to/repo).
 #
 # Usage:
@@ -58,7 +58,7 @@ HARD_TIMEOUT=2700  # 45min safety net (should never hit with stream-json detecti
 # - SCRIPT_DIR: where loop.sh + PROMPT_*.md live (this directory)
 # - PROJECT_DIR: the asr repo to run against; override with PROJECT_DIR=...
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${PROJECT_DIR:-$HOME/projects/aks}"
+PROJECT_DIR="${PROJECT_DIR:-$HOME/projects/asr}"
 if [ ! -d "$PROJECT_DIR" ]; then
     echo "Error: PROJECT_DIR does not exist: $PROJECT_DIR" >&2
     exit 1
