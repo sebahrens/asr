@@ -592,6 +592,48 @@ main {
   opacity: 0.9;
 }
 
+/* Skill Detail */
+.skill-detail-main {
+  padding-top: 32px;
+}
+
+.skill-detail-page {
+  max-width: 820px;
+}
+
+.skill-detail-header {
+  margin: 18px 0 24px;
+}
+
+.skill-detail-header h1 {
+  font-size: 2rem;
+  line-height: 1.15;
+  margin-bottom: 10px;
+}
+
+.skill-detail-header p:not(.eyebrow) {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-width: 620px;
+}
+
+.skill-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.skill-detail-meta span {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 5px 8px;
+}
+
 /* Publish */
 .publish-main {
   padding-top: 32px;

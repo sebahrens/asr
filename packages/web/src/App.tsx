@@ -67,6 +67,14 @@ function getSkillDetailContent(detail: SkillDetail, fallback: string): string {
   return detail.manifestLatest.description || fallback;
 }
 
+function decodeRoutePart(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function getDecisionRequest(
   decision: Decision,
   reason: string,
@@ -884,7 +892,15 @@ function BrowseRegistry() {
   );
 }
 
-function NotFoundState() {
+function SkillNotFoundState({
+  title = 'Skill not found',
+  message = 'The requested skill page does not exist in this registry. Return to browse and try another skill.',
+  onRetry,
+}: {
+  title?: string;
+  message?: string;
+  onRetry?: () => void;
+}) {
   return (
     <>
       <div className="brand-stripe" />
@@ -898,14 +914,12 @@ function NotFoundState() {
 
       <main className="not-found-main">
         <section className="not-found-state" aria-labelledby="not-found-title">
-          <p className="eyebrow">Route not found</p>
-          <h1 id="not-found-title">Skill route unavailable</h1>
-          <p>
-            The requested skill page does not exist in this registry. Return to browse and try another skill.
-          </p>
+          <p className="eyebrow">Skill lookup</p>
+          <h1 id="not-found-title">{title}</h1>
+          <p>{message}</p>
           <div className="not-found-actions">
             <a className="primary-link" href="/">Browse skills</a>
-            <button className="secondary-btn" type="button" onClick={() => window.location.reload()}>
+            <button className="secondary-btn" type="button" onClick={onRetry ?? (() => window.location.reload())}>
               Retry
             </button>
           </div>
@@ -915,11 +929,143 @@ function NotFoundState() {
   );
 }
 
+function NotFoundState() {
+  return (
+    <SkillNotFoundState
+      title="Route not found"
+      message="The requested page is not available. Return to browse and try another registry path."
+    />
+  );
+}
+
+function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
+  const [detail, setDetail] = useState<SkillDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<'not-found' | 'unavailable' | null>(null);
+
+  const fetchSkill = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`${API_URL}/api/v1/skills/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`);
+      if (res.status === 404) {
+        setDetail(null);
+        setError('not-found');
+        return;
+      }
+      if (!res.ok) {
+        throw new Error(`Skill detail request failed with ${res.status}`);
+      }
+
+      setDetail((await res.json()) as SkillDetail);
+    } catch {
+      setDetail(null);
+      setError('unavailable');
+    } finally {
+      setLoading(false);
+    }
+  }, [name, owner]);
+
+  useEffect(() => {
+    fetchSkill();
+  }, [fetchSkill]);
+
+  if (loading) {
+    return (
+      <>
+        <div className="brand-stripe" />
+        <header>
+          <div className="container app-topbar">
+            <a className="logo" href="/" aria-label="asr home">
+              <img src="/logo.svg" alt="asr" />
+            </a>
+            <PrimaryNav current="browse" />
+          </div>
+        </header>
+        <main>
+          <div className="loading">
+            <div className="spinner" />
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  if (error === 'not-found') {
+    return (
+      <SkillNotFoundState
+        message={`No published skill exists for ${owner}/${name}. Return to browse or retry the lookup.`}
+        onRetry={fetchSkill}
+      />
+    );
+  }
+
+  if (error === 'unavailable' || !detail) {
+    return (
+      <SkillNotFoundState
+        title="Registry unavailable"
+        message={`Unable to load ${owner}/${name} from the registry API.`}
+        onRetry={fetchSkill}
+      />
+    );
+  }
+
+  return (
+    <>
+      <div className="brand-stripe" />
+      <header>
+        <div className="container app-topbar">
+          <a className="logo" href="/" aria-label="asr home">
+            <img src="/logo.svg" alt="asr" />
+          </a>
+          <PrimaryNav current="browse" />
+        </div>
+      </header>
+
+      <main className="skill-detail-main">
+        <article className="container skill-detail-page">
+          <a className="secondary-link" href="/">Back to browse</a>
+          <div className="skill-detail-header">
+            <p className="eyebrow">{detail.owner}</p>
+            <h1>{detail.name}</h1>
+            <p>{detail.description || detail.manifestLatest.description || 'No description available'}</p>
+            <div className="skill-detail-meta">
+              <span>v{detail.latestVersion}</span>
+              <span>{detail.downloadCount.toLocaleString()} downloads</span>
+              <span>{detail.versions.length.toLocaleString()} versions</span>
+            </div>
+          </div>
+
+          <div className="install-cmd">
+            <code>asr add {detail.owner}/{detail.name}</code>
+          </div>
+
+          <section className="skill-content" aria-label="Skill description">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {detail.manifestLatest.description || detail.description}
+            </ReactMarkdown>
+          </section>
+        </article>
+      </main>
+    </>
+  );
+}
+
 export default function App() {
   const { pathname } = window.location;
+  const routeParts = pathname.split('/').filter(Boolean).map(decodeRoutePart);
 
   if (pathname === '/' || pathname === '/skills') {
     return <BrowseRegistry />;
+  }
+
+  if (routeParts[0] === 'skills') {
+    if (routeParts.length === 3) {
+      return <SkillDetailPage owner={routeParts[1]} name={routeParts[2]} />;
+    }
+
+    return <SkillNotFoundState />;
   }
 
   if (pathname === '/review') {
