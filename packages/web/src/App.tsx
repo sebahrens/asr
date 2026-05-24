@@ -36,6 +36,14 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 
 type Decision = 'approved' | 'rejected';
 
+function getDecisionRequest(decision: Decision): { endpoint: 'approve' | 'reject'; body: { comment?: string; reason?: string } } {
+  if (decision === 'approved') {
+    return { endpoint: 'approve', body: {} };
+  }
+
+  return { endpoint: 'reject', body: { reason: 'Rejected from approval dashboard.' } };
+}
+
 const mockReviewQueue: ReviewSubmission[] = [
   {
     id: 'sub-1042',
@@ -128,10 +136,11 @@ function ReviewDashboard() {
 
     try {
       if (API_URL) {
-        const res = await fetch(`${API_URL}/api/v1/submissions/${id}/decision`, {
+        const { endpoint, body } = getDecisionRequest(decision);
+        const res = await fetch(`${API_URL}/api/v1/submissions/${id}/${endpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ decision }),
+          body: JSON.stringify(body),
         });
 
         if (!res.ok) {
