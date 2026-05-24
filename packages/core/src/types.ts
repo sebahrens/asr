@@ -49,3 +49,31 @@ export interface InstallOptions {
   target: 'cursor' | 'claude' | 'project';
   global?: boolean;
 }
+
+export type ScanSeverity = 'critical' | 'high' | 'medium' | 'low';
+export type ScanTool = 'gitleaks' | 'trivy' | 'foxguard' | 'opengrep' | 'veracode';
+export type ScanVerdict = 'pass' | 'review_required' | 'block';
+
+export interface ScanFinding {
+  tool: ScanTool;
+  ruleId: string;
+  severity: ScanSeverity;
+  file: string;
+  line: number;
+  message: string;
+  snippet?: string;
+}
+
+export interface ScanReport {
+  submissionId: string;
+  scanId: string;
+  contentHash: string;
+  scannerImage: string;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  verdict: ScanVerdict;
+  findings: ScanFinding[];
+  toolResults: Record<ScanTool, { exitCode: number; findingCount: number; skipped?: true }>;
+  signature?: string;
+}
