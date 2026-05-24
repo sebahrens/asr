@@ -1,11 +1,8 @@
 # asr dev stack
 #
-# Phase 1 (see SPEC.md) will add:
-#   - api    → built from packages/submission, exposed on :3001 (Hono + Flowcraft + SQLite)
-#   - web    → built from packages/web,        exposed on :5173 (React 19 + Vite)
-#
-# Until packages/submission/ exists, this compose file brings up Forgejo only
-# so the API service can be developed against a real Forgejo instance from the start.
+# Phase 1 (see SPEC.md) will replace the dev-api shim with packages/submission.
+# Until then, the api service exposes the health and mock registry endpoints
+# needed for visual review and smoke tests.
 # See specs/deployment.md for the canonical dev stack definition.
 
 services:
@@ -24,3 +21,44 @@ services:
       - FORGEJO__server__SSH_PORT=2222
       - FORGEJO__service__DISABLE_REGISTRATION=true
     restart: unless-stopped
+
+  api:
+    image: node:22-alpine
+    container_name: asr-api
+    working_dir: /workspace
+    command: ["node", "deploy/docker/dev-api.mjs"]
+    ports:
+      - "3001:3001"
+    volumes:
+      - ../..:/workspace:ro
+    environment:
+      - NODE_ENV=development
+      - AUTH_MODE=mock
+      - PORT=3001
+    depends_on:
+      - forgejo
+    restart: unless-stopped
+
+  web:
+    image: node:22-alpine
+    container_name: asr-web
+    working_dir: /workspace
+    command:
+      - sh
+      - -lc
+      - corepack enable && corepack prepare pnpm@9.15.0 --activate && pnpm install --no-frozen-lockfile --lockfile=false && pnpm --filter @asr/web dev --host 0.0.0.0
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../..:/workspace
+      - asr-node-modules:/workspace/node_modules
+      - asr-web-node-modules:/workspace/packages/web/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:3001
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  asr-node-modules:
+  asr-web-node-modules:

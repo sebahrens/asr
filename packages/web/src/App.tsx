@@ -72,7 +72,7 @@ export default function App() {
 
   function copyInstallCmd() {
     if (!selected) return;
-    const cmd = `npx akr add ${selected.owner}/${selected.repo}/${selected.name}`;
+    const cmd = `asr add ${selected.owner}/${selected.repo}/${selected.name}`;
     navigator.clipboard.writeText(cmd);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -201,7 +201,7 @@ export default function App() {
             </div>
             <div className="modal-body">
               <div className="install-cmd">
-                <code>npx akr add {selected.owner}/{selected.repo}/{selected.name}</code>
+                <code>asr add {selected.owner}/{selected.repo}/{selected.name}</code>
                 <button className="copy-btn" onClick={copyInstallCmd}>
                   {copied ? '✓ Copied' : 'Copy'}
                 </button>
