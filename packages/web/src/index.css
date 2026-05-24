@@ -489,6 +489,12 @@ main {
   font-size: 1rem;
 }
 
+.registry-error-state {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+}
+
 .loading {
   display: flex;
   justify-content: center;
@@ -524,6 +530,14 @@ main {
   border-radius: 50%;
   background: #34c759;
   animation: pulse 2s infinite;
+}
+
+.source-indicator-error {
+  color: #a13c00;
+}
+
+.source-indicator-error .dot {
+  background: var(--accent);
 }
 
 @keyframes pulse {

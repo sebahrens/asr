@@ -646,12 +646,14 @@ function PublishSkill() {
 function BrowseRegistry() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
+  const [registryError, setRegistryError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Skill | null>(null);
   const [copied, setCopied] = useState(false);
 
   const fetchSkills = useCallback(async (query: string) => {
     setLoading(true);
+    setRegistryError(null);
     try {
       const params = new URLSearchParams();
       if (query) params.set('q', query);
@@ -664,6 +666,7 @@ function BrowseRegistry() {
       setSkills(Array.isArray(data.items) ? data.items.map(mapSkillSummary) : []);
     } catch {
       setSkills([]);
+      setRegistryError('Unable to load skills from the registry API.');
     } finally {
       setLoading(false);
     }
@@ -756,14 +759,21 @@ function BrowseRegistry() {
             </div>
           </div>
 
-          <div className="source-indicator">
+          <div className={`source-indicator${registryError ? ' source-indicator-error' : ''}`}>
             <span className="dot" />
-            <span>Connected to Registry</span>
+            <span>{registryError ? 'Registry unavailable' : 'Connected to Registry'}</span>
           </div>
 
           {loading ? (
             <div className="loading">
               <div className="spinner" />
+            </div>
+          ) : registryError ? (
+            <div className="empty-state registry-error-state" role="status">
+              <p>{registryError}</p>
+              <button className="secondary-btn" type="button" onClick={() => fetchSkills(search)}>
+                Retry
+              </button>
             </div>
           ) : skills.length === 0 ? (
             <div className="empty-state">
