@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import type { SkillDetail, SkillSummary } from '@asr/core';
 
 function stripFrontmatter(content: string): string {
   return content.replace(/^---\n[\s\S]*?\n---\n*/, '');
@@ -9,7 +10,6 @@ function stripFrontmatter(content: string): string {
 interface Skill {
   id: string;
   owner: string;
-  repo: string;
   name: string;
   description: string;
   tags: string[];
@@ -34,7 +34,29 @@ interface ReviewSubmission {
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
+interface RegistrySkillsResponse {
+  items?: SkillSummary[];
+}
+
 type Decision = 'approved' | 'rejected';
+
+function mapSkillSummary(skill: SkillSummary): Skill {
+  return {
+    id: `${skill.owner}/${skill.name}`,
+    owner: skill.owner,
+    name: skill.name,
+    description: skill.description,
+    tags: skill.tags,
+    stars: 0,
+    installs: skill.downloadCount,
+    version: skill.latestVersion,
+    updated_at: skill.publishedAt,
+  };
+}
+
+function getSkillDetailContent(detail: SkillDetail, fallback: string): string {
+  return detail.manifestLatest.description || fallback;
+}
 
 function getDecisionRequest(
   decision: Decision,
@@ -431,9 +453,13 @@ function BrowseRegistry() {
     try {
       const params = new URLSearchParams();
       if (query) params.set('q', query);
-      const res = await fetch(`${API_URL}/api/skills?${params}`);
-      const data = await res.json();
-      setSkills(data.skills || []);
+      const res = await fetch(`${API_URL}/api/v1/skills?${params}`);
+      if (!res.ok) {
+        throw new Error(`Skills request failed with ${res.status}`);
+      }
+
+      const data = (await res.json()) as RegistrySkillsResponse;
+      setSkills(Array.isArray(data.items) ? data.items.map(mapSkillSummary) : []);
     } catch {
       setSkills([]);
     } finally {
@@ -454,10 +480,10 @@ function BrowseRegistry() {
 
     if (!skill.content) {
       try {
-        const res = await fetch(`${API_URL}/api/skills/${skill.owner}/${skill.repo}/${skill.name}`);
+        const res = await fetch(`${API_URL}/api/v1/skills/${skill.owner}/${skill.name}`);
         if (res.ok) {
-          const data = await res.json();
-          setSelected({ ...skill, content: data.content || skill.description });
+          const data = (await res.json()) as SkillDetail;
+          setSelected({ ...skill, content: getSkillDetailContent(data, skill.description) });
         } else {
           setSelected({ ...skill, content: skill.description });
         }
@@ -469,7 +495,7 @@ function BrowseRegistry() {
 
   function copyInstallCmd() {
     if (!selected) return;
-    const cmd = `asr add ${selected.owner}/${selected.repo}/${selected.name}`;
+    const cmd = `asr add ${selected.owner}/${selected.name}`;
     navigator.clipboard.writeText(cmd);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -550,7 +576,7 @@ function BrowseRegistry() {
                   <div className="skill-header">
                     <div>
                       <div className="skill-name">{skill.name}</div>
-                      <div className="skill-repo">{skill.owner}/{skill.repo}</div>
+                      <div className="skill-repo">{skill.owner}</div>
                     </div>
                     {skill.version && (
                       <span className="skill-version">v{skill.version}</span>
@@ -598,7 +624,7 @@ function BrowseRegistry() {
             </div>
             <div className="modal-body">
               <div className="install-cmd">
-                <code>asr add {selected.owner}/{selected.repo}/{selected.name}</code>
+                <code>asr add {selected.owner}/{selected.name}</code>
                 <button className="copy-btn" onClick={copyInstallCmd}>
                   {copied ? '✓ Copied' : 'Copy'}
                 </button>
