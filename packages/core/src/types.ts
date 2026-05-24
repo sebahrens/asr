@@ -6,7 +6,7 @@ export interface SkillMeta {
   version?: string;
 }
 
-export interface Skill extends SkillMeta {
+export interface LegacySkillSearchResult extends SkillMeta {
   repo: string;
   path: string;
   content: string;
@@ -61,10 +61,14 @@ export interface PermissionsManifest {
   environment: string[];
 }
 
+export type SkillManifestPermissions = PermissionsManifest;
+
 export interface CompatibilityManifest {
   'claude-code'?: string;
   codex?: string;
 }
+
+export type SkillManifestCompatibility = CompatibilityManifest;
 
 export interface SkillManifest {
   name: string;
@@ -140,3 +144,144 @@ export type SubmissionStatus =
   | { phase: 'published'; publishedAt: string; mergeCommit: string }
   | { phase: 'rejected'; rejectedAt: string; reason: string }
   | { phase: 'withdrawn'; withdrawnAt: string };
+
+export interface QuestionnaireQuestion {
+  id: string;
+  text: string;
+  type: 'boolean' | 'text' | 'select';
+  options?: string[];
+  required: boolean;
+}
+
+export interface QuestionnaireResponse {
+  questionId: string;
+  answer: string | boolean;
+}
+
+export interface Questionnaire {
+  id: string;
+  submissionId: string;
+  questions: QuestionnaireQuestion[];
+  responses?: QuestionnaireResponse[];
+  completedAt?: string;
+}
+
+export type QuestionnaireSchema = Questionnaire;
+export type QuestionnaireAnswer = QuestionnaireResponse;
+
+export type AuditAction =
+  | 'submission.created'
+  | 'submission.classified'
+  | 'submission.withdrawn'
+  | 'submission.expired'
+  | 'workflow.classify.completed'
+  | 'workflow.pushed_to_forgejo'
+  | 'workflow.questionnaire.completed'
+  | 'workflow.scan.started'
+  | 'workflow.scan.completed'
+  | 'workflow.confirmation.received'
+  | 'workflow.review.assigned'
+  | 'workflow.review.approved'
+  | 'workflow.review.rejected'
+  | 'workflow.published'
+  | 'scan.finding'
+  | 'version.published'
+  | 'version.yanked'
+  | 'version.diff.computed'
+  | 'hash.blocked'
+  | 'token.rotated'
+  | 'key.rotated'
+  | 'audit.anchored'
+  | 'audit.verify.failed';
+
+export interface AuditEvent {
+  id: string;
+  submissionId: string | null;
+  skillName: string | null;
+  version: string | null;
+  timestamp: string;
+  actor: string;
+  actorType: 'user' | 'system' | 'compliance';
+  action: AuditAction;
+  detail: Record<string, unknown>;
+  prevHash: string;
+  hash: string;
+  hmacKeyId: string;
+}
+
+export type RiskAssessment = 'low' | 'medium' | 'high';
+
+export interface VersionDiff {
+  skillName: string;
+  fromVersion: string;
+  toVersion: string;
+  fromContentHash: string | null;
+  toContentHash: string;
+  filesAdded: string[];
+  filesRemoved: string[];
+  filesModified: string[];
+  dependenciesAdded: Record<string, string>;
+  dependenciesRemoved: Record<string, string>;
+  dependenciesChanged: Record<string, { from: string; to: string }>;
+  permissionsBefore: PermissionsManifest | null;
+  permissionsAfter: PermissionsManifest;
+  permissionsExpanded: boolean;
+  manifestKindChanged: boolean;
+  riskAssessment: RiskAssessment;
+  computedAt: string;
+}
+
+export interface SkillVersion {
+  owner: string;
+  name: string;
+  version: string;
+  contentHash: string;
+  publishedAt: string;
+  publishedBy: string;
+  approvedBy: string | null;
+  prNumber: number;
+  mergeCommit: string;
+  yanked: boolean;
+  yankedAt?: string;
+  yankReason?: string;
+  riskAssessment: RiskAssessment;
+}
+
+export interface SkillSummary {
+  owner: string;
+  name: string;
+  latestVersion: string;
+  description: string;
+  tags: string[];
+  kind: SkillKind;
+  publishedAt: string;
+  downloadCount: number;
+  riskAssessmentLatest: RiskAssessment;
+}
+
+export interface SkillDetail extends SkillSummary {
+  manifestLatest: SkillManifest;
+  versions: SkillVersion[];
+}
+
+export type Skill = SkillDetail;
+
+export interface RegistryIndex {
+  generatedAt: string;
+  specVersion: '1';
+  skills: SkillSummary[];
+}
+
+export interface MarketplacePlugin {
+  name: string;
+  version: string;
+  description: string;
+  path: string;
+  kind: SkillKind;
+}
+
+export interface MarketplaceManifest {
+  name: string;
+  version: string;
+  plugins: MarketplacePlugin[];
+}

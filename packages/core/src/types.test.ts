@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import type { ScanReport, ScanVerdict, SkillManifest, Submission, SubmissionStatus } from './types.js';
+import type {
+  AuditEvent,
+  MarketplaceManifest,
+  RegistryIndex,
+  ScanReport,
+  ScanVerdict,
+  SkillManifest,
+  Submission,
+  SubmissionStatus,
+  VersionDiff,
+} from './types.js';
 
 describe('scanning types', () => {
   it('accepts canonical scan reports', () => {
@@ -151,5 +161,95 @@ describe('submission types', () => {
     };
 
     expect(describeStatus(submission.status)).toBe('pass');
+  });
+});
+
+describe('registry canonical types', () => {
+  it('accepts audit, version diff, registry, and marketplace values', () => {
+    const manifest: SkillManifest = {
+      name: 'security-reviewer',
+      version: '1.0.0',
+      author: 'ASR Team',
+      description: 'Reviews submissions for security risks.',
+      tags: ['security', 'review'],
+      kind: 'skill',
+      permissions: {
+        network: false,
+        filesystem: 'read-own',
+        subprocess: false,
+        environment: [],
+      },
+    };
+
+    const diff: VersionDiff = {
+      skillName: 'security-reviewer',
+      fromVersion: '',
+      toVersion: '1.0.0',
+      fromContentHash: null,
+      toContentHash: 'sha256:def456',
+      filesAdded: ['SKILL.md'],
+      filesRemoved: [],
+      filesModified: [],
+      dependenciesAdded: {},
+      dependenciesRemoved: {},
+      dependenciesChanged: {},
+      permissionsBefore: null,
+      permissionsAfter: manifest.permissions,
+      permissionsExpanded: false,
+      manifestKindChanged: false,
+      riskAssessment: 'low',
+      computedAt: '2026-05-24T10:00:00.000Z',
+    };
+
+    const auditEvent: AuditEvent = {
+      id: 'evt_01',
+      submissionId: 'sub_01',
+      skillName: 'security-reviewer',
+      version: '1.0.0',
+      timestamp: '2026-05-24T10:00:00.000Z',
+      actor: 'system',
+      actorType: 'system',
+      action: 'version.diff.computed',
+      detail: { riskAssessment: diff.riskAssessment },
+      prevHash: '0'.repeat(64),
+      hash: 'a'.repeat(64),
+      hmacKeyId: 'key_01',
+    };
+
+    const registryIndex: RegistryIndex = {
+      generatedAt: '2026-05-24T10:00:00.000Z',
+      specVersion: '1',
+      skills: [
+        {
+          owner: 'asr',
+          name: manifest.name,
+          latestVersion: manifest.version,
+          description: manifest.description,
+          tags: manifest.tags,
+          kind: manifest.kind,
+          publishedAt: '2026-05-24T10:01:00.000Z',
+          downloadCount: 0,
+          riskAssessmentLatest: 'low',
+        },
+      ],
+    };
+
+    const marketplaceManifest: MarketplaceManifest = {
+      name: 'asr-marketplace',
+      version: '1',
+      plugins: [
+        {
+          name: manifest.name,
+          version: manifest.version,
+          description: manifest.description,
+          path: 'skills/asr/security-reviewer',
+          kind: manifest.kind,
+        },
+      ],
+    };
+
+    expect(auditEvent.action).toBe('version.diff.computed');
+    expect(registryIndex.skills[0]?.name).toBe('security-reviewer');
+    expect(marketplaceManifest.plugins).toHaveLength(1);
   });
 });
