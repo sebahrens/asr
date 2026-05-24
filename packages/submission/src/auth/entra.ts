@@ -9,6 +9,18 @@ export interface EntraAuthOptions {
   jwks?: JWTVerifyGetKey;
 }
 
+interface AuthModeEnv {
+  [key: string]: string | undefined;
+  NODE_ENV?: string;
+  AUTH_MODE?: string;
+}
+
+export function assertAuthModeAllowed(env: AuthModeEnv = process.env): void {
+  if (env.NODE_ENV === 'production' && env.AUTH_MODE === 'mock') {
+    throw new Error('FATAL: AUTH_MODE=mock is forbidden in production');
+  }
+}
+
 export function entraJwksUrl(tenantId: string): URL {
   return new URL(`https://login.microsoftonline.com/${tenantId}/discovery/v2.0/keys`);
 }

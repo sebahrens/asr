@@ -24,4 +24,6 @@ export function parseEnv(raw: NodeJS.ProcessEnv): Env {
   return envSchema.parse(raw);
 }
 
-export const env = parseEnv(process.env);
+export function getEnv(raw: NodeJS.ProcessEnv = process.env): Env {
+  return parseEnv(raw);
+}
