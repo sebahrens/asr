@@ -36,6 +36,14 @@ describe('extractSafe', () => {
     await expect(extractSafe(zipPath, targetDir, limits({ maxFiles: 1 }))).rejects.toThrow(/max files/);
   });
 
+  it('rejects zip bombs that exceed the uncompressed size limit', async () => {
+    await writeZip([{ path: 'payload.txt', contents: 'x'.repeat(1024) }]);
+
+    await expect(extractSafe(zipPath, targetDir, limits({ maxUncompressedBytes: 128 }))).rejects.toThrow(
+      /uncompressed size limit/,
+    );
+  });
+
   it('extracts safe entries and returns relative file paths', async () => {
     await writeZip([
       { path: 'SKILL.md', contents: '# Skill' },
