@@ -64,6 +64,82 @@ describe('ForgejoClient', () => {
     });
   });
 
+  it('merges a PR with the merge token client and returns the merge commit sha', async () => {
+    const client = new ForgejoClient(cfg);
+    const { upload, merge } = internals(client);
+    const uploadRequest = vi.spyOn(upload, 'request');
+    const mergeRequest = vi
+      .spyOn(merge, 'request')
+      .mockResolvedValueOnce({ data: {} } as never)
+      .mockResolvedValueOnce({ data: { merge_commit_sha: 'merge-sha' } } as never);
+
+    await expect(client.mergePR(42)).resolves.toEqual({ sha: 'merge-sha' });
+
+    expect(uploadRequest).not.toHaveBeenCalled();
+    expect(mergeRequest).toHaveBeenNthCalledWith(
+      1,
+      'POST /repos/{owner}/{repo}/pulls/{index}/merge',
+      {
+        owner: 'asr',
+        repo: 'skills',
+        index: 42,
+        Do: 'squash',
+        merge_message_field: 'Approved and published (#42)',
+        delete_branch_after_merge: true,
+      },
+    );
+    expect(mergeRequest).toHaveBeenNthCalledWith(2, 'GET /repos/{owner}/{repo}/pulls/{index}', {
+      owner: 'asr',
+      repo: 'skills',
+      index: 42,
+    });
+  });
+
+  it('tolerates already-merged PRs and returns the existing merge commit sha', async () => {
+    const client = new ForgejoClient(cfg);
+    const mergeRequest = vi
+      .spyOn(internals(client).merge, 'request')
+      .mockRejectedValueOnce({ status: 405 })
+      .mockResolvedValueOnce({ data: { merge_commit_sha: 'existing-merge-sha' } } as never);
+
+    await expect(client.mergePR(7)).resolves.toEqual({ sha: 'existing-merge-sha' });
+
+    expect(mergeRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it('deletes branches with the merge token client and tolerates missing branches', async () => {
+    const client = new ForgejoClient(cfg);
+    const { upload, merge } = internals(client);
+    const uploadRequest = vi.spyOn(upload, 'request');
+    const mergeRequest = vi
+      .spyOn(merge, 'request')
+      .mockResolvedValueOnce({ data: {} } as never)
+      .mockRejectedValueOnce({ status: 404 });
+
+    await expect(client.deleteBranch('submit/skill')).resolves.toBeUndefined();
+    await expect(client.deleteBranch('submit/missing')).resolves.toBeUndefined();
+
+    expect(uploadRequest).not.toHaveBeenCalled();
+    expect(mergeRequest).toHaveBeenNthCalledWith(
+      1,
+      'DELETE /repos/{owner}/{repo}/branches/{branch}',
+      {
+        owner: 'asr',
+        repo: 'skills',
+        branch: 'submit/skill',
+      },
+    );
+    expect(mergeRequest).toHaveBeenNthCalledWith(
+      2,
+      'DELETE /repos/{owner}/{repo}/branches/{branch}',
+      {
+        owner: 'asr',
+        repo: 'skills',
+        branch: 'submit/missing',
+      },
+    );
+  });
+
   it('returns the artifact url when the package already exists', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 409 }));
     vi.stubGlobal('fetch', fetch);

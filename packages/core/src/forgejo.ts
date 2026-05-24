@@ -21,6 +21,53 @@ export class ForgejoClient {
     this.merge = new Octokit({ baseUrl: cfg.baseUrl, auth: cfg.mergeToken });
   }
 
+  async mergePR(prNumber: number): Promise<{ sha: string }> {
+    const { owner, repo } = this.cfg;
+
+    try {
+      await this.merge.request('POST /repos/{owner}/{repo}/pulls/{index}/merge', {
+        owner,
+        repo,
+        index: prNumber,
+        Do: 'squash',
+        merge_message_field: `Approved and published (#${prNumber})`,
+        delete_branch_after_merge: true,
+      });
+    } catch (err) {
+      if (!isOctokitStatus(err, 405)) {
+        throw err;
+      }
+    }
+
+    const { data } = await this.merge.request('GET /repos/{owner}/{repo}/pulls/{index}', {
+      owner,
+      repo,
+      index: prNumber,
+    });
+
+    if (!data.merge_commit_sha) {
+      throw new Error(`PR ${prNumber} not merged`);
+    }
+
+    return { sha: data.merge_commit_sha };
+  }
+
+  async deleteBranch(branch: string): Promise<void> {
+    const { owner, repo } = this.cfg;
+
+    try {
+      await this.merge.request('DELETE /repos/{owner}/{repo}/branches/{branch}', {
+        owner,
+        repo,
+        branch,
+      });
+    } catch (err) {
+      if (!isOctokitStatus(err, 404)) {
+        throw err;
+      }
+    }
+  }
+
   async publishArtifact(input: {
     owner: string;
     name: string;
@@ -45,3 +92,6 @@ export class ForgejoClient {
     return url;
   }
 }
+
+const isOctokitStatus = (err: unknown, status: number): boolean =>
+  typeof err === 'object' && err !== null && 'status' in err && err.status === status;
