@@ -29,11 +29,49 @@ const skills = [
   },
 ];
 
+const seededSubmissions = [
+  {
+    id: 'sub-1042',
+    skillName: 'secure-code-review',
+    owner: 'platform',
+    version: '1.4.0',
+    submitter: 'maria.chen',
+    submittedAt: '2026-05-24T08:35:00Z',
+    status: 'pending review',
+    risk: 'high',
+    findings: 3,
+  },
+  {
+    id: 'sub-1039',
+    skillName: 'release-notes',
+    owner: 'docs',
+    version: '0.8.2',
+    submitter: 'eli.warner',
+    submittedAt: '2026-05-23T17:10:00Z',
+    status: 'pending review',
+    risk: 'medium',
+    findings: 1,
+  },
+  {
+    id: 'sub-1031',
+    skillName: 'test-plan-writer',
+    owner: 'qa',
+    version: '2.1.1',
+    submitter: 'nora.patel',
+    submittedAt: '2026-05-23T11:42:00Z',
+    status: 'awaiting confirmation',
+    risk: 'low',
+    findings: 0,
+  },
+];
+
+const submissions = seededSubmissions.map((submission) => ({ ...submission }));
+
 function json(res, statusCode, body) {
   const payload = JSON.stringify(body);
   res.writeHead(statusCode, {
     'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET,OPTIONS',
+    'access-control-allow-methods': 'GET,POST,OPTIONS',
     'access-control-allow-headers': 'authorization,content-type',
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(payload),
@@ -45,30 +83,39 @@ function notFound(res) {
   json(res, 404, { error: 'not_found' });
 }
 
+function methodNotAllowed(res) {
+  json(res, 405, { error: 'method_not_allowed' });
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET,OPTIONS',
+      'access-control-allow-methods': 'GET,POST,OPTIONS',
       'access-control-allow-headers': 'authorization,content-type',
     });
     res.end();
     return;
   }
 
-  if (req.method !== 'GET') {
-    json(res, 405, { error: 'method_not_allowed' });
-    return;
-  }
-
   if (url.pathname === '/health' || url.pathname === '/api/health') {
+    if (req.method !== 'GET') {
+      methodNotAllowed(res);
+      return;
+    }
+
     json(res, 200, { status: 'ok' });
     return;
   }
 
   if (url.pathname === '/api/skills') {
+    if (req.method !== 'GET') {
+      methodNotAllowed(res);
+      return;
+    }
+
     const query = url.searchParams.get('q')?.toLowerCase().trim();
     const filtered = query
       ? skills.filter((skill) => {
@@ -87,6 +134,11 @@ const server = http.createServer((req, res) => {
 
   const match = url.pathname.match(/^\/api\/skills\/([^/]+)\/([^/]+)\/([^/]+)$/);
   if (match) {
+    if (req.method !== 'GET') {
+      methodNotAllowed(res);
+      return;
+    }
+
     const [, owner, repo, name] = match;
     const skill = skills.find((item) => {
       return item.owner === owner && item.repo === repo && item.name === name;
@@ -100,6 +152,52 @@ const server = http.createServer((req, res) => {
     json(res, 200, {
       ...skill,
       content: `# ${skill.name}\n\n${skill.description}\n\n## Usage\n\nRun \`asr add ${skill.owner}/${skill.repo}/${skill.name}\` to install this skill.`,
+    });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/submissions') {
+    if (req.method !== 'GET') {
+      methodNotAllowed(res);
+      return;
+    }
+
+    const status = url.searchParams.get('status');
+    const filtered = status === 'pending'
+      ? submissions.filter((submission) => submission.status === 'pending review')
+      : submissions;
+    json(res, 200, { submissions: filtered });
+    return;
+  }
+
+  const decisionMatch = url.pathname.match(/^\/api\/v1\/submissions\/([^/]+)\/(approve|reject)$/);
+  if (decisionMatch) {
+    if (req.method !== 'POST') {
+      methodNotAllowed(res);
+      return;
+    }
+
+    const [, id, decision] = decisionMatch;
+    const submission = submissions.find((item) => item.id === id);
+    if (!submission) {
+      notFound(res);
+      return;
+    }
+
+    if (submission.status !== 'pending review') {
+      json(res, 409, {
+        error: 'submission_not_reviewable',
+        message: `Submission ${id} is ${submission.status}.`,
+      });
+      return;
+    }
+
+    submission.status = decision === 'approve' ? 'approved' : 'rejected';
+    json(res, 200, {
+      submission,
+      status: {
+        phase: submission.status,
+      },
     });
     return;
   }

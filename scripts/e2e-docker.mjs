@@ -44,6 +44,34 @@ async function waitHealth(retries = 60) {
   throw new Error(`API health check timed out (${apiBaseUrl}/health)`);
 }
 
+async function assertApprovalQueue() {
+  const queue = await fetch(`${apiBaseUrl}/api/v1/submissions?status=pending`);
+  if (!queue.ok) {
+    throw new Error(`approval queue returned ${queue.status}`);
+  }
+
+  const data = await queue.json();
+  if (!Array.isArray(data.submissions) || data.submissions.length === 0) {
+    throw new Error('approval queue did not return seeded submissions');
+  }
+
+  const submission = data.submissions.find((item) => item.id === 'sub-1042') ?? data.submissions[0];
+  const decision = await fetch(`${apiBaseUrl}/api/v1/submissions/${submission.id}/approve`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  });
+
+  if (!decision.ok) {
+    throw new Error(`approval decision returned ${decision.status}`);
+  }
+
+  const decisionData = await decision.json();
+  if (decisionData.submission?.status !== 'approved') {
+    throw new Error('approval decision did not update the submission status');
+  }
+}
+
 const composeCmd = pickComposeCommand();
 
 console.log(`Starting dev stack via "${composeCmd}" in ${composeCwd}...`);
@@ -52,7 +80,8 @@ run(`${composeCmd} up -d --build`);
 
 try {
   await waitHealth();
-  console.log('E2E smoke check passed: /health is OK');
+  await assertApprovalQueue();
+  console.log('E2E smoke check passed: /health and approval queue are OK');
 } catch (err) {
   console.error('E2E smoke check FAILED:', err.message);
   console.error('--- recent api logs ---');
