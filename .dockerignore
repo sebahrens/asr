@@ -1,0 +1,13 @@
+.git
+.beads
+.beads.backup-*
+.claude
+.coderlm
+.playwright-mcp
+node_modules
+**/node_modules
+dist
+**/dist
+deploy/docker/data
+coverage
+*.log
