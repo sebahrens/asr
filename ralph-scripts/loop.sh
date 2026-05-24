@@ -13,10 +13,21 @@
 #   ./loop.sh plan N             - Run planning loop for max N iterations
 #   ./loop.sh include-tests      - Run build loop with e2e + visual web UI tests
 #   ./loop.sh include-tests N    - Run build loop with tests for max N iterations
+#   ./loop.sh codex              - Run the loop with OpenAI Codex instead of Claude
+#   ./loop.sh codex plan N       - Flags compose: engine + mode + iteration cap
+#
+# Engine (claude default, or codex):
+#   claude — uses `claude -p` (Anthropic subscription; ANTHROPIC_API_KEY unset).
+#   codex  — uses `codex exec` (ChatGPT subscription; OPENAI_API_KEY unset so it
+#            never falls through to API-key billing). Select with the `codex`
+#            arg or RALPH_ENGINE=codex. We call the Codex CLI directly rather
+#            than the codex-companion plugin runtime — see the note by
+#            run_codex_with_completion_detection() for the rationale.
 #
 # Models:
-#   Build/plan iterations use Opus 4.6 (--model opus) for complex reasoning.
-#   Visual inspection uses Haiku 4.5 (--model haiku) for cost-effective image analysis.
+#   claude — Build/plan use Opus 4.6 (--model opus); visual uses Haiku 4.5.
+#   codex  — Uses the model from ~/.codex/config.toml by default. Override per
+#            phase with CODEX_BUILD_MODEL / CODEX_VISUAL_MODEL env vars.
 #
 # By default, only the build phase runs. The Docker E2E test and visual web-UI
 # inspection phases are opt-in via the "include-tests" flag.
@@ -36,8 +47,11 @@ MODE="build"
 INCLUDE_TESTS=false
 MAX_ITERATIONS=0
 ITERATION=0
-BUILD_MODEL="opus"
-VISUAL_MODEL="haiku"
+ENGINE="${RALPH_ENGINE:-claude}"              # claude (default) or codex
+BUILD_MODEL="opus"                            # claude build/plan model
+VISUAL_MODEL="haiku"                          # claude visual-inspection model
+CODEX_BUILD_MODEL="${CODEX_BUILD_MODEL:-}"    # empty => codex config.toml default
+CODEX_VISUAL_MODEL="${CODEX_VISUAL_MODEL:-}"  # empty => codex config.toml default
 HARD_TIMEOUT=2700  # 45min safety net (should never hit with stream-json detection)
 
 # Absolute paths
@@ -62,7 +76,20 @@ cleanup_orphan_claude_processes() {
         fi
     done
 }
+
+# Kill any orphaned Codex processes from previous runs (codex exec exits cleanly,
+# so these are rare, but a watchdog-killed run can leave a stray child behind).
+cleanup_orphan_codex_processes() {
+    local current_ppid=$$
+    ps aux | grep -E "codex exec.*--dangerously-bypass-approvals-and-sandbox" | grep -v grep | while read -r line; do
+        local pid=$(echo "$line" | awk '{print $2}')
+        if [ "$pid" != "$current_ppid" ]; then
+            kill "$pid" 2>/dev/null || true
+        fi
+    done
+}
 cleanup_orphan_claude_processes
+cleanup_orphan_codex_processes
 
 # Run claude with stream-json and detect completion via result event.
 # Returns 0 on successful result, 1 on timeout/no result.
@@ -146,18 +173,139 @@ for line in sys.stdin:
     fi
 }
 
+# Run codex non-interactively via `codex exec`.
+#
+# Why the CLI directly, not the codex-companion plugin runtime:
+#   The codex plugin ships scripts/codex-companion.mjs, but that helper is built
+#   for *interactive, session-attached* use from Claude Code's rescue subagent —
+#   it drives the Codex app-server protocol with background jobs, status/result
+#   polling, cancel, and persistent resumable threads. It is declared an
+#   "internal helper contract" (user-invocable: false) living at a versioned
+#   plugin-cache path, so it is not a stable surface to script against. A Ralph
+#   iteration is the opposite shape: one bounded, headless, fire-and-forget run.
+#   `codex exec` is the supported headless entrypoint, it EXITS cleanly when the
+#   turn completes (so the whole stream-json hang workaround the Claude path
+#   needs does not apply here), and it has no plugin/Node dependency. We keep the
+#   orchestration (iteration control, beads, exit signal) in this loop.
+#
+# Returns 0 on a clean exit, 1 on nonzero exit or hard-timeout kill.
+run_codex_with_completion_detection() {
+    local prompt_file="$1"
+    local model="$2"
+    local temp_out="$3"
+    local err_log="${temp_out}.err"
+    local last_msg="${temp_out}.last"
+
+    > "$temp_out"
+    > "$err_log"
+    > "$last_msg"
+
+    # Pass --model only when explicitly configured; otherwise codex uses its
+    # config.toml default.
+    local model_args=()
+    [ -n "$model" ] && model_args=(--model "$model")
+
+    # --dangerously-bypass-approvals-and-sandbox mirrors claude's
+    #   --dangerously-skip-permissions (fully headless, no approval prompts).
+    # env -u OPENAI_API_KEY forces ChatGPT-subscription auth (~/.codex/auth.json
+    #   tokens) instead of API-key billing — the codex analogue of the
+    #   ANTHROPIC_API_KEY unset above. (OPENAI_API_KEY is present in this env, so
+    #   without this codex would silently bill the API account.)
+    # -o writes the final agent message to a file so we can echo a short summary.
+    # Prompt is piped via stdin (no PROMPT arg) to handle large prompts.
+    cat "$prompt_file" \
+        | env -u OPENAI_API_KEY codex exec \
+            --cd "$PROJECT_DIR" \
+            --skip-git-repo-check \
+            --dangerously-bypass-approvals-and-sandbox \
+            "${model_args[@]}" \
+            -o "$last_msg" \
+            > "$temp_out" 2>"$err_log" &
+    local codex_pid=$!
+
+    # Hard timeout watchdog (codex exec normally exits on its own; this only
+    # fires on a network/stall hang).
+    ( sleep $HARD_TIMEOUT; kill $codex_pid 2>/dev/null ) &
+    local watchdog_pid=$!
+
+    wait $codex_pid 2>/dev/null
+    local codex_rc=$?
+
+    # Clean up watchdog
+    kill $watchdog_pid 2>/dev/null
+    wait $watchdog_pid 2>/dev/null
+
+    # Echo the final agent message (truncated), like the claude result text
+    if [ -s "$last_msg" ]; then
+        head -c 500 "$last_msg"
+        echo ""
+    fi
+
+    if [ "$codex_rc" -eq 0 ]; then
+        echo "  (completed — codex exec exited 0)"
+        rm -f "$err_log" "$last_msg"
+        return 0
+    else
+        if [ -s "$err_log" ]; then
+            echo "  stderr output:"
+            head -5 "$err_log" | sed 's/^/    /'
+        fi
+        echo "  (codex exec exited $codex_rc — nonzero or hard-timeout kill)"
+        rm -f "$err_log" "$last_msg"
+        return 1
+    fi
+}
+
+# Engine dispatcher: route a phase to the configured agent.
+#   $1 prompt file  $2 temp out  $3 claude model  $4 codex model
+run_agent_with_completion_detection() {
+    local prompt_file="$1"
+    local temp_out="$2"
+    local claude_model="$3"
+    local codex_model="$4"
+    if [ "$ENGINE" = "codex" ]; then
+        run_codex_with_completion_detection "$prompt_file" "$codex_model" "$temp_out"
+    else
+        run_claude_with_completion_detection "$prompt_file" "$claude_model" "$temp_out"
+    fi
+}
+
 # Parse arguments
 for arg in "$@"; do
     if [ "$arg" = "plan" ]; then
         MODE="plan"
     elif [ "$arg" = "include-tests" ]; then
         INCLUDE_TESTS=true
+    elif [ "$arg" = "codex" ]; then
+        ENGINE="codex"
+    elif [ "$arg" = "claude" ]; then
+        ENGINE="claude"
     elif [ "$arg" -eq "$arg" ] 2>/dev/null; then
         MAX_ITERATIONS=$arg
     fi
 done
 
+# Validate engine and that its CLI is on PATH
+case "$ENGINE" in
+    claude|codex) ;;
+    *) echo "Error: unknown ENGINE '$ENGINE' (expected 'claude' or 'codex')" >&2; exit 1 ;;
+esac
+if ! command -v "$ENGINE" >/dev/null 2>&1; then
+    echo "Error: '$ENGINE' CLI not found on PATH" >&2
+    exit 1
+fi
+
+# Human-readable model labels for the per-phase banners
+if [ "$ENGINE" = "codex" ]; then
+    ACTIVE_BUILD_MODEL="codex:${CODEX_BUILD_MODEL:-default}"
+    ACTIVE_VISUAL_MODEL="codex:${CODEX_VISUAL_MODEL:-default}"
+else
+    ACTIVE_BUILD_MODEL="claude:$BUILD_MODEL"
+    ACTIVE_VISUAL_MODEL="claude:$VISUAL_MODEL"
+fi
+
 echo "=== ASR Ralph Loop ==="
+echo "Engine: $ENGINE"
 echo "Mode: $MODE"
 echo "Tests: $INCLUDE_TESTS"
 echo "Project: $PROJECT_DIR"
@@ -197,18 +345,46 @@ while true; do
     ITERATION=$((ITERATION + 1))
     START_EPOCH=$(date +%s)
 
+    # Re-derive prompt file each iteration so a plan-pivot doesn't persist
+    if [ "$MODE" = "plan" ]; then
+        PROMPT_FILE="$SCRIPT_DIR/PROMPT_plan.md"
+    else
+        PROMPT_FILE="$SCRIPT_DIR/PROMPT_build.md"
+    fi
+
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  Iteration $ITERATION — $(date)"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    # Show next bead to work on (mirrors PROMPT_build.md logic: in_progress first, then ready)
+    # Show next bead to work on. In build mode, refuse to pick non-task/non-story
+    # beads (epics are aggregates — they have no implementable acceptance) and
+    # auto-pivot to plan mode if nothing implementable is ready.
     if [ "$HAS_BEADS" = true ]; then
         echo ""
         IN_PROGRESS=$(cd "$PROJECT_DIR" && bd list --status=in_progress 2>/dev/null | grep -E '^[○◐●✓❄]' | head -1)
         if [ -n "$IN_PROGRESS" ]; then
             echo "Resuming in-progress bead:"
             echo "  $IN_PROGRESS"
+        elif [ "$MODE" = "build" ]; then
+            # Prefer tasks (atomic), then stories. Skip epics — they aren't buildable.
+            NEXT_BUILDABLE=$(cd "$PROJECT_DIR" && {
+                bd list --ready --label tier:task --limit 0 2>/dev/null | grep -E '^[○◐●]' | head -1
+                bd list --ready --label tier:story --limit 0 2>/dev/null | grep -E '^[○◐●]' | head -1
+            } | head -1)
+            if [ -n "$NEXT_BUILDABLE" ]; then
+                echo "Next ready buildable bead:"
+                echo "  $NEXT_BUILDABLE"
+            else
+                READY_TOTAL=$(cd "$PROJECT_DIR" && bd ready --limit 0 2>/dev/null | grep -cE '^[○◐●]')
+                READY_EPICS=$(cd "$PROJECT_DIR" && bd list --ready --label tier:epic --limit 0 2>/dev/null | grep -cE '^[○◐●]')
+                echo "⚠ No buildable bead ready (ready=$READY_TOTAL of which epics=$READY_EPICS)."
+                echo "  Pivoting this iteration to PLAN mode to decompose into tasks."
+                PROMPT_FILE="$SCRIPT_DIR/PROMPT_plan.md"
+                if [ ! -f "$PROMPT_FILE" ]; then
+                    echo "  ⚠ Plan prompt missing; skipping iteration." ; continue
+                fi
+            fi
         else
             echo "Next ready bead:"
             cd "$PROJECT_DIR" && bd ready 2>/dev/null | head -1 || echo "  (could not fetch beads)"
@@ -218,9 +394,9 @@ while true; do
 
     # Phase 1: Build/plan with Opus 4.6
     # Uses stream-json to detect completion and kill hung process (GitHub #19060 fix)
-    echo "  Phase 1: Build ($BUILD_MODEL)"
+    echo "  Phase 1: Build ($ACTIVE_BUILD_MODEL)"
     set +e
-    run_claude_with_completion_detection "$PROMPT_FILE" "$BUILD_MODEL" "$TEMP_OUTPUT"
+    run_agent_with_completion_detection "$PROMPT_FILE" "$TEMP_OUTPUT" "$BUILD_MODEL" "$CODEX_BUILD_MODEL"
     BUILD_EXIT=$?
     set -e
 
@@ -277,10 +453,10 @@ while true; do
     # Phase 2: Visual inspection of the web UI with Haiku 4.5 (only with include-tests)
     if [ "$INCLUDE_TESTS" = true ] && [ "$MODE" = "build" ]; then
         echo ""
-        echo "  Phase 2: Visual inspection of @asr/web ($VISUAL_MODEL)"
+        echo "  Phase 2: Visual inspection of @asr/web ($ACTIVE_VISUAL_MODEL)"
         VISUAL_START=$(date +%s)
         set +e
-        run_claude_with_completion_detection "$VISUAL_PROMPT_FILE" "$VISUAL_MODEL" "$TEMP_OUTPUT"
+        run_agent_with_completion_detection "$VISUAL_PROMPT_FILE" "$TEMP_OUTPUT" "$VISUAL_MODEL" "$CODEX_VISUAL_MODEL"
         VISUAL_EXIT=$?
         set -e
         VISUAL_ELAPSED=$(( $(date +%s) - VISUAL_START ))
