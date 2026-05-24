@@ -6,14 +6,27 @@ import { mkdir, writeFile, readdir, rm, readFile, stat } from 'fs/promises';
 import { join, dirname } from 'path';
 import { createInterface } from 'readline';
 import {
-  searchSkillRepos,
-  listSkillsInRepo,
-  downloadSkillFiles,
   generateAgentsMd,
   parseSkillMd,
 } from '@asr/core';
 import { getConfig, setConfig, getTargetDir } from './config.js';
 import { recordInstall, removeFromLock, getAllInstalled } from './lockfile.js';
+
+interface RegistrySkill {
+  id?: string;
+  owner: string;
+  repo: string;
+  name: string;
+  description?: string;
+  tags?: string[];
+  stars?: number;
+  installs?: number;
+  updatedAt?: string;
+}
+
+interface RegistrySkillsResponse {
+  skills: RegistrySkill[];
+}
 
 async function confirm(message: string): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -25,7 +38,7 @@ async function confirm(message: string): Promise<boolean> {
   });
 }
 
-async function fetchRegistry(path: string, options: { token?: string } = {}) {
+async function fetchRegistry<T>(path: string, options: { token?: string } = {}): Promise<T | null> {
   const config = getConfig();
   if (!config.registry) return null;
   
@@ -36,7 +49,28 @@ async function fetchRegistry(path: string, options: { token?: string } = {}) {
   
   const res = await fetch(`${config.registry}${path}`, { headers });
   if (!res.ok) return null;
-  return res.json();
+  return (await res.json()) as T;
+}
+
+async function searchRegistrySkills(query: string, token?: string): Promise<RegistrySkill[]> {
+  const data = await fetchRegistry<RegistrySkillsResponse>(
+    `/api/skills?q=${encodeURIComponent(query)}`,
+    { token }
+  );
+  return data?.skills ?? [];
+}
+
+async function listSkillsInRepo(_repo: string, _token?: string, _skillsPath = 'skills'): Promise<string[]> {
+  throw new Error('Direct repository listing is no longer supported. Configure a registry and use asr browse.');
+}
+
+async function downloadSkillFiles(
+  _repo: string,
+  _skillName?: string,
+  _skillsPath = 'skills',
+  _token?: string
+): Promise<Record<string, string>> {
+  throw new Error('Direct repository installs are no longer supported. Configure a registry and install by skill name.');
 }
 
 function getRegistryAuthOrExit(overrideToken?: string): { registry: string; token: string } {
@@ -74,7 +108,7 @@ program
     const spinner = ora('Fetching from registry...').start();
     try {
       const query = options.query ? `?q=${encodeURIComponent(options.query)}` : '';
-      const data = await fetchRegistry(`/api/skills${query}`);
+      const data = await fetchRegistry<RegistrySkillsResponse>(`/api/skills${query}`);
       spinner.stop();
 
       if (!data?.skills?.length) {
@@ -100,13 +134,13 @@ program
 
 program
   .command('search <query>')
-  .description('Search for skills on GitHub')
-  .option('-t, --token <token>', 'GitHub token for API access')
+  .description('Search for skills in the configured registry')
+  .option('-t, --token <token>', 'Registry token for API access')
   .action(async (query, options) => {
     const spinner = ora('Searching skills...').start();
     try {
       const config = getConfig();
-      const skills = await searchSkillRepos(query, options.token || config.githubToken);
+      const skills = await searchRegistrySkills(query, options.token || config.token);
       spinner.stop();
 
       if (skills.length === 0) {
@@ -114,14 +148,15 @@ program
         return;
       }
 
-      console.log(pc.bold(`\nFound ${skills.length} skill repositories:\n`));
+      console.log(pc.bold(`\nFound ${skills.length} skills:\n`));
       for (const skill of skills) {
-        console.log(`  ${pc.cyan(skill.repo)} ${pc.dim(`⭐ ${skill.stars}`)}`);
+        const stars = skill.stars ? pc.dim(`⭐ ${skill.stars}`) : '';
+        console.log(`  ${pc.cyan(skill.name)} ${stars}`);
         if (skill.description) {
           console.log(`    ${pc.dim(skill.description)}`);
         }
       }
-      console.log(pc.dim(`\nUse ${pc.cyan('asr list <repo>')} to see skills in a repo`));
+      console.log(pc.dim(`\nUse ${pc.cyan('asr add <skill-name>')} to install from the registry`));
     } catch (err) {
       spinner.fail('Search failed');
       console.error(pc.red(String(err)));
@@ -300,9 +335,10 @@ program
             return;
           }
         } else {
-          const data = await fetchRegistry(`/api/skills?q=${encodeURIComponent(skillName)}`);
-          if (data?.skills?.length > 0) {
-            const skill = data.skills.find((s: { name: string }) => s.name === skillName) || data.skills[0];
+          const data = await fetchRegistry<RegistrySkillsResponse>(`/api/skills?q=${encodeURIComponent(skillName)}`);
+          const skills = data?.skills ?? [];
+          if (skills.length > 0) {
+            const skill = skills.find((s) => s.name === skillName) ?? skills[0];
             const installed = await installFromRegistry(skill.owner, skill.repo, skill.name, target, options.global);
             if (installed) {
               const targetDir = getTargetDir(target, skill.name, options.global);
