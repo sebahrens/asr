@@ -1181,7 +1181,11 @@ export default function App() {
       return <SkillDetailPage owner={routeParts[1]} name={routeParts[2]} />;
     }
 
-    return <SkillNotFoundState />;
+    return (
+      <SkillNotFoundState
+        message={`No published skill exists at /${routeParts.join('/')}. Return to browse or retry the lookup.`}
+      />
+    );
   }
 
   if (pathname === '/review') {
