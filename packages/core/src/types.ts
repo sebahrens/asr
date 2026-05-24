@@ -111,3 +111,32 @@ export interface ScanReport {
   toolResults: Record<ScanTool, { exitCode: number; findingCount: number; skipped?: true }>;
   signature?: string;
 }
+
+export type SkillClassification = 'md-only' | 'code-containing';
+
+export interface Submission {
+  id: string;
+  manifest: SkillManifest;
+  classification: SkillClassification;
+  contentHash: string;
+  submittedAt: string;
+  submittedBy: string;
+  branchName?: string;
+  prNumber?: number;
+  status: SubmissionStatus;
+}
+
+export type SubmissionStatus =
+  | { phase: 'uploaded' }
+  | { phase: 'classifying' }
+  | { phase: 'pushing-to-forgejo' }
+  | { phase: 'auto-approved'; approvedAt: string }
+  | { phase: 'questionnaire-pending'; questionnaireId: string }
+  | { phase: 'scanning'; scanJobId: string }
+  | { phase: 'scan-complete'; report: ScanReport }
+  | { phase: 'user-confirmation-pending' }
+  | { phase: 'compliance-review'; reviewerId?: string }
+  | { phase: 'approved'; approvedAt: string; approvedBy: string }
+  | { phase: 'published'; publishedAt: string; mergeCommit: string }
+  | { phase: 'rejected'; rejectedAt: string; reason: string }
+  | { phase: 'withdrawn'; withdrawnAt: string };
