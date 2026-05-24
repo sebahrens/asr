@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ScanReport, ScanVerdict } from './types.js';
+import type { ScanReport, ScanVerdict, SkillManifest } from './types.js';
 
 describe('scanning types', () => {
   it('accepts canonical scan reports', () => {
@@ -34,5 +34,38 @@ describe('scanning types', () => {
 
     expect(report.verdict).toBe('review_required');
     expect(report.findings).toHaveLength(1);
+  });
+});
+
+describe('skill manifest types', () => {
+  it('accepts canonical skill manifests', () => {
+    const manifest: SkillManifest = {
+      name: 'security-reviewer',
+      version: '1.0.0',
+      author: 'ASR Team',
+      description: 'Reviews submissions for security risks.',
+      tags: ['security', 'review'],
+      kind: 'persona',
+      persona_mode: 'delegate',
+      references: ['base-reviewer'],
+      entrypoint: 'SKILL.md',
+      dependencies: {
+        semver: '^7.7.3',
+      },
+      permissions: {
+        network: true,
+        networkHosts: ['forgejo.local'],
+        filesystem: 'read-own',
+        subprocess: false,
+        environment: ['ASR_TOKEN'],
+      },
+      compatibility: {
+        'claude-code': '>=1.0.0',
+        codex: '>=1.0.0',
+      },
+    };
+
+    expect(manifest.kind).toBe('persona');
+    expect(manifest.permissions.filesystem).toBe('read-own');
   });
 });

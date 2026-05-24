@@ -50,6 +50,40 @@ export interface InstallOptions {
   global?: boolean;
 }
 
+export type SkillKind = 'skill' | 'persona';
+export type PersonaMode = 'inject' | 'delegate';
+
+export interface PermissionsManifest {
+  network: boolean;
+  networkHosts?: string[];
+  filesystem: 'none' | 'read-own' | 'read-write-own';
+  subprocess: boolean;
+  environment: string[];
+}
+
+export interface CompatibilityManifest {
+  'claude-code'?: string;
+  codex?: string;
+}
+
+export interface SkillManifest {
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  tags: string[];
+
+  kind: SkillKind;
+  persona_mode?: PersonaMode;
+  references?: string[];
+
+  entrypoint?: string;
+  dependencies?: Record<string, string>;
+
+  permissions: PermissionsManifest;
+  compatibility?: CompatibilityManifest;
+}
+
 export type ScanSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type ScanTool = 'gitleaks' | 'trivy' | 'foxguard' | 'opengrep' | 'veracode';
 export type ScanVerdict = 'pass' | 'review_required' | 'block';
