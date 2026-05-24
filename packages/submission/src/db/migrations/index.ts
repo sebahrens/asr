@@ -16,25 +16,29 @@ export function runMigrations(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS schema_migrations (
       id INTEGER PRIMARY KEY,
       name TEXT NOT NULL,
-      applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+      applied_at TEXT NOT NULL
     )
   `);
 
-  const hasMigration = db
-    .prepare('SELECT 1 FROM schema_migrations WHERE id = ?')
-    .pluck() as Database.Statement<[number], 1 | undefined>;
-  const recordMigration = db.prepare('INSERT INTO schema_migrations (id, name) VALUES (?, ?)');
+  const appliedIds = new Set(
+    db
+      .prepare('SELECT id FROM schema_migrations')
+      .pluck()
+      .all() as number[],
+  );
+  const recordMigration = db.prepare(
+    'INSERT INTO schema_migrations (id, name, applied_at) VALUES (?, ?, ?)',
+  );
 
-  const apply = db.transaction((pending: Migration[]) => {
-    for (const migration of pending) {
-      if (hasMigration.get(migration.id)) {
-        continue;
-      }
-
-      migration.up(db);
-      recordMigration.run(migration.id, migration.name);
+  for (const migration of [...migrations].sort((a, b) => a.id - b.id)) {
+    if (appliedIds.has(migration.id)) {
+      continue;
     }
-  });
 
-  apply(migrations);
+    db.transaction(() => {
+      migration.up(db);
+      recordMigration.run(migration.id, migration.name, new Date().toISOString());
+      appliedIds.add(migration.id);
+    })();
+  }
 }
