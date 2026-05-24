@@ -189,8 +189,13 @@ function ReviewDashboard() {
     }
   }
 
-  const pendingCount = submissions.filter((submission) => submission.status === 'pending review').length;
-  const findingCount = submissions.reduce((total, submission) => total + submission.findings, 0);
+  const pendingSubmissions = submissions.filter((submission) => submission.status === 'pending review');
+  const pendingCount = pendingSubmissions.length;
+  const findingCount = pendingSubmissions.reduce((total, submission) => total + submission.findings, 0);
+  const pendingSubmissionCopy =
+    pendingCount === 1
+      ? '1 submission needs compliance review'
+      : `${pendingCount} submissions need compliance review`;
   const confirmationSubmitDisabled =
     pendingConfirmation?.decision === 'rejected' && decisionReason.trim().length === 0;
   const confirmationPending = pendingConfirmation
@@ -237,7 +242,11 @@ function ReviewDashboard() {
             <div className="review-panel-header">
               <div>
                 <h2>Pending submissions</h2>
-                <p>{loading ? 'Refreshing queue...' : `${submissions.length} submissions need compliance review`}</p>
+                <p>
+                  {loading
+                    ? 'Refreshing queue...'
+                    : pendingSubmissionCopy}
+                </p>
               </div>
               <button className="secondary-btn" type="button" onClick={fetchQueue} disabled={loading}>
                 Refresh
@@ -247,7 +256,11 @@ function ReviewDashboard() {
             {queueError ? <div className="queue-error" role="status">{queueError}</div> : null}
 
             <div className="submission-list">
-              {submissions.map((submission) => {
+              {pendingSubmissions.length === 0 && !loading ? (
+                <div className="empty-review-queue" role="status">No pending submissions need compliance review.</div>
+              ) : null}
+
+              {pendingSubmissions.map((submission) => {
                 const pendingDecision = decisionPending[submission.id];
                 const isReviewable = submission.status === 'pending review';
                 const disableActions = Boolean(pendingDecision) || !isReviewable;
