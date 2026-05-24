@@ -1153,6 +1153,22 @@ main {
   gap: 8px;
 }
 
+.review-detail-link {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 8px 14px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.review-detail-link:hover {
+  background: var(--bg-hover);
+}
+
 .approve-btn,
 .reject-btn {
   border: 0;
@@ -1532,9 +1548,11 @@ main {
     justify-content: stretch;
   }
 
+  .review-detail-link,
   .approve-btn,
   .reject-btn {
     flex: 1;
+    text-align: center;
   }
 
   .decision-modal-backdrop {

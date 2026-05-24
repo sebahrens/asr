@@ -459,6 +459,9 @@ function ReviewDashboard() {
                       ) : null}
                     </div>
                     <div className="decision-actions" aria-label={`Decision actions for ${submission.skillName}`}>
+                      <a className="review-detail-link" href={`/review/${submission.id}`}>
+                        Open details
+                      </a>
                       <button
                         className="approve-btn"
                         type="button"
