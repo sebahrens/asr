@@ -17,9 +17,29 @@ describe('scanResults repository', () => {
     runMigrations(db);
 
     const report = sampleReport();
-    db.prepare('INSERT INTO submissions (id, content_hash) VALUES (?, ?)').run(
+    db.prepare(
+      `
+        INSERT INTO submissions (
+          id,
+          manifest_json,
+          classification,
+          content_hash,
+          submitted_at,
+          submitted_by,
+          status_phase,
+          status_json
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    ).run(
       report.submissionId,
+      '{}',
+      'md-only',
       report.contentHash,
+      '2026-05-24T10:00:00.000Z',
+      'submitter@example.com',
+      'submitted',
+      '{"phase":"submitted"}',
     );
 
     insertScanResult(db, report);
