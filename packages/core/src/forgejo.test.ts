@@ -2,6 +2,7 @@ import { Buffer } from 'node:buffer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Octokit } from '@octokit/rest';
 import { ForgejoClient, type ForgejoConfig } from './forgejo.js';
+import type { SkillManifest } from './types.js';
 
 interface ForgejoClientInternals {
   cfg: ForgejoConfig;
@@ -131,6 +132,89 @@ describe('ForgejoClient', () => {
         branch: 'submit/sub-1',
       },
     );
+  });
+
+  it('opens a submission PR after sequentially committing files and polling mergeability', async () => {
+    const client = new ForgejoClient(cfg);
+    const uploadRequest = vi
+      .spyOn(internals(client).upload, 'request')
+      .mockResolvedValueOnce({ data: { commit: { id: 'branch-head-sha' } } } as never)
+      .mockResolvedValueOnce({ data: { commit: { sha: 'skill-md-sha' } } } as never)
+      .mockResolvedValueOnce({ data: { commit: { sha: 'readme-sha' } } } as never)
+      .mockResolvedValueOnce({ data: { number: 37 } } as never)
+      .mockResolvedValueOnce({ data: { number: 37, mergeable: true } } as never);
+
+    const manifest: SkillManifest = {
+      name: 'agent-skill',
+      version: '1.2.3',
+      author: 'acme',
+      description: 'Demo skill.',
+      tags: ['demo'],
+      kind: 'persona',
+      permissions: {
+        network: false,
+        filesystem: 'read-own',
+        subprocess: false,
+      },
+    };
+
+    await expect(
+      client.openSubmissionPR({
+        submissionId: 'sub-1',
+        manifest,
+        files: [
+          { path: 'SKILL.md', content: Buffer.from('skill') },
+          { path: 'README.md', content: Buffer.from('readme') },
+        ],
+        autoApprove: true,
+      }),
+    ).resolves.toEqual({
+      branch: 'submit/sub-1',
+      prNumber: 37,
+      headSha: 'readme-sha',
+    });
+
+    expect(uploadRequest).toHaveBeenNthCalledWith(1, 'POST /repos/{owner}/{repo}/branches', {
+      owner: 'asr',
+      repo: 'skills',
+      new_branch_name: 'submit/sub-1',
+      old_branch_name: 'main',
+    });
+    expect(uploadRequest).toHaveBeenNthCalledWith(2, 'PUT /repos/{owner}/{repo}/contents/{path}', {
+      owner: 'asr',
+      repo: 'skills',
+      path: 'skills/acme/agent-skill/SKILL.md',
+      message: 'submit: skills/acme/agent-skill/SKILL.md (sub-1)',
+      content: Buffer.from('skill').toString('base64'),
+      branch: 'submit/sub-1',
+    });
+    expect(uploadRequest).toHaveBeenNthCalledWith(3, 'PUT /repos/{owner}/{repo}/contents/{path}', {
+      owner: 'asr',
+      repo: 'skills',
+      path: 'skills/acme/agent-skill/README.md',
+      message: 'submit: skills/acme/agent-skill/README.md (sub-1)',
+      content: Buffer.from('readme').toString('base64'),
+      branch: 'submit/sub-1',
+    });
+    expect(uploadRequest).toHaveBeenNthCalledWith(4, 'POST /repos/{owner}/{repo}/pulls', {
+      owner: 'asr',
+      repo: 'skills',
+      title: '[Skill] agent-skill@1.2.3',
+      head: 'submit/sub-1',
+      base: 'main',
+      body: [
+        'Submission: sub-1',
+        'Skill: agent-skill@1.2.3',
+        'Author: acme',
+        'Review path: auto-approve',
+      ].join('\n'),
+      labels: ['auto-approve'],
+    });
+    expect(uploadRequest).toHaveBeenNthCalledWith(5, 'GET /repos/{owner}/{repo}/pulls/{index}', {
+      owner: 'asr',
+      repo: 'skills',
+      index: 37,
+    });
   });
 
   it('uploads a generic package artifact with the upload token', async () => {

@@ -1,5 +1,6 @@
 import { Octokit } from '@octokit/rest';
 import type { Buffer } from 'node:buffer';
+import type { SkillManifest } from './types.js';
 
 export interface ForgejoConfig {
   baseUrl: string;
@@ -20,6 +21,11 @@ interface ForgejoContentsPutResponse {
   commit: {
     sha: string;
   };
+}
+
+interface ForgejoPullResponse {
+  number: number;
+  mergeable?: boolean | null;
 }
 
 export class ForgejoClient {
@@ -91,6 +97,64 @@ export class ForgejoClient {
     });
 
     return forgejoBranchHeadSha(data);
+  }
+
+  async openSubmissionPR(input: {
+    submissionId: string;
+    manifest: SkillManifest;
+    files: Array<{ path: string; content: Buffer }>;
+    autoApprove: boolean;
+  }): Promise<{ branch: string; prNumber: number; headSha: string }> {
+    const { owner, repo } = this.cfg;
+    const branch = `submit/${input.submissionId}`;
+    const skillPath = `skills/${input.manifest.author}/${input.manifest.name}`;
+    let headSha = await this.createOrGetBranch(branch);
+
+    for (const file of input.files) {
+      headSha = await this.putFile(
+        branch,
+        `${skillPath}/${file.path}`,
+        file.content,
+        input.submissionId,
+      );
+    }
+
+    const { data } = await this.upload.request('POST /repos/{owner}/{repo}/pulls', {
+      owner,
+      repo,
+      title: `[Skill] ${input.manifest.name}@${input.manifest.version}`,
+      head: branch,
+      base: this.cfg.defaultBranch ?? 'main',
+      body: prBody(input.manifest, input.submissionId, input.autoApprove),
+      labels: input.autoApprove ? ['auto-approve'] : ['needs-review'],
+    });
+    const pr = forgejoPull(data);
+
+    await this.waitMergeable(pr.number);
+
+    return { branch, prNumber: pr.number, headSha };
+  }
+
+  private async waitMergeable(prNumber: number): Promise<void> {
+    const { owner, repo } = this.cfg;
+    const deadline = Date.now() + 5_000;
+
+    while (Date.now() <= deadline) {
+      const { data } = await this.upload.request('GET /repos/{owner}/{repo}/pulls/{index}', {
+        owner,
+        repo,
+        index: prNumber,
+      });
+      const pr = forgejoPull(data);
+
+      if (pr.mergeable !== undefined && pr.mergeable !== null) {
+        return;
+      }
+
+      await delay(250);
+    }
+
+    throw new Error(`PR ${prNumber} mergeable status not ready`);
   }
 
   async mergePR(prNumber: number): Promise<{ sha: string }> {
@@ -177,3 +241,15 @@ const forgejoFileCommitSha = (data: unknown): string => {
   const putResponse = data as ForgejoContentsPutResponse;
   return putResponse.commit.sha;
 };
+
+const forgejoPull = (data: unknown): ForgejoPullResponse => data as ForgejoPullResponse;
+
+const prBody = (manifest: SkillManifest, submissionId: string, autoApprove: boolean): string =>
+  [
+    `Submission: ${submissionId}`,
+    `Skill: ${manifest.name}@${manifest.version}`,
+    `Author: ${manifest.author}`,
+    `Review path: ${autoApprove ? 'auto-approve' : 'needs-review'}`,
+  ].join('\n');
+
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
