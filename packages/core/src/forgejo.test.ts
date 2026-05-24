@@ -155,6 +155,7 @@ describe('ForgejoClient', () => {
         network: false,
         filesystem: 'read-own',
         subprocess: false,
+        environment: [],
       },
     };
 

@@ -4,28 +4,26 @@ const port = Number.parseInt(process.env.PORT ?? '3001', 10);
 
 const skills = [
   {
-    id: 'office-companion/write-docs',
     owner: 'office-companion',
-    repo: 'skills-registry',
     name: 'write-docs',
     description: 'Draft and refine documentation for agent workflows.',
     tags: ['docs', 'writing'],
-    stars: 18,
-    installs: 42,
-    version: '0.1.0',
-    updated_at: '2026-05-24T00:00:00.000Z',
+    kind: 'skill',
+    latestVersion: '0.1.0',
+    publishedAt: '2026-05-24T00:00:00.000Z',
+    downloadCount: 42,
+    riskAssessmentLatest: 'low',
   },
   {
-    id: 'asr/security-review',
     owner: 'asr',
-    repo: 'skills-registry',
     name: 'security-review',
     description: 'Review submitted skills for unsafe instructions and secrets.',
     tags: ['security', 'review'],
-    stars: 11,
-    installs: 17,
-    version: '0.1.0',
-    updated_at: '2026-05-24T00:00:00.000Z',
+    kind: 'skill',
+    latestVersion: '0.1.0',
+    publishedAt: '2026-05-24T00:00:00.000Z',
+    downloadCount: 17,
+    riskAssessmentLatest: 'medium',
   },
 ];
 
@@ -87,6 +85,65 @@ function methodNotAllowed(res) {
   json(res, 405, { error: 'method_not_allowed' });
 }
 
+function findSkills(query) {
+  const normalizedQuery = query?.toLowerCase().trim();
+  return normalizedQuery
+    ? skills.filter((skill) => {
+        return [
+          skill.owner,
+          skill.name,
+          skill.description,
+          ...skill.tags,
+        ].some((value) => value.toLowerCase().includes(normalizedQuery));
+      })
+    : skills;
+}
+
+function getSkillContent(skill) {
+  return `# ${skill.name}
+
+${skill.description}
+
+## Usage
+
+Run \`asr add ${skill.owner}/${skill.name}\` to install this skill.`;
+}
+
+function getSkillDetail(skill) {
+  return {
+    ...skill,
+    manifestLatest: {
+      name: skill.name,
+      version: skill.latestVersion,
+      author: skill.owner,
+      description: getSkillContent(skill),
+      tags: skill.tags,
+      kind: skill.kind,
+      permissions: {
+        network: false,
+        filesystem: 'none',
+        subprocess: false,
+        environment: [],
+      },
+    },
+    versions: [
+      {
+        owner: skill.owner,
+        name: skill.name,
+        version: skill.latestVersion,
+        contentHash: `sha256:dev-${skill.owner}-${skill.name}`,
+        publishedAt: skill.publishedAt,
+        publishedBy: `${skill.owner}@example.test`,
+        approvedBy: 'mock-compliance@example.test',
+        prNumber: 1,
+        mergeCommit: 'dev-seed',
+        yanked: false,
+        riskAssessment: skill.riskAssessmentLatest,
+      },
+    ],
+  };
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
@@ -110,38 +167,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (url.pathname === '/api/skills') {
+  if (url.pathname === '/api/v1/skills' || url.pathname === '/api/skills') {
     if (req.method !== 'GET') {
       methodNotAllowed(res);
       return;
     }
 
-    const query = url.searchParams.get('q')?.toLowerCase().trim();
-    const filtered = query
-      ? skills.filter((skill) => {
-          return [
-            skill.owner,
-            skill.repo,
-            skill.name,
-            skill.description,
-            ...skill.tags,
-          ].some((value) => value.toLowerCase().includes(query));
-        })
-      : skills;
-    json(res, 200, { skills: filtered });
+    const filtered = findSkills(url.searchParams.get('q'));
+    json(res, 200, url.pathname === '/api/skills' ? { skills: filtered } : { items: filtered });
     return;
   }
 
-  const match = url.pathname.match(/^\/api\/skills\/([^/]+)\/([^/]+)\/([^/]+)$/);
+  const match = url.pathname.match(/^\/api\/(?:v1\/)?skills\/([^/]+)\/([^/]+)$/);
   if (match) {
     if (req.method !== 'GET') {
       methodNotAllowed(res);
       return;
     }
 
-    const [, owner, repo, name] = match;
+    const [, owner, name] = match;
     const skill = skills.find((item) => {
-      return item.owner === owner && item.repo === repo && item.name === name;
+      return item.owner === owner && item.name === name;
     });
 
     if (!skill) {
@@ -149,10 +195,7 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    json(res, 200, {
-      ...skill,
-      content: `# ${skill.name}\n\n${skill.description}\n\n## Usage\n\nRun \`asr add ${skill.owner}/${skill.repo}/${skill.name}\` to install this skill.`,
-    });
+    json(res, 200, getSkillDetail(skill));
     return;
   }
 

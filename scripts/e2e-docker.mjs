@@ -72,6 +72,33 @@ async function assertApprovalQueue() {
   }
 }
 
+async function assertRegistryBrowse() {
+  const registry = await fetch(`${apiBaseUrl}/api/v1/skills?q=security`);
+  if (!registry.ok) {
+    throw new Error(`registry browse returned ${registry.status}`);
+  }
+
+  const data = await registry.json();
+  if (!Array.isArray(data.items) || data.items.length === 0) {
+    throw new Error('registry browse did not return seeded skills');
+  }
+
+  const skill = data.items.find((item) => item.owner === 'asr' && item.name === 'security-review');
+  if (!skill) {
+    throw new Error('registry browse did not return the seeded security-review skill');
+  }
+
+  const detail = await fetch(`${apiBaseUrl}/api/v1/skills/${skill.owner}/${skill.name}`);
+  if (!detail.ok) {
+    throw new Error(`registry detail returned ${detail.status}`);
+  }
+
+  const detailData = await detail.json();
+  if (detailData.manifestLatest?.description?.includes('# security-review') !== true) {
+    throw new Error('registry detail did not return markdown skill content');
+  }
+}
+
 const composeCmd = pickComposeCommand();
 
 console.log(`Starting dev stack via "${composeCmd}" in ${composeCwd}...`);
@@ -80,8 +107,9 @@ run(`${composeCmd} up -d --build`);
 
 try {
   await waitHealth();
+  await assertRegistryBrowse();
   await assertApprovalQueue();
-  console.log('E2E smoke check passed: /health and approval queue are OK');
+  console.log('E2E smoke check passed: /health, registry browse, and approval queue are OK');
 } catch (err) {
   console.error('E2E smoke check FAILED:', err.message);
   console.error('--- recent api logs ---');
