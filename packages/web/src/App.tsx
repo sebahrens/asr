@@ -27,12 +27,14 @@ interface ReviewSubmission {
   version: string;
   submitter: string;
   submittedAt: string;
-  status: 'pending review' | 'scanning' | 'awaiting confirmation';
+  status: 'pending review' | 'scanning' | 'awaiting confirmation' | 'approved' | 'rejected';
   risk: 'low' | 'medium' | 'high';
   findings: number;
 }
 
 const API_URL = import.meta.env.VITE_API_URL || '';
+
+type Decision = 'approved' | 'rejected';
 
 const mockReviewQueue: ReviewSubmission[] = [
   {
@@ -82,40 +84,77 @@ function formatSubmittedAt(value: string): string {
 function ReviewDashboard() {
   const [submissions, setSubmissions] = useState<ReviewSubmission[]>(mockReviewQueue);
   const [loading, setLoading] = useState(false);
+  const [queueError, setQueueError] = useState<string | null>(null);
+  const [decisionPending, setDecisionPending] = useState<Record<string, Decision>>({});
+  const [decisionError, setDecisionError] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    let ignore = false;
-
-    async function fetchQueue() {
-      if (!API_URL) {
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      try {
-        const res = await fetch(`${API_URL}/api/submissions?status=pending`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const items = Array.isArray(data.submissions) ? data.submissions : [];
-        if (!ignore && items.length > 0) {
-          setSubmissions(items);
-        }
-      } catch {
-        if (!ignore) {
-          setSubmissions(mockReviewQueue);
-        }
-      } finally {
-        if (!ignore) setLoading(false);
-      }
+  const fetchQueue = useCallback(async () => {
+    if (!API_URL) {
+      setQueueError(null);
+      setSubmissions(mockReviewQueue);
+      setLoading(false);
+      return;
     }
 
-    fetchQueue();
+    setLoading(true);
+    setQueueError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/submissions?status=pending`);
+      if (!res.ok) {
+        throw new Error(`Queue request failed with ${res.status}`);
+      }
 
-    return () => {
-      ignore = true;
-    };
+      const data = await res.json();
+      const items = Array.isArray(data.submissions) ? data.submissions : [];
+      setSubmissions(items);
+    } catch {
+      setQueueError('Unable to load pending submissions from the API.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchQueue();
+  }, [fetchQueue]);
+
+  async function decideSubmission(id: string, decision: Decision) {
+    setDecisionPending((current) => ({ ...current, [id]: decision }));
+    setDecisionError((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+
+    try {
+      if (API_URL) {
+        const res = await fetch(`${API_URL}/api/v1/submissions/${id}/decision`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ decision }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Decision request failed with ${res.status}`);
+        }
+      }
+
+      setSubmissions((current) =>
+        current.map((submission) => (submission.id === id ? { ...submission, status: decision } : submission)),
+      );
+    } catch {
+      setDecisionError((current) => ({
+        ...current,
+        [id]: 'Decision could not be recorded. Try again after the API is available.',
+      }));
+    } finally {
+      setDecisionPending((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+    }
+  }
 
   const pendingCount = submissions.filter((submission) => submission.status === 'pending review').length;
   const findingCount = submissions.reduce((total, submission) => total + submission.findings, 0);
@@ -162,32 +201,67 @@ function ReviewDashboard() {
                 <h2>Pending submissions</h2>
                 <p>{loading ? 'Refreshing queue...' : `${submissions.length} submissions need compliance review`}</p>
               </div>
-              <button className="secondary-btn" type="button">Refresh</button>
+              <button className="secondary-btn" type="button" onClick={fetchQueue} disabled={loading}>
+                Refresh
+              </button>
             </div>
 
+            {queueError ? <div className="queue-error" role="status">{queueError}</div> : null}
+
             <div className="submission-list">
-              {submissions.map((submission) => (
-                <article className="submission-row" key={submission.id}>
-                  <div className="submission-primary">
-                    <div className="submission-title-line">
-                      <h3>{submission.skillName}</h3>
-                      <span className={`status-pill status-${submission.status.replace(/\s/g, '-')}`}>
-                        {submission.status}
-                      </span>
+              {submissions.map((submission) => {
+                const pendingDecision = decisionPending[submission.id];
+                const isReviewable = submission.status === 'pending review';
+                const disableActions = Boolean(pendingDecision) || !isReviewable;
+
+                return (
+                  <article className="submission-row" key={submission.id}>
+                    <div className="submission-primary">
+                      <div className="submission-title-line">
+                        <h3>{submission.skillName}</h3>
+                        <span className={`status-pill status-${submission.status.replace(/\s/g, '-')}`}>
+                          {submission.status}
+                        </span>
+                      </div>
+                      <p>{submission.owner} - v{submission.version} - submitted by {submission.submitter}</p>
+                      <div className="submission-meta">
+                        <span>{formatSubmittedAt(submission.submittedAt)}</span>
+                        <span className={`risk-pill risk-${submission.risk}`}>{submission.risk} risk</span>
+                        <span>{submission.findings} scan findings</span>
+                      </div>
+                      {decisionError[submission.id] ? (
+                        <p className="decision-error" role="status">{decisionError[submission.id]}</p>
+                      ) : null}
                     </div>
-                    <p>{submission.owner} - v{submission.version} - submitted by {submission.submitter}</p>
-                    <div className="submission-meta">
-                      <span>{formatSubmittedAt(submission.submittedAt)}</span>
-                      <span className={`risk-pill risk-${submission.risk}`}>{submission.risk} risk</span>
-                      <span>{submission.findings} scan findings</span>
+                    <div className="decision-actions" aria-label={`Decision actions for ${submission.skillName}`}>
+                      <button
+                        className="approve-btn"
+                        type="button"
+                        onClick={() => decideSubmission(submission.id, 'approved')}
+                        disabled={disableActions}
+                      >
+                        {pendingDecision === 'approved'
+                          ? 'Approving...'
+                          : submission.status === 'approved'
+                            ? 'Approved'
+                            : 'Approve'}
+                      </button>
+                      <button
+                        className="reject-btn"
+                        type="button"
+                        onClick={() => decideSubmission(submission.id, 'rejected')}
+                        disabled={disableActions}
+                      >
+                        {pendingDecision === 'rejected'
+                          ? 'Rejecting...'
+                          : submission.status === 'rejected'
+                            ? 'Rejected'
+                            : 'Reject'}
+                      </button>
                     </div>
-                  </div>
-                  <div className="decision-actions" aria-label={`Decision actions for ${submission.skillName}`}>
-                    <button className="approve-btn" type="button">Approve</button>
-                    <button className="reject-btn" type="button">Reject</button>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
           </section>
         </div>

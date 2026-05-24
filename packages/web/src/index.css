@@ -646,6 +646,21 @@ main {
   background: var(--bg-hover);
 }
 
+.secondary-btn:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.queue-error {
+  background: #ffe9e9;
+  border-bottom: 1px solid #f4b4b4;
+  color: #8f1f16;
+  font-size: 0.86rem;
+  font-weight: 600;
+  padding: 12px 22px;
+}
+
 .submission-list {
   display: grid;
 }
@@ -716,6 +731,16 @@ main {
   color: #4a4a4a;
 }
 
+.status-approved {
+  background: #eaf7ef;
+  color: #166534;
+}
+
+.status-rejected {
+  background: #ffe9e9;
+  color: #b42318;
+}
+
 .risk-low {
   background: #eaf7ef;
   color: #166534;
@@ -760,6 +785,20 @@ main {
 .approve-btn:hover,
 .reject-btn:hover {
   filter: brightness(0.96);
+}
+
+.approve-btn:disabled,
+.reject-btn:disabled {
+  cursor: not-allowed;
+  filter: none;
+  opacity: 0.68;
+}
+
+.decision-error {
+  color: #8f1f16;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-top: 10px;
 }
 
 /* Responsive */
