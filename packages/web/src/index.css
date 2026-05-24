@@ -801,6 +801,147 @@ main {
   margin-top: 10px;
 }
 
+.decision-modal-backdrop {
+  align-items: center;
+  background: rgba(17, 24, 39, 0.58);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 20;
+}
+
+.decision-modal {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 24px 60px rgba(17, 24, 39, 0.22);
+  max-width: 520px;
+  padding: 24px;
+  width: min(100%, 520px);
+}
+
+.decision-modal-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.decision-modal-header h2 {
+  color: var(--text-strong);
+  font-size: 1.25rem;
+  margin: 4px 0 0;
+}
+
+.icon-close-btn {
+  align-items: center;
+  background: #f4f5f7;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-strong);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 1rem;
+  font-weight: 800;
+  height: 34px;
+  justify-content: center;
+  line-height: 1;
+  width: 34px;
+}
+
+.icon-close-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+
+.decision-confirmation-facts {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 20px 0;
+  overflow: hidden;
+}
+
+.decision-confirmation-facts div {
+  padding: 14px;
+}
+
+.decision-confirmation-facts div + div {
+  border-left: 1px solid var(--border);
+}
+
+.decision-confirmation-facts dt {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.decision-confirmation-facts dd {
+  color: var(--text-strong);
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.risk-text {
+  text-transform: capitalize;
+}
+
+.risk-text-low {
+  color: #166534;
+}
+
+.risk-text-medium {
+  color: #7a5800;
+}
+
+.risk-text-high {
+  color: #b42318;
+}
+
+.decision-reason-field {
+  color: var(--text-strong);
+  display: grid;
+  font-size: 0.9rem;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.decision-reason-field textarea {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-strong);
+  font: inherit;
+  font-weight: 500;
+  min-height: 104px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.decision-reason-field textarea:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(230, 61, 0, 0.14);
+  outline: none;
+}
+
+.decision-help {
+  color: #8f1f16;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin: 10px 0 0;
+}
+
+.decision-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .hero h1 {
@@ -845,5 +986,27 @@ main {
   .approve-btn,
   .reject-btn {
     flex: 1;
+  }
+
+  .decision-modal-backdrop {
+    align-items: flex-end;
+    padding: 12px;
+  }
+
+  .decision-modal {
+    padding: 18px;
+  }
+
+  .decision-confirmation-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .decision-confirmation-facts div + div {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .decision-modal-actions {
+    flex-direction: column-reverse;
   }
 }

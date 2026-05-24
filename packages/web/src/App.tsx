@@ -36,12 +36,15 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 
 type Decision = 'approved' | 'rejected';
 
-function getDecisionRequest(decision: Decision): { endpoint: 'approve' | 'reject'; body: { comment?: string; reason?: string } } {
+function getDecisionRequest(
+  decision: Decision,
+  reason: string,
+): { endpoint: 'approve' | 'reject'; body: { comment?: string; reason?: string } } {
   if (decision === 'approved') {
-    return { endpoint: 'approve', body: {} };
+    return { endpoint: 'approve', body: reason.trim() ? { comment: reason.trim() } : {} };
   }
 
-  return { endpoint: 'reject', body: { reason: 'Rejected from approval dashboard.' } };
+  return { endpoint: 'reject', body: { reason: reason.trim() } };
 }
 
 const mockReviewQueue: ReviewSubmission[] = [
@@ -95,6 +98,11 @@ function ReviewDashboard() {
   const [queueError, setQueueError] = useState<string | null>(null);
   const [decisionPending, setDecisionPending] = useState<Record<string, Decision>>({});
   const [decisionError, setDecisionError] = useState<Record<string, string>>({});
+  const [pendingConfirmation, setPendingConfirmation] = useState<{
+    submission: ReviewSubmission;
+    decision: Decision;
+  } | null>(null);
+  const [decisionReason, setDecisionReason] = useState('');
 
   const fetchQueue = useCallback(async () => {
     if (!API_URL) {
@@ -126,7 +134,22 @@ function ReviewDashboard() {
     fetchQueue();
   }, [fetchQueue]);
 
-  async function decideSubmission(id: string, decision: Decision) {
+  function requestDecisionConfirmation(submission: ReviewSubmission, decision: Decision) {
+    setDecisionError((current) => {
+      const next = { ...current };
+      delete next[submission.id];
+      return next;
+    });
+    setDecisionReason('');
+    setPendingConfirmation({ submission, decision });
+  }
+
+  function closeDecisionConfirmation() {
+    setPendingConfirmation(null);
+    setDecisionReason('');
+  }
+
+  async function decideSubmission(id: string, decision: Decision, reason: string) {
     setDecisionPending((current) => ({ ...current, [id]: decision }));
     setDecisionError((current) => {
       const next = { ...current };
@@ -136,7 +159,7 @@ function ReviewDashboard() {
 
     try {
       if (API_URL) {
-        const { endpoint, body } = getDecisionRequest(decision);
+        const { endpoint, body } = getDecisionRequest(decision, reason);
         const res = await fetch(`${API_URL}/api/v1/submissions/${id}/${endpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -151,6 +174,7 @@ function ReviewDashboard() {
       setSubmissions((current) =>
         current.map((submission) => (submission.id === id ? { ...submission, status: decision } : submission)),
       );
+      closeDecisionConfirmation();
     } catch {
       setDecisionError((current) => ({
         ...current,
@@ -167,6 +191,11 @@ function ReviewDashboard() {
 
   const pendingCount = submissions.filter((submission) => submission.status === 'pending review').length;
   const findingCount = submissions.reduce((total, submission) => total + submission.findings, 0);
+  const confirmationSubmitDisabled =
+    pendingConfirmation?.decision === 'rejected' && decisionReason.trim().length === 0;
+  const confirmationPending = pendingConfirmation
+    ? decisionPending[pendingConfirmation.submission.id] === pendingConfirmation.decision
+    : false;
 
   return (
     <>
@@ -246,7 +275,7 @@ function ReviewDashboard() {
                       <button
                         className="approve-btn"
                         type="button"
-                        onClick={() => decideSubmission(submission.id, 'approved')}
+                        onClick={() => requestDecisionConfirmation(submission, 'approved')}
                         disabled={disableActions}
                       >
                         {pendingDecision === 'approved'
@@ -258,7 +287,7 @@ function ReviewDashboard() {
                       <button
                         className="reject-btn"
                         type="button"
-                        onClick={() => decideSubmission(submission.id, 'rejected')}
+                        onClick={() => requestDecisionConfirmation(submission, 'rejected')}
                         disabled={disableActions}
                       >
                         {pendingDecision === 'rejected'
@@ -275,6 +304,104 @@ function ReviewDashboard() {
           </section>
         </div>
       </main>
+
+      {pendingConfirmation ? (
+        <div className="decision-modal-backdrop" role="presentation">
+          <section
+            className="decision-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="decision-modal-title"
+          >
+            <div className="decision-modal-header">
+              <div>
+                <p className="eyebrow">Confirm decision</p>
+                <h2 id="decision-modal-title">
+                  {pendingConfirmation.decision === 'approved' ? 'Approve submission' : 'Reject submission'}
+                </h2>
+              </div>
+              <button
+                className="icon-close-btn"
+                type="button"
+                aria-label="Close confirmation"
+                onClick={closeDecisionConfirmation}
+                disabled={confirmationPending}
+              >
+                x
+              </button>
+            </div>
+
+            <dl className="decision-confirmation-facts">
+              <div>
+                <dt>Skill</dt>
+                <dd>{pendingConfirmation.submission.skillName}</dd>
+              </div>
+              <div>
+                <dt>Version</dt>
+                <dd>v{pendingConfirmation.submission.version}</dd>
+              </div>
+              <div>
+                <dt>Risk</dt>
+                <dd className={`risk-text risk-text-${pendingConfirmation.submission.risk}`}>
+                  {pendingConfirmation.submission.risk} risk
+                </dd>
+              </div>
+            </dl>
+
+            <label className="decision-reason-field" htmlFor="decision-reason">
+              <span>{pendingConfirmation.decision === 'rejected' ? 'Reject reason' : 'Reviewer comment'}</span>
+              <textarea
+                id="decision-reason"
+                value={decisionReason}
+                onChange={(event) => setDecisionReason(event.target.value)}
+                placeholder={
+                  pendingConfirmation.decision === 'rejected'
+                    ? 'Summarize the compliance issue blocking approval.'
+                    : 'Optional approval note.'
+                }
+                required={pendingConfirmation.decision === 'rejected'}
+                rows={4}
+                disabled={confirmationPending}
+              />
+            </label>
+
+            {pendingConfirmation.decision === 'rejected' && confirmationSubmitDisabled ? (
+              <p className="decision-help">A rejection reason is required before submitting.</p>
+            ) : null}
+
+            <div className="decision-modal-actions">
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={closeDecisionConfirmation}
+                disabled={confirmationPending}
+              >
+                Cancel
+              </button>
+              <button
+                className={pendingConfirmation.decision === 'approved' ? 'approve-btn' : 'reject-btn'}
+                type="button"
+                onClick={() =>
+                  decideSubmission(
+                    pendingConfirmation.submission.id,
+                    pendingConfirmation.decision,
+                    decisionReason,
+                  )
+                }
+                disabled={confirmationPending || confirmationSubmitDisabled}
+              >
+                {confirmationPending
+                  ? pendingConfirmation.decision === 'approved'
+                    ? 'Approving...'
+                    : 'Rejecting...'
+                  : pendingConfirmation.decision === 'approved'
+                    ? 'Confirm approval'
+                    : 'Confirm rejection'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </>
   );
 }
