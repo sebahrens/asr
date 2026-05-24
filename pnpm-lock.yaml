@@ -82,6 +82,9 @@ importers:
       better-sqlite3:
         specifier: ^11.0.0
         version: 11.10.0
+      flowcraft:
+        specifier: ^2.10.1
+        version: 2.10.1
       hono:
         specifier: ^4.6.0
         version: 4.12.22
@@ -1294,6 +1297,9 @@ packages:
 
   fix-dts-default-cjs-exports@1.0.1:
     resolution: {integrity: sha512-pVIECanWFC61Hzl2+oOCtoJ3F17kglZC/6N94eRWycFgBH35hHx0Li604ZIzhseh97mf2p0cv7vVrOZGoqhlEg==}
+
+  flowcraft@2.10.1:
+    resolution: {integrity: sha512-+wt28fosbqwadgdbM9TYSXQHDBNGla9r8Ky1Y3zZbRW8B0mIz+Q/2RnTmsHKemmbKEOzETKGwM2TxcghcGHULg==}
 
   fs-constants@1.0.0:
     resolution: {integrity: sha512-y6OAwoSIf7FyjMIv94u+b5rdheZEjzR63GTyZJm5qh4Bi+2YgwLCcI/fPFZkL5PSixOt6ZNKm+w+Hfp/Bciwow==}
@@ -3039,6 +3045,8 @@ snapshots:
       magic-string: 0.30.21
       mlly: 1.8.0
       rollup: 4.55.3
+
+  flowcraft@2.10.1: {}
 
   fs-constants@1.0.0: {}
 
