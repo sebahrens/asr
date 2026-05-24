@@ -43,6 +43,7 @@ interface RegistrySkillsResponse {
 type Decision = 'approved' | 'rejected';
 type PublishStatus = 'idle' | 'submitting' | 'submitted';
 type SkillDetailTab = 'preview' | 'versions' | 'permissions' | 'audit';
+type ReviewDetailTab = 'diff' | 'dependencies' | 'permissions' | 'scan' | 'audit';
 
 interface PublishFormErrors {
   skillArchive?: string;
@@ -100,6 +101,14 @@ const skillDetailTabs: { id: SkillDetailTab; label: string }[] = [
   { id: 'preview', label: 'SKILL.md preview' },
   { id: 'versions', label: 'Versions' },
   { id: 'permissions', label: 'Permissions' },
+  { id: 'audit', label: 'Audit' },
+];
+
+const reviewDetailTabs: { id: ReviewDetailTab; label: string }[] = [
+  { id: 'diff', label: 'Diff' },
+  { id: 'dependencies', label: 'Dependencies' },
+  { id: 'permissions', label: 'Permissions' },
+  { id: 'scan', label: 'Scan' },
   { id: 'audit', label: 'Audit' },
 ];
 
@@ -216,6 +225,40 @@ const mockReviewQueue: ReviewSubmission[] = [
     findings: 0,
   },
 ];
+
+const mockReviewDetails: Record<string, {
+  diff: { file: string; summary: string; additions: number; removals: number }[];
+  dependencies: { name: string; version: string; status: string }[];
+  permissions: { label: string; value: string; risk: ReviewSubmission['risk'] }[];
+  scan: { scanner: string; result: string; severity: ReviewSubmission['risk'] }[];
+  audit: { actor: string; action: string; at: string }[];
+}> = {
+  'sub-1042': {
+    diff: [
+      { file: 'SKILL.md', summary: 'Adds secure review instructions and scanner guidance.', additions: 42, removals: 8 },
+      { file: 'scripts/check-deps.ts', summary: 'Adds dependency manifest checks before reporting.', additions: 27, removals: 0 },
+    ],
+    dependencies: [
+      { name: '@actions/core', version: '1.10.1', status: 'Pinned' },
+      { name: 'semver', version: '7.6.3', status: 'Allowed' },
+    ],
+    permissions: [
+      { label: 'Network', value: 'Restricted to registry and advisory APIs', risk: 'medium' },
+      { label: 'Filesystem', value: 'Read-only project workspace access', risk: 'low' },
+      { label: 'Subprocess', value: 'Runs npm audit in sandbox', risk: 'high' },
+    ],
+    scan: [
+      { scanner: 'Static policy', result: 'Requires subprocess justification', severity: 'high' },
+      { scanner: 'Archive malware scan', result: 'No malware detected', severity: 'low' },
+      { scanner: 'Secret scan', result: 'No secrets detected', severity: 'low' },
+    ],
+    audit: [
+      { actor: 'maria.chen', action: 'Submitted skill archive', at: '2026-05-24T08:35:00Z' },
+      { actor: 'asr-scanner', action: 'Completed security scan', at: '2026-05-24T08:38:00Z' },
+      { actor: 'compliance', action: 'Opened review', at: '2026-05-24T08:44:00Z' },
+    ],
+  },
+};
 
 function formatSubmittedAt(value: string): string {
   return new Intl.DateTimeFormat('en', {
@@ -546,6 +589,204 @@ function ReviewDashboard() {
           </section>
         </div>
       ) : null}
+    </>
+  );
+}
+
+function ReviewDetailPage({ submissionId }: { submissionId: string }) {
+  const submission = mockReviewQueue.find((item) => item.id === submissionId);
+  const detail = mockReviewDetails[submissionId];
+  const [activeTab, setActiveTab] = useState<ReviewDetailTab>('diff');
+  const [decision, setDecision] = useState<Decision | null>(null);
+  const [decisionReason, setDecisionReason] = useState('');
+
+  if (!submission || !detail) {
+    return (
+      <SkillNotFoundState
+        title="Submission not found"
+        message={`No review submission exists for ${submissionId}. Return to the approval dashboard and choose another item.`}
+      />
+    );
+  }
+
+  const canDecide = submission.status === 'pending review';
+  const rejectDisabled = decisionReason.trim().length === 0;
+
+  function submitDecision(nextDecision: Decision) {
+    setDecision(nextDecision);
+  }
+
+  return (
+    <>
+      <div className="brand-stripe" />
+      <header>
+        <div className="container review-topbar">
+          <a className="logo" href="/" aria-label="asr home">
+            <img src="/logo.svg" alt="asr" />
+          </a>
+          <PrimaryNav current="review" />
+          <div className="mock-auth-banner">Mock auth: Compliance</div>
+        </div>
+      </header>
+
+      <main className="review-main">
+        <div className="container review-detail-layout">
+          <article className="review-detail-content">
+            <a className="secondary-link" href="/review">Back to queue</a>
+            <section className="review-hero review-detail-hero" aria-labelledby="review-detail-title">
+              <div>
+                <p className="eyebrow">Submission {submission.id}</p>
+                <h1 id="review-detail-title">{submission.skillName}</h1>
+                <p>{submission.owner} - v{submission.version} - submitted by {submission.submitter}</p>
+              </div>
+              <div className="review-summary" aria-label="Submission review summary">
+                <div>
+                  <strong className={`risk-text risk-text-${submission.risk}`}>{submission.risk}</strong>
+                  <span>Risk</span>
+                </div>
+                <div>
+                  <strong>{submission.findings}</strong>
+                  <span>Findings</span>
+                </div>
+              </div>
+            </section>
+
+            <div className="review-detail-tabs" role="tablist" aria-label="Review evidence sections">
+              {reviewDetailTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
+                  className={activeTab === tab.id ? 'active' : undefined}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <section className="review-detail-panel" role="tabpanel" aria-label={reviewDetailTabs.find((tab) => tab.id === activeTab)?.label}>
+              {activeTab === 'diff' && (
+                <div className="evidence-list">
+                  {detail.diff.map((item) => (
+                    <div className="evidence-row" key={item.file}>
+                      <div>
+                        <strong>{item.file}</strong>
+                        <p>{item.summary}</p>
+                      </div>
+                      <span>+{item.additions} / -{item.removals}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {activeTab === 'dependencies' && (
+                <div className="evidence-list">
+                  {detail.dependencies.map((dependency) => (
+                    <div className="evidence-row" key={dependency.name}>
+                      <div>
+                        <strong>{dependency.name}</strong>
+                        <p>Version {dependency.version}</p>
+                      </div>
+                      <span>{dependency.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {activeTab === 'permissions' && (
+                <div className="evidence-list">
+                  {detail.permissions.map((permission) => (
+                    <div className="evidence-row" key={permission.label}>
+                      <div>
+                        <strong>{permission.label}</strong>
+                        <p>{permission.value}</p>
+                      </div>
+                      <span className={`risk-pill risk-${permission.risk}`}>{permission.risk}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {activeTab === 'scan' && (
+                <div className="evidence-list">
+                  {detail.scan.map((scan) => (
+                    <div className="evidence-row" key={scan.scanner}>
+                      <div>
+                        <strong>{scan.scanner}</strong>
+                        <p>{scan.result}</p>
+                      </div>
+                      <span className={`risk-pill risk-${scan.severity}`}>{scan.severity}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {activeTab === 'audit' && (
+                <div className="evidence-list">
+                  {detail.audit.map((event) => (
+                    <div className="evidence-row" key={`${event.actor}-${event.at}`}>
+                      <div>
+                        <strong>{event.action}</strong>
+                        <p>{event.actor}</p>
+                      </div>
+                      <span>{formatSubmittedAt(event.at)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </article>
+
+          <aside className="decision-panel" aria-labelledby="decision-panel-title">
+            <p className="eyebrow">Decision</p>
+            <h2 id="decision-panel-title">Compliance action</h2>
+            <dl className="decision-facts">
+              <div>
+                <dt>Status</dt>
+                <dd>{decision ?? submission.status}</dd>
+              </div>
+              <div>
+                <dt>Submitted</dt>
+                <dd>{formatSubmittedAt(submission.submittedAt)}</dd>
+              </div>
+            </dl>
+            <label className="decision-reason-field" htmlFor="review-decision-reason">
+              <span>Reviewer note</span>
+              <textarea
+                id="review-decision-reason"
+                value={decisionReason}
+                onChange={(event) => setDecisionReason(event.target.value)}
+                rows={5}
+                placeholder="Record approval context or rejection reason."
+                disabled={!canDecide || Boolean(decision)}
+              />
+            </label>
+            {canDecide && !decision && rejectDisabled ? (
+              <p className="decision-help">A rejection reason is required before rejecting.</p>
+            ) : null}
+            <div className="decision-panel-actions">
+              <button
+                className="approve-btn"
+                type="button"
+                onClick={() => submitDecision('approved')}
+                disabled={!canDecide || Boolean(decision)}
+              >
+                {decision === 'approved' ? 'Approved' : 'Approve'}
+              </button>
+              <button
+                className="reject-btn"
+                type="button"
+                onClick={() => submitDecision('rejected')}
+                disabled={!canDecide || Boolean(decision) || rejectDisabled}
+              >
+                {decision === 'rejected' ? 'Rejected' : 'Reject'}
+              </button>
+            </div>
+          </aside>
+        </div>
+      </main>
     </>
   );
 }
@@ -1190,6 +1431,10 @@ export default function App() {
 
   if (pathname === '/review') {
     return <ReviewDashboard />;
+  }
+
+  if (routeParts[0] === 'review' && routeParts.length === 2) {
+    return <ReviewDetailPage submissionId={routeParts[1]} />;
   }
 
   if (pathname === '/publish' || pathname === '/submit') {
