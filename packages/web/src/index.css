@@ -61,6 +61,10 @@ header .container {
   gap: 24px;
 }
 
+.app-topbar {
+  min-height: 44px;
+}
+
 .logo {
   display: flex;
   align-items: center;
@@ -71,6 +75,28 @@ header .container {
 .logo img {
   height: 28px;
   width: auto;
+}
+
+.primary-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+}
+
+.primary-nav a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+
+.primary-nav a:hover,
+.primary-nav a[aria-current='page'] {
+  color: var(--text);
+  background: var(--bg-secondary);
 }
 
 /* Search */
@@ -552,31 +578,144 @@ main {
   opacity: 0.9;
 }
 
+/* Publish */
+.publish-main {
+  padding-top: 32px;
+}
+
+.publish-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.62fr) minmax(420px, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.publish-intro h1 {
+  font-size: 2rem;
+  line-height: 1.15;
+  margin-bottom: 10px;
+}
+
+.publish-intro p:not(.eyebrow) {
+  color: var(--text-secondary);
+  line-height: 1.55;
+  max-width: 430px;
+}
+
+.publish-form {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.field {
+  color: var(--text);
+  display: grid;
+  gap: 8px;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.field input,
+.field textarea {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  padding: 10px 12px;
+}
+
+.field textarea {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  min-height: 280px;
+  resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+  outline: none;
+}
+
+.field input[aria-invalid='true'],
+.field textarea[aria-invalid='true'] {
+  border-color: #b42318;
+}
+
+.field small {
+  color: #8f1f16;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.file-field em {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.publish-message {
+  background: #edf4ff;
+  border: 1px solid #b6cef2;
+  border-radius: 6px;
+  color: #245ca8;
+  font-size: 0.86rem;
+  font-weight: 700;
+  padding: 11px 12px;
+}
+
+.publish-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.secondary-link {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 9px 12px;
+  text-decoration: none;
+}
+
+.secondary-link:hover {
+  color: var(--text);
+}
+
+.submit-btn {
+  background: var(--accent);
+  border: 0;
+  border-radius: 6px;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 10px 15px;
+}
+
+.submit-btn:hover {
+  opacity: 0.9;
+}
+
+.submit-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 /* Review Dashboard */
 .review-topbar {
   min-height: 44px;
-}
-
-.review-nav {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-right: auto;
-}
-
-.review-nav a {
-  color: var(--text-secondary);
-  text-decoration: none;
-  font-size: 0.875rem;
-  font-weight: 600;
-  padding: 8px 10px;
-  border-radius: 6px;
-}
-
-.review-nav a:hover,
-.review-nav a[aria-current='page'] {
-  color: var(--text);
-  background: var(--bg-secondary);
 }
 
 .mock-auth-banner {
@@ -1009,26 +1148,36 @@ main {
     gap: 24px;
   }
 
+  .app-topbar,
   .review-topbar,
   .review-hero,
   .review-panel-header,
-  .submission-row {
+  .submission-row,
+  .publish-actions {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .app-topbar,
   .review-topbar,
   .review-hero,
-  .review-panel-header {
+  .review-panel-header,
+  .publish-actions {
     display: flex;
   }
 
-  .review-nav {
+  .primary-nav {
     margin-right: 0;
+    width: 100%;
+    justify-content: center;
   }
 
   .review-summary,
   .submission-row {
+    grid-template-columns: 1fr;
+  }
+
+  .publish-layout {
     grid-template-columns: 1fr;
   }
 

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
+import type { FormEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { SkillDetail, SkillSummary } from '@asr/core';
+import { parseSkillMd, type SkillDetail, type SkillSummary } from '@asr/core';
 
 function stripFrontmatter(content: string): string {
   return content.replace(/^---\n[\s\S]*?\n---\n*/, '');
@@ -33,12 +34,20 @@ interface ReviewSubmission {
 }
 
 const API_URL = import.meta.env.VITE_API_URL || '';
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 interface RegistrySkillsResponse {
   items?: SkillSummary[];
 }
 
 type Decision = 'approved' | 'rejected';
+type PublishStatus = 'idle' | 'submitting' | 'submitted';
+
+interface PublishFormErrors {
+  skillArchive?: string;
+  skillMd?: string;
+  owner?: string;
+}
 
 function mapSkillSummary(skill: SkillSummary): Skill {
   return {
@@ -67,6 +76,49 @@ function getDecisionRequest(
   }
 
   return { endpoint: 'reject', body: { reason: reason.trim() } };
+}
+
+function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
+  return (
+    <nav className="primary-nav" aria-label="Primary navigation">
+      <a href="/" aria-current={current === 'browse' ? 'page' : undefined}>Browse</a>
+      <a href="/publish" aria-current={current === 'publish' ? 'page' : undefined}>Publish</a>
+      <a href="/review" aria-current={current === 'review' ? 'page' : undefined}>Review</a>
+    </nav>
+  );
+}
+
+function validateSkillMd(content: string): string | undefined {
+  if (!content.trim()) {
+    return 'Paste the SKILL.md content from the archive.';
+  }
+
+  if (!content.trimStart().startsWith('---')) {
+    return 'SKILL.md must start with YAML frontmatter.';
+  }
+
+  try {
+    const manifest = parseSkillMd(content);
+    if (!manifest.name || manifest.name === 'unnamed') {
+      return 'SKILL.md frontmatter must include a name.';
+    }
+    if (!manifest.version) {
+      return 'SKILL.md frontmatter must include a version.';
+    }
+    if (!manifest.description) {
+      return 'SKILL.md frontmatter must include a description.';
+    }
+    if (!manifest.author) {
+      return 'SKILL.md frontmatter must include an author.';
+    }
+    if (!manifest.body) {
+      return 'SKILL.md must include instructions below the frontmatter.';
+    }
+  } catch {
+    return 'SKILL.md frontmatter could not be parsed.';
+  }
+
+  return undefined;
 }
 
 const mockReviewQueue: ReviewSubmission[] = [
@@ -232,10 +284,7 @@ function ReviewDashboard() {
           <a className="logo" href="/" aria-label="asr home">
             <img src="/logo.svg" alt="asr" />
           </a>
-          <nav className="review-nav" aria-label="Primary navigation">
-            <a href="/">Browse</a>
-            <a href="/review" aria-current="page">Review</a>
-          </nav>
+          <PrimaryNav current="review" />
           <div className="mock-auth-banner">Mock auth: Compliance</div>
         </div>
       </header>
@@ -441,6 +490,159 @@ function ReviewDashboard() {
   );
 }
 
+function PublishSkill() {
+  const [owner, setOwner] = useState('');
+  const [skillMd, setSkillMd] = useState('');
+  const [skillArchive, setSkillArchive] = useState<File | null>(null);
+  const [errors, setErrors] = useState<PublishFormErrors>({});
+  const [status, setStatus] = useState<PublishStatus>('idle');
+  const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+
+  function validateForm() {
+    const nextErrors: PublishFormErrors = {};
+
+    if (!owner.trim()) {
+      nextErrors.owner = 'A registry owner or namespace is required.';
+    }
+
+    if (!skillArchive) {
+      nextErrors.skillArchive = 'Upload a skill archive.';
+    } else if (!skillArchive.name.toLowerCase().endsWith('.zip')) {
+      nextErrors.skillArchive = 'Upload a .zip archive.';
+    } else if (skillArchive.size > MAX_UPLOAD_BYTES) {
+      nextErrors.skillArchive = 'Archive must be 25 MB or smaller.';
+    }
+
+    const skillMdError = validateSkillMd(skillMd);
+    if (skillMdError) {
+      nextErrors.skillMd = skillMdError;
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }
+
+  async function submitSkill(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitMessage(null);
+
+    if (!validateForm() || !skillArchive) {
+      return;
+    }
+
+    setStatus('submitting');
+    try {
+      if (API_URL) {
+        const body = new FormData();
+        body.set('owner', owner.trim());
+        body.set('skillMd', skillMd);
+        body.set('archive', skillArchive);
+
+        const res = await fetch(`${API_URL}/api/v1/submissions`, {
+          method: 'POST',
+          body,
+        });
+
+        if (!res.ok) {
+          throw new Error(`Submission request failed with ${res.status}`);
+        }
+
+        setSubmitMessage('Submission created and queued for scanning.');
+      } else {
+        setSubmitMessage('Submission validated. Configure VITE_API_URL to send it to the registry API.');
+      }
+      setStatus('submitted');
+    } catch {
+      setSubmitMessage('Submission could not be created. Try again after the API is available.');
+      setStatus('idle');
+    }
+  }
+
+  const archiveSize = skillArchive ? `${(skillArchive.size / 1024 / 1024).toFixed(2)} MB` : null;
+
+  return (
+    <>
+      <div className="brand-stripe" />
+      <header>
+        <div className="container app-topbar">
+          <a className="logo" href="/" aria-label="asr home">
+            <img src="/logo.svg" alt="asr" />
+          </a>
+          <PrimaryNav current="publish" />
+          <div className="mock-auth-banner">Mock auth: Submitter</div>
+        </div>
+      </header>
+
+      <main className="publish-main">
+        <div className="container publish-layout">
+          <section className="publish-intro" aria-labelledby="publish-title">
+            <p className="eyebrow">Skill submission</p>
+            <h1 id="publish-title">Publish a skill</h1>
+            <p>
+              Upload a zip archive, paste the included SKILL.md, and submit it for scanning and approval.
+            </p>
+          </section>
+
+          <form className="publish-form" onSubmit={submitSkill} noValidate>
+            <label className="field" htmlFor="publish-owner">
+              <span>Registry owner</span>
+              <input
+                id="publish-owner"
+                type="text"
+                value={owner}
+                onChange={(event) => setOwner(event.target.value)}
+                placeholder="platform"
+                aria-invalid={Boolean(errors.owner)}
+                aria-describedby={errors.owner ? 'publish-owner-error' : undefined}
+              />
+              {errors.owner ? <small id="publish-owner-error" role="status">{errors.owner}</small> : null}
+            </label>
+
+            <label className="field file-field" htmlFor="publish-archive">
+              <span>Skill archive</span>
+              <input
+                id="publish-archive"
+                type="file"
+                accept=".zip,application/zip"
+                onChange={(event) => setSkillArchive(event.target.files?.[0] ?? null)}
+                aria-invalid={Boolean(errors.skillArchive)}
+                aria-describedby={errors.skillArchive ? 'publish-archive-error' : undefined}
+              />
+              {archiveSize ? <em>{skillArchive?.name} - {archiveSize}</em> : <em>Zip archive, 25 MB maximum.</em>}
+              {errors.skillArchive ? (
+                <small id="publish-archive-error" role="status">{errors.skillArchive}</small>
+              ) : null}
+            </label>
+
+            <label className="field" htmlFor="publish-skill-md">
+              <span>SKILL.md</span>
+              <textarea
+                id="publish-skill-md"
+                value={skillMd}
+                onChange={(event) => setSkillMd(event.target.value)}
+                rows={14}
+                placeholder={'---\nname: secure-code-review\nversion: 1.0.0\nauthor: Platform Team\ndescription: Review code for security issues.\n---\n\nUse this skill when...'}
+                aria-invalid={Boolean(errors.skillMd)}
+                aria-describedby={errors.skillMd ? 'publish-skill-md-error' : undefined}
+              />
+              {errors.skillMd ? <small id="publish-skill-md-error" role="status">{errors.skillMd}</small> : null}
+            </label>
+
+            {submitMessage ? <div className="publish-message" role="status">{submitMessage}</div> : null}
+
+            <div className="publish-actions">
+              <a className="secondary-link" href="/">Cancel</a>
+              <button className="submit-btn" type="submit" disabled={status === 'submitting'}>
+                {status === 'submitting' ? 'Submitting...' : 'Submit for review'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </main>
+    </>
+  );
+}
+
 function BrowseRegistry() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -507,10 +709,12 @@ function BrowseRegistry() {
     <>
       <div className="brand-stripe" />
       <header>
-        <div className="container">
+        <div className="container app-topbar">
           <div className="logo">
             <img src="/logo.svg" alt="Skill Registry" />
           </div>
+
+          <PrimaryNav current="browse" />
 
           <div className="search-wrapper">
             <div className="search-box">
@@ -680,6 +884,10 @@ export default function App() {
 
   if (pathname === '/review') {
     return <ReviewDashboard />;
+  }
+
+  if (pathname === '/publish' || pathname === '/submit') {
+    return <PublishSkill />;
   }
 
   return <NotFoundState />;
