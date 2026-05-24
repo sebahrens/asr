@@ -20,9 +20,183 @@ interface Skill {
   updated_at: string;
 }
 
+interface ReviewSubmission {
+  id: string;
+  skillName: string;
+  owner: string;
+  version: string;
+  submitter: string;
+  submittedAt: string;
+  status: 'pending review' | 'scanning' | 'awaiting confirmation';
+  risk: 'low' | 'medium' | 'high';
+  findings: number;
+}
+
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-export default function App() {
+const mockReviewQueue: ReviewSubmission[] = [
+  {
+    id: 'sub-1042',
+    skillName: 'secure-code-review',
+    owner: 'platform',
+    version: '1.4.0',
+    submitter: 'maria.chen',
+    submittedAt: '2026-05-24T08:35:00Z',
+    status: 'pending review',
+    risk: 'high',
+    findings: 3,
+  },
+  {
+    id: 'sub-1039',
+    skillName: 'release-notes',
+    owner: 'docs',
+    version: '0.8.2',
+    submitter: 'eli.warner',
+    submittedAt: '2026-05-23T17:10:00Z',
+    status: 'pending review',
+    risk: 'medium',
+    findings: 1,
+  },
+  {
+    id: 'sub-1031',
+    skillName: 'test-plan-writer',
+    owner: 'qa',
+    version: '2.1.1',
+    submitter: 'nora.patel',
+    submittedAt: '2026-05-23T11:42:00Z',
+    status: 'awaiting confirmation',
+    risk: 'low',
+    findings: 0,
+  },
+];
+
+function formatSubmittedAt(value: string): string {
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function ReviewDashboard() {
+  const [submissions, setSubmissions] = useState<ReviewSubmission[]>(mockReviewQueue);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function fetchQueue() {
+      if (!API_URL) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const res = await fetch(`${API_URL}/api/submissions?status=pending`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const items = Array.isArray(data.submissions) ? data.submissions : [];
+        if (!ignore && items.length > 0) {
+          setSubmissions(items);
+        }
+      } catch {
+        if (!ignore) {
+          setSubmissions(mockReviewQueue);
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    fetchQueue();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const pendingCount = submissions.filter((submission) => submission.status === 'pending review').length;
+  const findingCount = submissions.reduce((total, submission) => total + submission.findings, 0);
+
+  return (
+    <>
+      <div className="brand-stripe" />
+      <header>
+        <div className="container review-topbar">
+          <a className="logo" href="/" aria-label="asr home">
+            <img src="/logo.svg" alt="asr" />
+          </a>
+          <nav className="review-nav" aria-label="Primary navigation">
+            <a href="/">Browse</a>
+            <a href="/review" aria-current="page">Review</a>
+          </nav>
+          <div className="mock-auth-banner">Mock auth: Compliance</div>
+        </div>
+      </header>
+
+      <main className="review-main">
+        <div className="container">
+          <section className="review-hero" aria-labelledby="review-title">
+            <div>
+              <p className="eyebrow">Compliance queue</p>
+              <h1 id="review-title">Approval dashboard</h1>
+              <p>Review pending skill submissions, inspect scan results, and record approval decisions.</p>
+            </div>
+            <div className="review-summary" aria-label="Approval queue summary">
+              <div>
+                <strong>{pendingCount}</strong>
+                <span>Pending</span>
+              </div>
+              <div>
+                <strong>{findingCount}</strong>
+                <span>Findings</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="review-panel" aria-label="Pending submissions">
+            <div className="review-panel-header">
+              <div>
+                <h2>Pending submissions</h2>
+                <p>{loading ? 'Refreshing queue...' : `${submissions.length} submissions need compliance review`}</p>
+              </div>
+              <button className="secondary-btn" type="button">Refresh</button>
+            </div>
+
+            <div className="submission-list">
+              {submissions.map((submission) => (
+                <article className="submission-row" key={submission.id}>
+                  <div className="submission-primary">
+                    <div className="submission-title-line">
+                      <h3>{submission.skillName}</h3>
+                      <span className={`status-pill status-${submission.status.replace(/\s/g, '-')}`}>
+                        {submission.status}
+                      </span>
+                    </div>
+                    <p>{submission.owner} - v{submission.version} - submitted by {submission.submitter}</p>
+                    <div className="submission-meta">
+                      <span>{formatSubmittedAt(submission.submittedAt)}</span>
+                      <span className={`risk-pill risk-${submission.risk}`}>{submission.risk} risk</span>
+                      <span>{submission.findings} scan findings</span>
+                    </div>
+                  </div>
+                  <div className="decision-actions" aria-label={`Decision actions for ${submission.skillName}`}>
+                    <button className="approve-btn" type="button">Approve</button>
+                    <button className="reject-btn" type="button">Reject</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+      </main>
+    </>
+  );
+}
+
+function BrowseRegistry() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -215,4 +389,8 @@ export default function App() {
       )}
     </>
   );
+}
+
+export default function App() {
+  return window.location.pathname === '/review' ? <ReviewDashboard /> : <BrowseRegistry />;
 }
