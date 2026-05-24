@@ -12,7 +12,7 @@ beforeAll(async () => {
 
 describe('app', () => {
   it('returns health status', async () => {
-    const res = await app.request('/healthz');
+    const res = await app.request('/health');
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ status: 'ok' });
