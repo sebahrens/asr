@@ -121,6 +121,22 @@ function validateSkillMd(content: string): string | undefined {
   return undefined;
 }
 
+function validateArchive(file: File | null): string | undefined {
+  if (!file) {
+    return 'Upload a skill archive.';
+  }
+
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    return 'Upload a .zip archive.';
+  }
+
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return 'Archive must be 25 MB or smaller.';
+  }
+
+  return undefined;
+}
+
 const mockReviewQueue: ReviewSubmission[] = [
   {
     id: 'sub-1042',
@@ -505,12 +521,9 @@ function PublishSkill() {
       nextErrors.owner = 'A registry owner or namespace is required.';
     }
 
-    if (!skillArchive) {
-      nextErrors.skillArchive = 'Upload a skill archive.';
-    } else if (!skillArchive.name.toLowerCase().endsWith('.zip')) {
-      nextErrors.skillArchive = 'Upload a .zip archive.';
-    } else if (skillArchive.size > MAX_UPLOAD_BYTES) {
-      nextErrors.skillArchive = 'Archive must be 25 MB or smaller.';
+    const archiveError = validateArchive(skillArchive);
+    if (archiveError) {
+      nextErrors.skillArchive = archiveError;
     }
 
     const skillMdError = validateSkillMd(skillMd);
@@ -556,6 +569,23 @@ function PublishSkill() {
       setSubmitMessage('Submission could not be created. Try again after the API is available.');
       setStatus('idle');
     }
+  }
+
+  function selectArchive(file: File | null, input: HTMLInputElement) {
+    const archiveError = validateArchive(file);
+    if (archiveError) {
+      setSkillArchive(null);
+      setErrors((current) => ({ ...current, skillArchive: archiveError }));
+      input.value = '';
+      return;
+    }
+
+    setSkillArchive(file);
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.skillArchive;
+      return next;
+    });
   }
 
   const archiveSize = skillArchive ? `${(skillArchive.size / 1024 / 1024).toFixed(2)} MB` : null;
@@ -604,7 +634,7 @@ function PublishSkill() {
                 id="publish-archive"
                 type="file"
                 accept=".zip,application/zip"
-                onChange={(event) => setSkillArchive(event.target.files?.[0] ?? null)}
+                onChange={(event) => selectArchive(event.target.files?.[0] ?? null, event.currentTarget)}
                 aria-invalid={Boolean(errors.skillArchive)}
                 aria-describedby={errors.skillArchive ? 'publish-archive-error' : undefined}
               />
