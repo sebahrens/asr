@@ -35,7 +35,10 @@ COPY --from=builder /app/packages/core/dist packages/core/dist
 COPY --from=builder /app/packages/submission/package.json packages/submission/package.json
 COPY --from=builder /app/packages/submission/node_modules packages/submission/node_modules
 COPY --from=builder /app/packages/submission/dist packages/submission/dist
+COPY deploy/docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 3001
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "packages/submission/dist/index.js"]
