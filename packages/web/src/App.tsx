@@ -42,6 +42,7 @@ interface RegistrySkillsResponse {
 
 type Decision = 'approved' | 'rejected';
 type PublishStatus = 'idle' | 'submitting' | 'submitted';
+type SkillDetailTab = 'preview' | 'versions' | 'permissions' | 'audit';
 
 interface PublishFormErrors {
   skillArchive?: string;
@@ -66,6 +67,41 @@ function mapSkillSummary(skill: SkillSummary): Skill {
 function getSkillDetailContent(detail: SkillDetail, fallback: string): string {
   return detail.manifestLatest.description || fallback;
 }
+
+function getInstallCommand(owner: string, name: string): string {
+  return `asr install ${owner}/${name}`;
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
+}
+
+function formatPermissionValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.join(', ') : 'none';
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'allowed' : 'blocked';
+  }
+
+  return String(value);
+}
+
+const skillDetailTabs: { id: SkillDetailTab; label: string }[] = [
+  { id: 'preview', label: 'SKILL.md preview' },
+  { id: 'versions', label: 'Versions' },
+  { id: 'permissions', label: 'Permissions' },
+  { id: 'audit', label: 'Audit' },
+];
 
 function decodeRoutePart(value: string): string {
   try {
@@ -738,7 +774,7 @@ function BrowseRegistry() {
 
   function copyInstallCmd() {
     if (!selected) return;
-    const cmd = `asr add ${selected.owner}/${selected.name}`;
+    const cmd = getInstallCommand(selected.owner, selected.name);
     navigator.clipboard.writeText(cmd);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -876,7 +912,7 @@ function BrowseRegistry() {
             </div>
             <div className="modal-body">
               <div className="install-cmd">
-                <code>asr add {selected.owner}/{selected.name}</code>
+                <code>{getInstallCommand(selected.owner, selected.name)}</code>
                 <button className="copy-btn" onClick={copyInstallCmd}>
                   {copied ? '✓ Copied' : 'Copy'}
                 </button>
@@ -942,6 +978,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
   const [detail, setDetail] = useState<SkillDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<'not-found' | 'unavailable' | null>(null);
+  const [activeTab, setActiveTab] = useState<SkillDetailTab>('preview');
 
   const fetchSkill = useCallback(async () => {
     setLoading(true);
@@ -1011,6 +1048,16 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
     );
   }
 
+  const permissions = detail.manifestLatest.permissions;
+  const permissionRows = [
+    ['Network', permissions.network],
+    ['Network hosts', permissions.networkHosts ?? []],
+    ['Filesystem', permissions.filesystem],
+    ['Subprocess', permissions.subprocess],
+    ['Environment', permissions.environment],
+  ] as const;
+  const markdownPreview = detail.manifestLatest.description || detail.description || 'No SKILL.md preview available.';
+
   return (
     <>
       <div className="brand-stripe" />
@@ -1038,13 +1085,82 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
           </div>
 
           <div className="install-cmd">
-            <code>asr add {detail.owner}/{detail.name}</code>
+            <code>{getInstallCommand(detail.owner, detail.name)}</code>
           </div>
 
-          <section className="skill-content" aria-label="Skill description">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {detail.manifestLatest.description || detail.description}
-            </ReactMarkdown>
+          <div className="skill-detail-tabs" role="tablist" aria-label="Skill detail sections">
+            {skillDetailTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                className={activeTab === tab.id ? 'active' : undefined}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <section className="skill-detail-panel" role="tabpanel" aria-label={skillDetailTabs.find((tab) => tab.id === activeTab)?.label}>
+            {activeTab === 'preview' && (
+              <div className="skill-content">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    a({ children, href }) {
+                      return (
+                        <a href={href} target="_blank" rel="noopener noreferrer">
+                          {children}
+                        </a>
+                      );
+                    },
+                  }}
+                >
+                  {markdownPreview}
+                </ReactMarkdown>
+              </div>
+            )}
+
+            {activeTab === 'versions' && (
+              <div className="versions-list">
+                {detail.versions.map((version) => (
+                  <div
+                    key={version.version}
+                    className={`version-row${version.yanked ? ' yanked' : ''}`}
+                    title={version.yanked ? version.yankReason ?? 'This version has been yanked.' : undefined}
+                  >
+                    <div>
+                      <strong>v{version.version}</strong>
+                      <span>{formatDate(version.publishedAt)}</span>
+                    </div>
+                    <div className="version-row-meta">
+                      <span>{version.riskAssessment} risk</span>
+                      {version.yanked && <span>Yanked</span>}
+                      <a href={`/api/v1/skills/${detail.owner}/${detail.name}/versions/${version.version}/diff`}>Diff</a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeTab === 'permissions' && (
+              <dl className="permissions-list">
+                {permissionRows.map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{formatPermissionValue(value)}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+
+            {activeTab === 'audit' && (
+              <div className="audit-placeholder">
+                <p>Audit events are available after signing in with a compliance or administrator role.</p>
+              </div>
+            )}
           </section>
         </article>
       </main>

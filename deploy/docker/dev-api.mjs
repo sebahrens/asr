@@ -106,7 +106,7 @@ ${skill.description}
 
 ## Usage
 
-Run \`asr add ${skill.owner}/${skill.name}\` to install this skill.`;
+Run \`asr install ${skill.owner}/${skill.name}\` to install this skill.`;
 }
 
 function getSkillDetail(skill) {
