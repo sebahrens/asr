@@ -640,6 +640,47 @@ function BrowseRegistry() {
   );
 }
 
+function NotFoundState() {
+  return (
+    <>
+      <div className="brand-stripe" />
+      <header>
+        <div className="container">
+          <a className="logo" href="/" aria-label="asr home">
+            <img src="/logo.svg" alt="asr" />
+          </a>
+        </div>
+      </header>
+
+      <main className="not-found-main">
+        <section className="not-found-state" aria-labelledby="not-found-title">
+          <p className="eyebrow">Route not found</p>
+          <h1 id="not-found-title">Skill route unavailable</h1>
+          <p>
+            The requested skill page does not exist in this registry. Return to browse and try another skill.
+          </p>
+          <div className="not-found-actions">
+            <a className="primary-link" href="/">Browse skills</a>
+            <button className="secondary-btn" type="button" onClick={() => window.location.reload()}>
+              Retry
+            </button>
+          </div>
+        </section>
+      </main>
+    </>
+  );
+}
+
 export default function App() {
-  return window.location.pathname === '/review' ? <ReviewDashboard /> : <BrowseRegistry />;
+  const { pathname } = window.location;
+
+  if (pathname === '/' || pathname === '/skills') {
+    return <BrowseRegistry />;
+  }
+
+  if (pathname === '/review') {
+    return <ReviewDashboard />;
+  }
+
+  return <NotFoundState />;
 }

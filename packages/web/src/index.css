@@ -505,6 +505,53 @@ main {
   50% { opacity: 0.5; }
 }
 
+/* Not Found */
+.not-found-main {
+  min-height: calc(100vh - 57px);
+  padding: 96px 24px;
+}
+
+.not-found-state {
+  margin: 0 auto;
+  max-width: 560px;
+  text-align: center;
+}
+
+.not-found-state h1 {
+  font-size: 2rem;
+  line-height: 1.15;
+  margin-bottom: 12px;
+}
+
+.not-found-state p:not(.eyebrow) {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0 auto 24px;
+  max-width: 460px;
+}
+
+.not-found-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.primary-link {
+  background: var(--accent);
+  border-radius: 6px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 9px 14px;
+  text-decoration: none;
+}
+
+.primary-link:hover {
+  opacity: 0.9;
+}
+
 /* Review Dashboard */
 .review-topbar {
   min-height: 44px;
