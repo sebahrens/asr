@@ -1924,7 +1924,7 @@ function BrowseRegistry() {
       setSkills(Array.isArray(data.items) ? data.items.map(mapSkillSummary) : []);
     } catch {
       setSkills([]);
-      setRegistryError('Unable to load skills from the registry API.');
+      setRegistryError('Registry API is unreachable. Check the API service and retry.');
     } finally {
       setLoading(false);
     }
@@ -2002,7 +2002,7 @@ function BrowseRegistry() {
               <div className="spinner" />
             </div>
           ) : registryError ? (
-            <div className="empty-state registry-error-state" role="status">
+            <div className="empty-state registry-error-state" role="alert" aria-live="assertive">
               <p>{registryError}</p>
               <button className="secondary-btn" type="button" onClick={() => fetchSkills(search)}>
                 Retry

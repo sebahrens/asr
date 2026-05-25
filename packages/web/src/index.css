@@ -527,6 +527,12 @@ main {
   display: grid;
   justify-items: center;
   gap: 16px;
+  margin: 24px 0;
+  padding: 48px 24px;
+  color: #7a2b00;
+  background: #fff4ed;
+  border: 1px solid rgba(208, 74, 2, 0.28);
+  border-radius: 8px;
 }
 
 .loading {
