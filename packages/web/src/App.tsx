@@ -170,10 +170,6 @@ function mapSkillSummary(skill: SkillSummary): Skill {
   };
 }
 
-function getSkillDetailContent(detail: SkillDetail, fallback: string): string {
-  return detail.skillMd || detail.manifestLatest.description || fallback;
-}
-
 function getInstallCommand(owner: string, name: string): string {
   return `asr install ${owner}/${name}`;
 }
@@ -231,6 +227,10 @@ function encodeRoutePart(value: string): string {
 
 function getSkillVersionDiffPath(owner: string, name: string, version: string): string {
   return `/skills/${encodeRoutePart(owner)}/${encodeRoutePart(name)}/versions/${encodeRoutePart(version)}/diff`;
+}
+
+function getSkillPath(owner: string, name: string): string {
+  return `/skills/${encodeRoutePart(owner)}/${encodeRoutePart(name)}`;
 }
 
 function getDecisionRequest(
@@ -1888,8 +1888,6 @@ function BrowseRegistry() {
   const [loading, setLoading] = useState(true);
   const [registryError, setRegistryError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Skill | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const fetchSkills = useCallback(async (query: string) => {
     setLoading(true);
@@ -1919,32 +1917,6 @@ function BrowseRegistry() {
 
     return () => clearTimeout(timer);
   }, [search, fetchSkills]);
-
-  async function openSkill(skill: Skill) {
-    setSelected(skill);
-
-    if (!skill.content) {
-      try {
-        const res = await fetch(`${API_URL}/api/v1/skills/${skill.owner}/${skill.name}`);
-        if (res.ok) {
-          const data = (await res.json()) as SkillDetail;
-          setSelected({ ...skill, content: getSkillDetailContent(data, skill.description) });
-        } else {
-          setSelected({ ...skill, content: skill.description });
-        }
-      } catch {
-        setSelected({ ...skill, content: skill.description });
-      }
-    }
-  }
-
-  function copyInstallCmd() {
-    if (!selected) return;
-    const cmd = getInstallCommand(selected.owner, selected.name);
-    navigator.clipboard.writeText(cmd);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
 
   const totalStars = skills.reduce((a, s) => a + s.stars, 0);
 
@@ -2023,10 +1995,11 @@ function BrowseRegistry() {
           ) : (
             <div className="skills-grid">
               {skills.map((skill) => (
-                <div
+                <a
                   key={skill.id}
                   className="skill-card"
-                  onClick={() => openSkill(skill)}
+                  href={getSkillPath(skill.owner, skill.name)}
+                  aria-label={`Open ${skill.owner}/${skill.name} details`}
                 >
                   <div className="skill-header">
                     <div>
@@ -2063,34 +2036,12 @@ function BrowseRegistry() {
                       </div>
                     )}
                   </div>
-                </div>
+                </a>
               ))}
             </div>
           )}
         </div>
       </main>
-
-      {selected && (
-        <div className="modal-overlay" onClick={() => setSelected(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{selected.name}</h2>
-              <button className="modal-close" onClick={() => setSelected(null)}>×</button>
-            </div>
-            <div className="modal-body">
-              <div className="install-cmd">
-                <code>{getInstallCommand(selected.owner, selected.name)}</code>
-                <button className="copy-btn" onClick={copyInstallCmd}>
-                  {copied ? '✓ Copied' : 'Copy'}
-                </button>
-              </div>
-              <div className="skill-content">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripFrontmatter(selected.content || selected.description)}</ReactMarkdown>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

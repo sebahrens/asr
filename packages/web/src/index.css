@@ -205,19 +205,28 @@ main {
 }
 
 .skill-card {
+  display: block;
   background: var(--bg-card);
   border: 1px solid var(--border-light);
   border-radius: 8px;
   padding: 20px;
+  color: inherit;
   cursor: pointer;
+  text-decoration: none;
   transition: all 0.2s ease;
   box-shadow: var(--shadow-sm);
 }
 
-.skill-card:hover {
+.skill-card:hover,
+.skill-card:focus-visible {
   box-shadow: var(--shadow-md);
   transform: translateY(-1px);
   border-color: var(--border);
+}
+
+.skill-card:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .skill-header {
