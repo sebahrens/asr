@@ -1139,6 +1139,7 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
   const [decisionError, setDecisionError] = useState<string | null>(null);
   const [decisionSuccess, setDecisionSuccess] = useState<string | null>(null);
   const [decisionReason, setDecisionReason] = useState('');
+  const [pendingConfirmation, setPendingConfirmation] = useState<Decision | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -1222,6 +1223,20 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
 
   const canDecide = submission.status === 'pending review';
   const rejectDisabled = decisionReason.trim().length === 0;
+  const confirmationSubmitDisabled = pendingConfirmation === 'rejected' && rejectDisabled;
+  const confirmationPending = pendingConfirmation ? decisionPending === pendingConfirmation : false;
+
+  function requestDecisionConfirmation(nextDecision: Decision) {
+    setDecisionError(null);
+    setDecisionSuccess(null);
+    setPendingConfirmation(nextDecision);
+  }
+
+  function closeDecisionConfirmation() {
+    if (!confirmationPending) {
+      setPendingConfirmation(null);
+    }
+  }
 
   async function submitDecision(nextDecision: Decision) {
     const currentSubmission = submission;
@@ -1252,6 +1267,7 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
         current?.id === currentSubmission.id ? { ...current, status: nextDecision } : current,
       );
       setDecisionSuccess(`${nextDecision === 'approved' ? 'Approved' : 'Rejected'} ${currentSubmission.skillName}.`);
+      setPendingConfirmation(null);
     } catch {
       setDecisionError('Decision could not be recorded. Try again after the API is available.');
     } finally {
@@ -1409,7 +1425,7 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
               <button
                 className="approve-btn"
                 type="button"
-                onClick={() => submitDecision('approved')}
+                onClick={() => requestDecisionConfirmation('approved')}
                 disabled={!canDecide || Boolean(decision) || Boolean(decisionPending)}
               >
                 {decisionPending === 'approved' ? 'Approving...' : decision === 'approved' ? 'Approved' : 'Approve'}
@@ -1417,7 +1433,7 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
               <button
                 className="reject-btn"
                 type="button"
-                onClick={() => submitDecision('rejected')}
+                onClick={() => requestDecisionConfirmation('rejected')}
                 disabled={!canDecide || Boolean(decision) || Boolean(decisionPending) || rejectDisabled}
               >
                 {decisionPending === 'rejected' ? 'Rejecting...' : decision === 'rejected' ? 'Rejected' : 'Reject'}
@@ -1426,6 +1442,101 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
           </aside>
         </div>
       </main>
+
+      {pendingConfirmation ? (
+        <div className="decision-modal-backdrop" role="presentation">
+          <section
+            className="decision-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="review-decision-modal-title"
+          >
+            <div className="decision-modal-header">
+              <div>
+                <p className="eyebrow">Confirm decision</p>
+                <h2 id="review-decision-modal-title">
+                  {pendingConfirmation === 'approved' ? 'Approve submission' : 'Reject submission'}
+                </h2>
+              </div>
+              <button
+                className="icon-close-btn"
+                type="button"
+                aria-label="Close confirmation"
+                onClick={closeDecisionConfirmation}
+                disabled={confirmationPending}
+              >
+                x
+              </button>
+            </div>
+
+            <dl className="decision-confirmation-facts">
+              <div>
+                <dt>Skill</dt>
+                <dd>{submission.skillName}</dd>
+              </div>
+              <div>
+                <dt>Version</dt>
+                <dd>v{submission.version}</dd>
+              </div>
+              <div>
+                <dt>Risk</dt>
+                <dd className={`risk-text risk-text-${submission.risk}`}>
+                  {submission.risk} risk
+                </dd>
+              </div>
+            </dl>
+
+            <label className="decision-reason-field" htmlFor="review-decision-confirmation-reason">
+              <span>{pendingConfirmation === 'rejected' ? 'Reject reason' : 'Reviewer comment'}</span>
+              <textarea
+                id="review-decision-confirmation-reason"
+                value={decisionReason}
+                onChange={(event) => setDecisionReason(event.target.value)}
+                placeholder={
+                  pendingConfirmation === 'rejected'
+                    ? 'Summarize the compliance issue blocking approval.'
+                    : 'Optional approval note.'
+                }
+                required={pendingConfirmation === 'rejected'}
+                rows={4}
+                disabled={confirmationPending}
+              />
+            </label>
+
+            {pendingConfirmation === 'rejected' && confirmationSubmitDisabled ? (
+              <p className="decision-help">A rejection reason is required before submitting.</p>
+            ) : null}
+            {decisionError ? (
+              <p className="decision-error decision-modal-error" role="alert">{decisionError}</p>
+            ) : null}
+
+            <div className="decision-modal-actions">
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={closeDecisionConfirmation}
+                disabled={confirmationPending}
+              >
+                Cancel
+              </button>
+              <button
+                className={pendingConfirmation === 'approved' ? 'approve-btn' : 'reject-btn'}
+                type="button"
+                onClick={() => submitDecision(pendingConfirmation)}
+                disabled={confirmationPending || confirmationSubmitDisabled}
+              >
+                {confirmationPending
+                  ? pendingConfirmation === 'approved'
+                    ? 'Approving...'
+                    : 'Rejecting...'
+                  : pendingConfirmation === 'approved'
+                    ? 'Confirm approval'
+                    : 'Confirm rejection'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </>
   );
 }
