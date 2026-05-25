@@ -10,6 +10,8 @@ const envSchema = z
     FORGEJO_MERGE_TOKEN: z.string().optional(),
     FORGEJO_OWNER: z.string().optional(),
     FORGEJO_REPO: z.string().optional(),
+    FORGEJO_MARKETPLACE_OWNER: z.string().optional(),
+    FORGEJO_MARKETPLACE_REPO: z.string().default('skill-marketplace'),
     DATABASE_PATH: z.string().optional(),
   })
   .superRefine((env, ctx) => {

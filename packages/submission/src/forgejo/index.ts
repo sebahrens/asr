@@ -20,6 +20,23 @@ export function forgejoFromEnv(e: Env = getEnv()): ForgejoClient {
   });
 }
 
+export function marketplaceForgejoFromEnv(e: Env = getEnv()): ForgejoClient {
+  const baseUrl = required(e.FORGEJO_URL, 'FORGEJO_URL');
+  const uploadToken = required(e.FORGEJO_UPLOAD_TOKEN, 'FORGEJO_UPLOAD_TOKEN');
+  const mergeToken = required(e.FORGEJO_MERGE_TOKEN, 'FORGEJO_MERGE_TOKEN');
+  const owner = required(e.FORGEJO_MARKETPLACE_OWNER, 'FORGEJO_MARKETPLACE_OWNER');
+  const repo = required(e.FORGEJO_MARKETPLACE_REPO, 'FORGEJO_MARKETPLACE_REPO');
+
+  return new ForgejoClient({
+    baseUrl: normalizeForgejoApiBaseUrl(baseUrl),
+    uploadToken,
+    mergeToken,
+    owner,
+    repo,
+    defaultBranch: 'main',
+  });
+}
+
 function required(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`${name} is required`);

@@ -31,4 +31,17 @@ describe('parseEnv', () => {
       AUTH_MODE: 'mock',
     });
   });
+
+  it('defaults the marketplace repo when the marketplace owner is set', () => {
+    expect(
+      parseEnv({
+        NODE_ENV: 'development',
+        AUTH_MODE: 'mock',
+        FORGEJO_MARKETPLACE_OWNER: 'asr-marketplace',
+      }),
+    ).toMatchObject({
+      FORGEJO_MARKETPLACE_OWNER: 'asr-marketplace',
+      FORGEJO_MARKETPLACE_REPO: 'skill-marketplace',
+    });
+  });
 });
