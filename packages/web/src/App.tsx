@@ -89,6 +89,7 @@ interface ReviewDiffFile {
 }
 
 const API_URL = import.meta.env.VITE_API_URL || '';
+const SUBMISSIONS_API_BASE = `${API_URL}/api/v1/submissions`;
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const ZIP_LOCAL_FILE_HEADER = 0x04034b50;
 const ZIP_EMPTY_ARCHIVE_HEADER = 0x06054b50;
@@ -822,7 +823,7 @@ function formatSubmittedAt(value: string): string {
 
 function ReviewDashboard() {
   const session = useSession();
-  const [submissions, setSubmissions] = useState<ReviewSubmission[]>(() => (API_URL ? [] : mockReviewQueue));
+  const [submissions, setSubmissions] = useState<ReviewSubmission[]>([]);
   const [loading, setLoading] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [decisionPending, setDecisionPending] = useState<Record<string, Decision>>({});
@@ -836,17 +837,10 @@ function ReviewDashboard() {
 
   const fetchQueue = useCallback(async () => {
     setDecisionSuccess(null);
-    if (!API_URL) {
-      setQueueError(null);
-      setSubmissions(mockReviewQueue);
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setQueueError(null);
     try {
-      const res = await fetch(`${API_URL}/api/v1/submissions?status=pending`);
+      const res = await fetch(`${SUBMISSIONS_API_BASE}?status=pending`);
       if (!res.ok) {
         throw new Error(`Queue request failed with ${res.status}`);
       }
@@ -909,16 +903,14 @@ function ReviewDashboard() {
     });
 
     try {
-      if (API_URL) {
-        const { endpoint, body } = getDecisionRequest(decision, reason);
-        const res = await fetch(`${API_URL}/api/v1/submissions/${id}/${endpoint}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
+      const { endpoint, body } = getDecisionRequest(decision, reason);
+      const res = await fetch(`${SUBMISSIONS_API_BASE}/${id}/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
 
-        await assertDecisionResponse(res);
-      }
+      await assertDecisionResponse(res);
 
       setSubmissions((current) =>
         current.map((submission) => (submission.id === id ? { ...submission, status: decision } : submission)),
