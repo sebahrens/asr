@@ -49,29 +49,69 @@ For each captured screenshot, check:
 - **Auth UX**: mock/dev mode is clearly labelled so it's never confused with prod; tokens never leak into the DOM.
 - **Branding**: product name renders as **asr** (not `skify` or `json2pptx` — those are legacy names to be removed if found).
 
-### 4. File beads for defects
+### 4. File or update beads for defects — DEDUP IS MANDATORY
 
-For each defect found, create a bead with detailed information:
+Every visual defect maps to exactly one **defect category** from the fixed taxonomy below.
+The category label — not the title wording — is the dedup key. NEVER file a new free-text
+bug for a defect that fits an existing category: reworded titles are how this backlog filled
+with hundreds of duplicates of the same ~14 defects.
+
+**Canonical defect taxonomy** (`defect:<category>` → meaning):
+
+- `defect:branding` — product name/logo shows anything other than **asr** (PwC, Skill Registry, Agent Skill Registry, json2pptx, skify)
+- `defect:browse-filters` — browse page missing working tag/kind/risk filter chips
+- `defect:browse-cards` — skill cards open a modal / are pointer-only divs instead of routing to detail, or omit kind/risk badges
+- `defect:form-validation` — publish/upload Continue/Submit stays enabled while the form is invalid, or required fields fail silently
+- `defect:sticky-header` — validation scroll lets the sticky header/topbar overlap form content
+- `defect:wizard-steps` — publish wizard highlights/permits steps that should be locked while the current step is invalid
+- `defect:diff-clipping` — review/approval diff or code text is clipped (mobile or desktop)
+- `defect:responsive-nav` — layout lacks the sidebar / mobile drawer collapse behaviour
+- `defect:markdown-gfm` — SKILL.md preview doesn't render GFM tables / fenced code / borders
+- `defect:mock-auth` — mock/dev auth banner is wrong, conflicting, clips branding, or hides publish/review flows
+- `defect:review-validation` — review detail shows a rejection error/warning before the user acts
+- `defect:not-found` — unknown skill/review route renders browse instead of a 404/error state
+- `defect:upload-input` — upload dropzone exposes native file-input chrome / "no file chosen" after a valid pick
+- `defect:install-snippet` — skill detail shows an obsolete `asr add` install command
+- `defect:other` — a genuinely new defect that fits NONE of the above (describe precisely)
+
+**Before filing anything**, run the dedup gate for the defect's category:
+
+```bash
+CAT="defect:<category>"                                 # pick from the taxonomy
+bd list --type bug --label "$CAT" --status open   --limit 0   # already tracked?
+bd list --type bug --label "$CAT" --status closed --limit 5   # fixed before?
+```
+
+Then act on the result:
+
+- **An OPEN bead with that category exists** → do NOT create a new one. Attach evidence:
+  `bd update <id> --append-notes "Still present <date>: <flow>/<viewport>, screenshot <path>"`
+- **The newest bead with that category is CLOSED but the defect is still visible** → the fix
+  didn't stick; REOPEN it instead of re-filing:
+  `bd reopen <id> -r "Still visible in visual review <date> — fix regressed or never landed"`
+  then `bd update <id> --append-notes "<evidence>"`
+- **No bead with that category exists** → create exactly one (only `defect:other` should ever
+  be genuinely new):
 
 ```bash
 bd create \
   --title "Visual: <brief description>" \
   --type bug \
   --priority <0-3> \
-  --labels "visual,web,<flow-name>" \
+  --labels "tier:task,visual,web,<flow-name>,defect:<category>" \
   --description "<flow, viewport, expected vs actual, screenshot path under .playwright-mcp/, root cause hypothesis>"
 ```
+
+Two labels are REQUIRED on every visual bug:
+- `tier:task` — without it the build loop never selects the bug, so it can only ever be
+  re-filed, never fixed. This is what lets the build phase actually close these out.
+- `defect:<category>` — the dedup key; the gate above relies on it.
 
 Priority guidelines:
 - **P0**: Flow is unusable, page is blank, auth bypassed, token leaks into DOM
 - **P1**: Action does nothing, validation lets bad input through, wrong data shown
 - **P2**: Cosmetic issues (alignment, spacing, contrast just below AA)
 - **P3**: Minor polish (hover state, focus ring, copy nits)
-
-Check for existing beads before filing duplicates:
-```bash
-bd search "<keyword>"
-```
 
 ### 5. Tear down and summarise
 
