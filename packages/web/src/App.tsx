@@ -1,5 +1,5 @@
 import { createContext, useState, useEffect, useCallback, useContext, useRef } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import ReactDiffViewer from 'react-diff-viewer-continued';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -2151,6 +2151,7 @@ function BrowseRegistry() {
   const [registryStatus, setRegistryStatus] = useState<RegistryConnectionStatus>('checking');
   const [registryError, setRegistryError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const latestFetchId = useRef(0);
 
   const fetchSkills = useCallback(async (query: string) => {
@@ -2195,7 +2196,31 @@ function BrowseRegistry() {
     return () => clearTimeout(timer);
   }, [search, fetchSkills]);
 
-  const totalStars = skills.reduce((a, s) => a + s.stars, 0);
+  const availableTags = Array.from(new Set(skills.flatMap((skill) => skill.tags))).sort((a, b) => a.localeCompare(b));
+  const filteredSkills = activeTag
+    ? skills.filter((skill) => skill.tags.includes(activeTag))
+    : skills;
+  const totalStars = filteredSkills.reduce((a, s) => a + s.stars, 0);
+
+  function applyTagFilter(tag: string) {
+    setActiveTag((currentTag) => currentTag === tag ? null : tag);
+  }
+
+  function handleCardTagClick(event: ReactMouseEvent, tag: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    applyTagFilter(tag);
+  }
+
+  function handleCardTagKeyDown(event: ReactKeyboardEvent, tag: string) {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    applyTagFilter(tag);
+  }
 
   return (
     <>
@@ -2239,7 +2264,7 @@ function BrowseRegistry() {
             </p>
             <div className="stats">
               <div className="stat">
-                <div className="stat-value">{skills.length}</div>
+                <div className="stat-value">{filteredSkills.length}</div>
                 <div className="stat-label">Skills</div>
               </div>
               <div className="stat">
@@ -2260,6 +2285,30 @@ function BrowseRegistry() {
             </span>
           </div>
 
+          {(availableTags.length > 0 || activeTag !== null) && !registryError && (
+            <div className="tag-filter-bar" role="group" aria-label="Filter skills by tag">
+              <button
+                className={`filter-chip${activeTag === null ? ' filter-chip-active' : ''}`}
+                type="button"
+                aria-pressed={activeTag === null}
+                onClick={() => setActiveTag(null)}
+              >
+                All
+              </button>
+              {availableTags.map((tag) => (
+                <button
+                  key={tag}
+                  className={`filter-chip${activeTag === tag ? ' filter-chip-active' : ''}`}
+                  type="button"
+                  aria-pressed={activeTag === tag}
+                  onClick={() => applyTagFilter(tag)}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          )}
+
           {loading ? (
             <div className="loading">
               <div className="spinner" />
@@ -2271,13 +2320,13 @@ function BrowseRegistry() {
                 Retry
               </button>
             </div>
-          ) : skills.length === 0 ? (
+          ) : filteredSkills.length === 0 ? (
             <div className="empty-state">
-              <p>No skills found. Try a different search term.</p>
+              <p>No skills found. Try a different search term or clear the active filter.</p>
             </div>
           ) : (
             <div className="skills-grid">
-              {skills.map((skill) => (
+              {filteredSkills.map((skill) => (
                 <a
                   key={skill.id}
                   className="skill-card"
@@ -2314,7 +2363,17 @@ function BrowseRegistry() {
                     {skill.tags.length > 0 && (
                       <div className="skill-tags">
                         {skill.tags.slice(0, 2).map((tag) => (
-                          <span key={tag} className="tag">{tag}</span>
+                          <span
+                            key={tag}
+                            className={`tag tag-action${activeTag === tag ? ' tag-active' : ''}`}
+                            role="button"
+                            tabIndex={0}
+                            aria-pressed={activeTag === tag}
+                            onClick={(event) => handleCardTagClick(event, tag)}
+                            onKeyDown={(event) => handleCardTagKeyDown(event, tag)}
+                          >
+                            {tag}
+                          </span>
                         ))}
                       </div>
                     )}
