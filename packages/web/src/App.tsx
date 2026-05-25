@@ -312,7 +312,7 @@ function MockAuthBanner() {
       role="status"
       aria-label={`Development mock auth session: ${session.role}`}
     >
-      Dev mock auth: {session.role}
+      Mock auth: {session.role}
     </div>
   );
 }
