@@ -57,6 +57,7 @@ type MockRole = 'Viewer' | 'Submitter' | 'Compliance' | 'Admin';
 
 interface Session {
   role: MockRole;
+  canSubmit: boolean;
   canReview: boolean;
 }
 
@@ -104,6 +105,7 @@ const emptyQuestionnaireDraft: QuestionnaireDraft = {
 };
 
 const reviewRoles = new Set<MockRole>(['Compliance', 'Admin']);
+const submitRoles = new Set<MockRole>(['Submitter', 'Admin']);
 const mockRoles: MockRole[] = ['Viewer', 'Submitter', 'Compliance', 'Admin'];
 const SessionContext = createContext<Session | null>(null);
 
@@ -119,6 +121,7 @@ function getMockRole(): MockRole {
 function createSession(role: MockRole): Session {
   return {
     role,
+    canSubmit: submitRoles.has(role),
     canReview: reviewRoles.has(role),
   };
 }
@@ -1106,6 +1109,7 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
 }
 
 function PublishSkill() {
+  const session = useSession();
   const [owner, setOwner] = useState('');
   const [skillMd, setSkillMd] = useState('');
   const [skillArchive, setSkillArchive] = useState<File | null>(null);
@@ -1124,7 +1128,7 @@ function PublishSkill() {
       && manifestDraft.description.trim(),
   );
   const questionnaireIsValid = Boolean(questionnaire.externalNetwork && questionnaire.filesystemAccess);
-  const canSubmit = uploadIsValid && manifestIsValid && questionnaireIsValid && status === 'idle';
+  const canSubmit = session.canSubmit && uploadIsValid && manifestIsValid && questionnaireIsValid && status === 'idle';
   const archiveSize = skillArchive ? `${(skillArchive.size / 1024 / 1024).toFixed(2)} MB` : null;
   const manifestTags = manifestDraft.tags
     .split(',')
@@ -1194,6 +1198,11 @@ function PublishSkill() {
     setSubmitMessage(null);
 
     if (status !== 'idle') {
+      return;
+    }
+
+    if (!session.canSubmit) {
+      setSubmitMessage('Submitter role required to publish skills.');
       return;
     }
 
@@ -1812,7 +1821,15 @@ function SkillNotFoundState({
   );
 }
 
-function AccessDeniedState() {
+function AccessDeniedState({
+  current = 'review',
+  title = 'Compliance role required',
+  message = 'Approval review is available only to Compliance and Admin sessions.',
+}: {
+  current?: 'browse' | 'publish' | 'review';
+  title?: string;
+  message?: string;
+}) {
   return (
     <>
       <div className="brand-stripe" />
@@ -1821,7 +1838,7 @@ function AccessDeniedState() {
           <a className="logo" href="/" aria-label="asr home">
             <img src="/logo.svg" alt="asr" />
           </a>
-          <PrimaryNav current="review" />
+          <PrimaryNav current={current} />
           <MockAuthBanner />
         </div>
       </header>
@@ -1829,8 +1846,8 @@ function AccessDeniedState() {
       <main className="not-found-main">
         <section className="not-found-state" aria-labelledby="access-denied-title">
           <p className="eyebrow">Access denied</p>
-          <h1 id="access-denied-title">Compliance role required</h1>
-          <p>Approval review is available only to Compliance and Admin sessions.</p>
+          <h1 id="access-denied-title">{title}</h1>
+          <p>{message}</p>
           <div className="not-found-actions">
             <a className="primary-link" href="/">Browse skills</a>
           </div>
@@ -1844,6 +1861,21 @@ function RequireReviewRole({ children }: { children: ReactNode }) {
   const session = useSession();
   if (!session.canReview) {
     return <AccessDeniedState />;
+  }
+
+  return <>{children}</>;
+}
+
+function RequireSubmitRole({ children }: { children: ReactNode }) {
+  const session = useSession();
+  if (!session.canSubmit) {
+    return (
+      <AccessDeniedState
+        current="publish"
+        title="Submitter role required"
+        message="Skill publishing is available only to Submitter and Admin sessions."
+      />
+    );
   }
 
   return <>{children}</>;
@@ -2093,7 +2125,11 @@ function AppRoutes() {
   }
 
   if (pathname === '/publish' || pathname === '/submit') {
-    return <PublishSkill />;
+    return (
+      <RequireSubmitRole>
+        <PublishSkill />
+      </RequireSubmitRole>
+    );
   }
 
   return <NotFoundState />;
