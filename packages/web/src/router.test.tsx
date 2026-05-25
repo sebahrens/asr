@@ -103,10 +103,15 @@ beforeEach(() => {
 });
 
 describe('router', () => {
-  it('routes review through the application route switch', () => {
+  it('routes review through the approval dashboard queue', async () => {
     renderRoute('/review');
 
-    expect(screen.getByRole('heading', { name: /approval dashboard/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /approval dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /secure-code-review/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /release-notes/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/pending review/i)).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /^approve$/i })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /^reject$/i })).toHaveLength(2);
   });
 
   it('keeps the existing browse page on the index route', async () => {
