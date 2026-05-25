@@ -3,14 +3,15 @@
   "version": "0.2.1",
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "dist/asr.mjs"
   ],
   "bin": {
-    "asr": "./dist/index.js"
+    "asr": "./dist/asr.mjs"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts",
-    "dev": "tsup src/index.ts --format esm --watch",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest"
   },
