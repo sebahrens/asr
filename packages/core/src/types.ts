@@ -261,6 +261,7 @@ export interface SkillSummary {
 
 export interface SkillDetail extends SkillSummary {
   manifestLatest: SkillManifest;
+  skillMd?: string;
   versions: SkillVersion[];
 }
 

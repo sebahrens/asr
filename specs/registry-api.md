@@ -66,6 +66,7 @@ Returns the canonical skill metadata plus a list of versions (yanked entries inc
   "name": "code-review",
   "latestVersion": "1.2.0",
   "manifestLatest": { /* SkillManifest */ },
+  "skillMd": "# code-review\n\nFull SKILL.md body...",
   "versions": [
     { "version": "1.2.0", "publishedAt": "...", "contentHash": "sha256:...", "yanked": false, "approvedBy": "..." },
     { "version": "1.1.0", "publishedAt": "...", "contentHash": "sha256:...", "yanked": true,  "yankReason": "CVE-..." },

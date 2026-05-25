@@ -100,23 +100,54 @@ function findSkills(query) {
 }
 
 function getSkillContent(skill) {
-  return `# ${skill.name}
+  return `---
+name: ${skill.name}
+version: ${skill.latestVersion}
+author: ${skill.owner}
+description: ${skill.description}
+tags:
+${skill.tags.map((tag) => `  - ${tag}`).join('\n')}
+kind: ${skill.kind}
+---
+
+# ${skill.name}
 
 ${skill.description}
 
 ## Usage
 
-Run \`asr install ${skill.owner}/${skill.name}\` to install this skill.`;
+Run \`asr install ${skill.owner}/${skill.name}\` to install this skill.
+
+## Review Checklist
+
+| Check | Evidence |
+| --- | --- |
+| Secrets | Inspect uploaded files and scanner findings |
+| Permissions | Compare requested access with stated purpose |
+
+## Example Finding
+
+\`\`\`text
+severity: high
+file: SKILL.md
+message: External exfiltration instruction detected
+\`\`\`
+
+## Links
+
+- [ASR workflow](/review)`;
 }
 
 function getSkillDetail(skill) {
+  const skillMd = getSkillContent(skill);
+
   return {
     ...skill,
     manifestLatest: {
       name: skill.name,
       version: skill.latestVersion,
       author: skill.owner,
-      description: getSkillContent(skill),
+      description: skill.description,
       tags: skill.tags,
       kind: skill.kind,
       permissions: {
@@ -126,6 +157,7 @@ function getSkillDetail(skill) {
         environment: [],
       },
     },
+    skillMd,
     versions: [
       {
         owner: skill.owner,

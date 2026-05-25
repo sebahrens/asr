@@ -104,7 +104,7 @@ function mapSkillSummary(skill: SkillSummary): Skill {
 }
 
 function getSkillDetailContent(detail: SkillDetail, fallback: string): string {
-  return detail.manifestLatest.description || fallback;
+  return detail.skillMd || detail.manifestLatest.description || fallback;
 }
 
 function getInstallCommand(owner: string, name: string): string {
@@ -1747,7 +1747,9 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
     ['Subprocess', permissions.subprocess],
     ['Environment', permissions.environment],
   ] as const;
-  const markdownPreview = detail.manifestLatest.description || detail.description || 'No SKILL.md preview available.';
+  const markdownPreview = detail.skillMd
+    ? stripFrontmatter(detail.skillMd)
+    : detail.manifestLatest.description || detail.description || 'No SKILL.md preview available.';
 
   return (
     <>

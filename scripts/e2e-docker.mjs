@@ -94,8 +94,12 @@ async function assertRegistryBrowse() {
   }
 
   const detailData = await detail.json();
-  if (detailData.manifestLatest?.description?.includes('# security-review') !== true) {
+  if (detailData.skillMd?.includes('# security-review') !== true) {
     throw new Error('registry detail did not return markdown skill content');
+  }
+
+  if (!detailData.skillMd.includes('| Check | Evidence |') || !detailData.skillMd.includes('```text')) {
+    throw new Error('registry detail markdown does not include GFM table and fenced code content');
   }
 }
 

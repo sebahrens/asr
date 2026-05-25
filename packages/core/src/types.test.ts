@@ -5,6 +5,7 @@ import type {
   RegistryIndex,
   ScanReport,
   ScanVerdict,
+  SkillDetail,
   SkillManifest,
   Submission,
   SubmissionStatus,
@@ -234,6 +235,13 @@ describe('registry canonical types', () => {
       ],
     };
 
+    const skillDetail: SkillDetail = {
+      ...registryIndex.skills[0]!,
+      manifestLatest: manifest,
+      skillMd: '# security-reviewer\n\n| Check | Evidence |\n| --- | --- |\n| Secrets | scanner output |',
+      versions: [],
+    };
+
     const marketplaceManifest: MarketplaceManifest = {
       name: 'asr-marketplace',
       version: '1',
@@ -250,6 +258,7 @@ describe('registry canonical types', () => {
 
     expect(auditEvent.action).toBe('version.diff.computed');
     expect(registryIndex.skills[0]?.name).toBe('security-reviewer');
+    expect(skillDetail.skillMd).toContain('| Check | Evidence |');
     expect(marketplaceManifest.plugins).toHaveLength(1);
   });
 });
