@@ -1779,25 +1779,21 @@ function PublishSkill() {
 
     setStatus('submitting');
     try {
-      if (API_URL) {
-        const body = new FormData();
-        body.set('owner', owner.trim());
-        body.set('skillMd', skillMd);
-        body.set('archive', skillArchive);
+      const body = new FormData();
+      body.set('owner', owner.trim());
+      body.set('skillMd', skillMd);
+      body.set('archive', skillArchive);
 
-        const res = await fetch(`${API_URL}/api/v1/submissions`, {
-          method: 'POST',
-          body,
-        });
+      const res = await fetch(SUBMISSIONS_API_BASE, {
+        method: 'POST',
+        body,
+      });
 
-        if (!res.ok) {
-          throw new Error(`Submission request failed with ${res.status}`);
-        }
-
-        setSubmitMessage('Submission created and queued for scanning.');
-      } else {
-        setSubmitMessage('Submission validated. Configure VITE_API_URL to send it to the registry API.');
+      if (!res.ok) {
+        throw new Error(`Submission request failed with ${res.status}`);
       }
+
+      setSubmitMessage('Submission created and queued for scanning.');
       setStatus('submitted');
     } catch {
       setSubmitMessage('Submission could not be created. Try again after the API is available.');
