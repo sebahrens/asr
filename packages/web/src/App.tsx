@@ -1,6 +1,7 @@
 import { createContext, useState, useEffect, useCallback, useContext, useRef } from 'react';
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import ReactDiffViewer from 'react-diff-viewer-continued';
+import type { ReactDiffViewerProps } from 'react-diff-viewer-continued';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { parseSkillMd, type SkillDetail, type SkillSummary, type VersionDiff } from '@asr/core';
@@ -274,7 +275,7 @@ const reviewDiffViewerStyles = {
   lineContent: {
     overflow: 'visible',
   },
-};
+} satisfies NonNullable<ReactDiffViewerProps['styles']>;
 
 function decodeRoutePart(value: string): string {
   try {
