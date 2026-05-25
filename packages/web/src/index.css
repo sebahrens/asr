@@ -1169,6 +1169,13 @@ main {
   background: var(--bg-hover);
 }
 
+.decision-unavailable {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: right;
+}
+
 .approve-btn,
 .reject-btn {
   border: 0;
@@ -1550,7 +1557,8 @@ main {
 
   .review-detail-link,
   .approve-btn,
-  .reject-btn {
+  .reject-btn,
+  .decision-unavailable {
     flex: 1;
     text-align: center;
   }

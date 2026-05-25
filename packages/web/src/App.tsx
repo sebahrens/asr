@@ -370,9 +370,9 @@ function ReviewDashboard() {
     }
   }
 
-  const pendingSubmissions = submissions.filter((submission) => submission.status === 'pending review');
-  const pendingCount = pendingSubmissions.length;
-  const findingCount = pendingSubmissions.reduce((total, submission) => total + submission.findings, 0);
+  const reviewableSubmissions = submissions.filter((submission) => submission.status === 'pending review');
+  const pendingCount = reviewableSubmissions.length;
+  const findingCount = reviewableSubmissions.reduce((total, submission) => total + submission.findings, 0);
   const pendingSubmissionCopy =
     pendingCount === 1
       ? '1 submission needs compliance review'
@@ -434,14 +434,14 @@ function ReviewDashboard() {
             {queueError ? <div className="queue-error" role="status">{queueError}</div> : null}
 
             <div className="submission-list">
-              {pendingSubmissions.length === 0 && !loading ? (
+              {submissions.length === 0 && !loading ? (
                 <div className="empty-review-queue" role="status">No pending submissions need compliance review.</div>
               ) : null}
 
-              {pendingSubmissions.map((submission) => {
+              {submissions.map((submission) => {
                 const pendingDecision = decisionPending[submission.id];
                 const isReviewable = submission.status === 'pending review';
-                const disableActions = Boolean(pendingDecision) || !isReviewable;
+                const disableActions = Boolean(pendingDecision);
 
                 return (
                   <article className="submission-row" key={submission.id}>
@@ -466,30 +466,30 @@ function ReviewDashboard() {
                       <a className="review-detail-link" href={`/review/${submission.id}`}>
                         Open details
                       </a>
-                      <button
-                        className="approve-btn"
-                        type="button"
-                        onClick={() => requestDecisionConfirmation(submission, 'approved')}
-                        disabled={disableActions}
-                      >
-                        {pendingDecision === 'approved'
-                          ? 'Approving...'
-                          : submission.status === 'approved'
-                            ? 'Approved'
-                            : 'Approve'}
-                      </button>
-                      <button
-                        className="reject-btn"
-                        type="button"
-                        onClick={() => requestDecisionConfirmation(submission, 'rejected')}
-                        disabled={disableActions}
-                      >
-                        {pendingDecision === 'rejected'
-                          ? 'Rejecting...'
-                          : submission.status === 'rejected'
-                            ? 'Rejected'
-                            : 'Reject'}
-                      </button>
+                      {isReviewable ? (
+                        <>
+                          <button
+                            className="approve-btn"
+                            type="button"
+                            onClick={() => requestDecisionConfirmation(submission, 'approved')}
+                            disabled={disableActions}
+                          >
+                            {pendingDecision === 'approved' ? 'Approving...' : 'Approve'}
+                          </button>
+                          <button
+                            className="reject-btn"
+                            type="button"
+                            onClick={() => requestDecisionConfirmation(submission, 'rejected')}
+                            disabled={disableActions}
+                          >
+                            {pendingDecision === 'rejected' ? 'Rejecting...' : 'Reject'}
+                          </button>
+                        </>
+                      ) : (
+                        <span className="decision-unavailable">
+                          Awaiting submitter confirmation
+                        </span>
+                      )}
                     </div>
                   </article>
                 );
