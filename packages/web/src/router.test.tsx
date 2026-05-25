@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { routes } from './router';
 
 const skillDetail = {
@@ -59,6 +59,63 @@ tags: [security, review]
   ],
 };
 
+function createZipFile(filePaths: string[]): File {
+  const encoder = new TextEncoder();
+  const localRecords: Uint8Array[] = [];
+  const centralRecords: Uint8Array[] = [];
+  let offset = 0;
+
+  function writeUint16(view: DataView, byteOffset: number, value: number) {
+    view.setUint16(byteOffset, value, true);
+  }
+
+  function writeUint32(view: DataView, byteOffset: number, value: number) {
+    view.setUint32(byteOffset, value, true);
+  }
+
+  for (const path of filePaths) {
+    const name = encoder.encode(path);
+    const content = encoder.encode('content');
+    const local = new Uint8Array(30 + name.length + content.length);
+    const localView = new DataView(local.buffer);
+    writeUint32(localView, 0, 0x04034b50);
+    writeUint16(localView, 4, 20);
+    writeUint32(localView, 18, content.length);
+    writeUint32(localView, 22, content.length);
+    writeUint16(localView, 26, name.length);
+    local.set(name, 30);
+    local.set(content, 30 + name.length);
+    localRecords.push(local);
+
+    const central = new Uint8Array(46 + name.length);
+    const centralView = new DataView(central.buffer);
+    writeUint32(centralView, 0, 0x02014b50);
+    writeUint16(centralView, 4, 20);
+    writeUint16(centralView, 6, 20);
+    writeUint32(centralView, 20, content.length);
+    writeUint32(centralView, 24, content.length);
+    writeUint16(centralView, 28, name.length);
+    writeUint32(centralView, 42, offset);
+    central.set(name, 46);
+    centralRecords.push(central);
+    offset += local.length;
+  }
+
+  const centralDirectorySize = centralRecords.reduce((total, record) => total + record.length, 0);
+  const eocd = new Uint8Array(22);
+  const eocdView = new DataView(eocd.buffer);
+  writeUint32(eocdView, 0, 0x06054b50);
+  writeUint16(eocdView, 8, filePaths.length);
+  writeUint16(eocdView, 10, filePaths.length);
+  writeUint32(eocdView, 12, centralDirectorySize);
+  writeUint32(eocdView, 16, offset);
+
+  const parts = [...localRecords, ...centralRecords, eocd].map((record) => (
+    record.buffer.slice(record.byteOffset, record.byteOffset + record.byteLength) as ArrayBuffer
+  ));
+  return new File(parts, 'skill.zip', { type: 'application/zip' });
+}
+
 function renderRoute(initialEntry: string) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -102,6 +159,10 @@ beforeEach(() => {
   }));
 });
 
+afterEach(() => {
+  cleanup();
+});
+
 describe('router', () => {
   it('routes review through the approval dashboard queue', async () => {
     renderRoute('/review');
@@ -131,6 +192,37 @@ describe('router', () => {
     renderRoute('/publish');
 
     expect(screen.getByRole('heading', { name: /publish a skill/i })).toBeInTheDocument();
+  });
+
+  it('rejects archive uploads that omit manifest.yaml from the root directory', async () => {
+    renderRoute('/publish');
+
+    fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'asr' } });
+    fireEvent.change(screen.getByLabelText(/skill.md/i), {
+      target: {
+        value: `---
+name: valid-skill
+version: 1.0.0
+author: Platform Team
+description: Valid skill.
+---
+
+Use this skill when testing upload validation.`,
+      },
+    });
+    fireEvent.change(screen.getByLabelText(/skill archive/i), {
+      target: {
+        files: [createZipFile(['valid-skill/SKILL.md', 'valid-skill/README.txt'])],
+      },
+    });
+
+    expect(await screen.findByText(/archive must include manifest.yaml/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: /review manifest/i })).not.toBeInTheDocument();
+    });
   });
 
   it('renders a graceful inline 404 for unknown skill routes', () => {

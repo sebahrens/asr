@@ -95,9 +95,17 @@ const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const ZIP_LOCAL_FILE_HEADER = 0x04034b50;
 const ZIP_EMPTY_ARCHIVE_HEADER = 0x06054b50;
 const ZIP_SPANNED_ARCHIVE_HEADER = 0x08074b50;
+const ZIP_CENTRAL_DIRECTORY_HEADER = 0x02014b50;
 const ZIP_EOCD_HEADER = 0x06054b50;
 const ZIP_EOCD_MIN_BYTES = 22;
 const ZIP_EOCD_MAX_COMMENT_BYTES = 0xffff;
+const ZIP_EOCD_ENTRY_COUNT_OFFSET = 10;
+const ZIP_EOCD_DIRECTORY_SIZE_OFFSET = 12;
+const ZIP_EOCD_DIRECTORY_OFFSET = 16;
+const ZIP_CENTRAL_DIRECTORY_FIXED_BYTES = 46;
+const ZIP_CENTRAL_DIRECTORY_NAME_LENGTH_OFFSET = 28;
+const ZIP_CENTRAL_DIRECTORY_EXTRA_LENGTH_OFFSET = 30;
+const ZIP_CENTRAL_DIRECTORY_COMMENT_LENGTH_OFFSET = 32;
 
 interface RegistrySkillsResponse {
   items?: SkillSummary[];
@@ -457,21 +465,102 @@ async function validateZipArchive(file: File | null): Promise<string | undefined
     return 'Archive file is not a valid zip archive.';
   }
 
-  const header = new DataView(await file.slice(0, 4).arrayBuffer()).getUint32(0, true);
+  const header = new DataView(await readBlobSlice(file, 0, 4)).getUint32(0, true);
   if (![ZIP_LOCAL_FILE_HEADER, ZIP_EMPTY_ARCHIVE_HEADER, ZIP_SPANNED_ARCHIVE_HEADER].includes(header)) {
     return 'Archive file is not a valid zip archive.';
   }
 
   const tailLength = Math.min(file.size, ZIP_EOCD_MIN_BYTES + ZIP_EOCD_MAX_COMMENT_BYTES);
   const tailOffset = file.size - tailLength;
-  const tail = new DataView(await file.slice(tailOffset).arrayBuffer());
+  const tail = new DataView(await readBlobSlice(file, tailOffset));
   for (let offset = tail.byteLength - ZIP_EOCD_MIN_BYTES; offset >= 0; offset -= 1) {
     if (tail.getUint32(offset, true) === ZIP_EOCD_HEADER) {
-      return undefined;
+      const entryCount = tail.getUint16(offset + ZIP_EOCD_ENTRY_COUNT_OFFSET, true);
+      const directorySize = tail.getUint32(offset + ZIP_EOCD_DIRECTORY_SIZE_OFFSET, true);
+      const directoryOffset = tail.getUint32(offset + ZIP_EOCD_DIRECTORY_OFFSET, true);
+
+      if (entryCount === 0 || directorySize === 0 || directoryOffset + directorySize > file.size) {
+        return 'Archive file is not a valid zip archive.';
+      }
+
+      return validateZipPackageEntries(
+        await readBlobSlice(file, directoryOffset, directoryOffset + directorySize),
+        entryCount,
+      );
     }
   }
 
   return 'Archive file is not a valid zip archive.';
+}
+
+async function readBlobSlice(file: File, start: number, end?: number): Promise<ArrayBuffer> {
+  const blob = file.slice(start, end);
+  if (typeof blob.arrayBuffer === 'function') {
+    return blob.arrayBuffer();
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      if (reader.result instanceof ArrayBuffer) {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Unable to read archive bytes.'));
+      }
+    });
+    reader.addEventListener('error', () => reject(reader.error ?? new Error('Unable to read archive bytes.')));
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
+function validateZipPackageEntries(directoryBuffer: ArrayBuffer, entryCount: number): string | undefined {
+  const directory = new DataView(directoryBuffer);
+  const decoder = new TextDecoder();
+  const entries: string[] = [];
+  let offset = 0;
+
+  for (let index = 0; index < entryCount; index += 1) {
+    if (offset + ZIP_CENTRAL_DIRECTORY_FIXED_BYTES > directory.byteLength) {
+      return 'Archive file is not a valid zip archive.';
+    }
+
+    if (directory.getUint32(offset, true) !== ZIP_CENTRAL_DIRECTORY_HEADER) {
+      return 'Archive file is not a valid zip archive.';
+    }
+
+    const nameLength = directory.getUint16(offset + ZIP_CENTRAL_DIRECTORY_NAME_LENGTH_OFFSET, true);
+    const extraLength = directory.getUint16(offset + ZIP_CENTRAL_DIRECTORY_EXTRA_LENGTH_OFFSET, true);
+    const commentLength = directory.getUint16(offset + ZIP_CENTRAL_DIRECTORY_COMMENT_LENGTH_OFFSET, true);
+    const nameStart = offset + ZIP_CENTRAL_DIRECTORY_FIXED_BYTES;
+    const nameEnd = nameStart + nameLength;
+
+    if (nameEnd > directory.byteLength) {
+      return 'Archive file is not a valid zip archive.';
+    }
+
+    entries.push(decoder.decode(new Uint8Array(directoryBuffer, nameStart, nameLength)));
+    offset = nameEnd + extraLength + commentLength;
+  }
+
+  const paths = entries
+    .map((entry) => entry.replace(/\\/g, '/').replace(/^\/+/, ''))
+    .filter((entry) => entry && !entry.endsWith('/'));
+  const rootNames = new Set(paths.map((entry) => entry.split('/')[0]).filter(Boolean));
+
+  if (paths.length === 0 || rootNames.size !== 1 || paths.some((entry) => entry.split('/').length < 2)) {
+    return 'Archive must contain a single root directory.';
+  }
+
+  const [rootName] = [...rootNames];
+  if (!paths.includes(`${rootName}/manifest.yaml`)) {
+    return 'Archive must include manifest.yaml in the root directory.';
+  }
+
+  if (!paths.includes(`${rootName}/SKILL.md`)) {
+    return 'Archive must include SKILL.md in the root directory.';
+  }
+
+  return undefined;
 }
 
 function getParsedSkillMd(content: string): ParsedSkillMd | null {
