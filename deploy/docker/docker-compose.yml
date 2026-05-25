@@ -55,6 +55,8 @@ services:
       - asr-web-node-modules:/workspace/packages/web/node_modules
     environment:
       - VITE_API_URL=http://localhost:3001
+      - VITE_AUTH_MODE=mock
+      - VITE_MOCK_AUTH_ROLE=Admin
     depends_on:
       - api
     restart: unless-stopped
