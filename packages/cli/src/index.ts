@@ -9,6 +9,7 @@ import {
   generateAgentsMd,
   parseSkillMd,
 } from '@asr/core';
+import { registerLogout, registerWhoami } from './commands/auth.js';
 import { getConfig, setConfig, getTargetDir } from './config.js';
 import { recordInstall, removeFromLock, getAllInstalled } from './lockfile.js';
 
@@ -93,6 +94,9 @@ program
   .name('asr')
   .description('Agent Skills Kit - install & manage AI agent skills')
   .version('0.1.0');
+
+registerWhoami(program);
+registerLogout(program);
 
 program
   .command('browse')
