@@ -1038,12 +1038,37 @@ main {
 }
 
 .queue-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   background: #ffe9e9;
   border-bottom: 1px solid #f4b4b4;
   color: #8f1f16;
   font-size: 0.86rem;
   font-weight: 600;
   padding: 12px 22px;
+}
+
+.queue-error-retry {
+  background: #ffffff;
+  border: 1px solid #d68680;
+  border-radius: 6px;
+  color: #8f1f16;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 7px 10px;
+}
+
+.queue-error-retry:hover {
+  background: #fff7f7;
+}
+
+.queue-error-retry:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
 }
 
 .submission-list {

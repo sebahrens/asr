@@ -274,7 +274,7 @@ function formatSubmittedAt(value: string): string {
 }
 
 function ReviewDashboard() {
-  const [submissions, setSubmissions] = useState<ReviewSubmission[]>(mockReviewQueue);
+  const [submissions, setSubmissions] = useState<ReviewSubmission[]>(() => (API_URL ? [] : mockReviewQueue));
   const [loading, setLoading] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [decisionPending, setDecisionPending] = useState<Record<string, Decision>>({});
@@ -305,6 +305,7 @@ function ReviewDashboard() {
       const items = Array.isArray(data.submissions) ? data.submissions : [];
       setSubmissions(items);
     } catch {
+      setSubmissions([]);
       setQueueError('Unable to load pending submissions from the API.');
     } finally {
       setLoading(false);
@@ -374,9 +375,11 @@ function ReviewDashboard() {
   const pendingCount = reviewableSubmissions.length;
   const findingCount = reviewableSubmissions.reduce((total, submission) => total + submission.findings, 0);
   const pendingSubmissionCopy =
-    pendingCount === 1
-      ? '1 submission needs compliance review'
-      : `${pendingCount} submissions need compliance review`;
+    queueError
+      ? 'Pending submissions could not be loaded'
+      : pendingCount === 1
+        ? '1 submission needs compliance review'
+        : `${pendingCount} submissions need compliance review`;
   const confirmationSubmitDisabled =
     pendingConfirmation?.decision === 'rejected' && decisionReason.trim().length === 0;
   const confirmationPending = pendingConfirmation
@@ -431,10 +434,17 @@ function ReviewDashboard() {
               </button>
             </div>
 
-            {queueError ? <div className="queue-error" role="status">{queueError}</div> : null}
+            {queueError ? (
+              <div className="queue-error" role="alert">
+                <span>{queueError}</span>
+                <button className="queue-error-retry" type="button" onClick={fetchQueue} disabled={loading}>
+                  Retry
+                </button>
+              </div>
+            ) : null}
 
             <div className="submission-list">
-              {reviewableSubmissions.length === 0 && !loading ? (
+              {reviewableSubmissions.length === 0 && !loading && !queueError ? (
                 <div className="empty-review-queue" role="status">No pending submissions need compliance review.</div>
               ) : null}
 
