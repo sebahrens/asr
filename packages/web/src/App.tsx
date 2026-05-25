@@ -108,6 +108,7 @@ type PublishWizardStep = 'upload' | 'manifest' | 'questionnaire' | 'review';
 type SkillDetailTab = 'preview' | 'versions' | 'permissions' | 'audit';
 type ReviewDetailTab = 'diff' | 'dependencies' | 'permissions' | 'scan' | 'audit';
 type MockRole = 'Viewer' | 'Submitter' | 'Compliance' | 'Admin';
+type RegistryConnectionStatus = 'checking' | 'connected' | 'unavailable';
 
 interface Session {
   sub: string;
@@ -2141,11 +2142,16 @@ function PublishSkill() {
 function BrowseRegistry() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
+  const [registryStatus, setRegistryStatus] = useState<RegistryConnectionStatus>('checking');
   const [registryError, setRegistryError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const latestFetchId = useRef(0);
 
   const fetchSkills = useCallback(async (query: string) => {
+    const fetchId = latestFetchId.current + 1;
+    latestFetchId.current = fetchId;
     setLoading(true);
+    setRegistryStatus('checking');
     setRegistryError(null);
     try {
       const params = new URLSearchParams();
@@ -2156,12 +2162,22 @@ function BrowseRegistry() {
       }
 
       const data = (await res.json()) as RegistrySkillsResponse;
+      if (fetchId !== latestFetchId.current) {
+        return;
+      }
       setSkills(Array.isArray(data.items) ? data.items.map(mapSkillSummary) : []);
+      setRegistryStatus('connected');
     } catch {
+      if (fetchId !== latestFetchId.current) {
+        return;
+      }
       setSkills([]);
+      setRegistryStatus('unavailable');
       setRegistryError('Registry API is unreachable. Check the API service and retry.');
     } finally {
-      setLoading(false);
+      if (fetchId === latestFetchId.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -2227,9 +2243,15 @@ function BrowseRegistry() {
             </div>
           </div>
 
-          <div className={`source-indicator${registryError ? ' source-indicator-error' : ''}`}>
+          <div className={`source-indicator source-indicator-${registryStatus}`}>
             <span className="dot" />
-            <span>{registryError ? 'Registry unavailable' : 'Connected to Registry'}</span>
+            <span>
+              {registryStatus === 'connected'
+                ? 'Connected to Registry'
+                : registryStatus === 'unavailable'
+                  ? 'Registry unavailable'
+                  : 'Checking Registry'}
+            </span>
           </div>
 
           {loading ? (

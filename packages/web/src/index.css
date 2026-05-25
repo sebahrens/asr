@@ -572,11 +572,23 @@ main {
   animation: pulse 2s infinite;
 }
 
-.source-indicator-error {
+.source-indicator-checking {
+  color: var(--text-secondary);
+}
+
+.source-indicator-connected {
+  color: var(--text-muted);
+}
+
+.source-indicator-checking .dot {
+  background: var(--text-muted);
+}
+
+.source-indicator-unavailable {
   color: #a13c00;
 }
 
-.source-indicator-error .dot {
+.source-indicator-unavailable .dot {
   background: var(--accent);
 }
 
