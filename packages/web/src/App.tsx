@@ -350,9 +350,11 @@ function MockAuthBanner() {
     <div
       className="mock-auth-banner"
       role="status"
-      aria-label={`Development mock auth session: ${session.role}`}
+      aria-label={`Development mock auth session for ${session.sub} with ${session.role} role`}
     >
-      Mock auth: {session.role}
+      <span className="mock-auth-label">Dev mock auth</span>
+      <span className="mock-auth-identity">{session.sub}</span>
+      <span className="mock-auth-role">{session.role}</span>
     </div>
   );
 }

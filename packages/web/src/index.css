@@ -1170,14 +1170,40 @@ main {
 }
 
 .mock-auth-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   background: #fff4cc;
   border: 1px solid #e0bd4a;
   color: #5f4700;
   border-radius: 6px;
-  padding: 7px 10px;
+  flex-shrink: 0;
   font-size: 0.75rem;
   font-weight: 700;
+  line-height: 1.2;
+  max-width: 100%;
+  padding: 7px 10px;
   white-space: nowrap;
+}
+
+.mock-auth-label {
+  text-transform: uppercase;
+}
+
+.mock-auth-identity {
+  color: #6f5500;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mock-auth-role {
+  background: #ffffff;
+  border: 1px solid #e8d88d;
+  border-radius: 999px;
+  color: #4f3a00;
+  padding: 2px 6px;
 }
 
 .review-main {
@@ -1902,6 +1928,11 @@ main {
     margin-right: 0;
     width: 100%;
     justify-content: center;
+  }
+
+  .mock-auth-banner {
+    justify-content: center;
+    width: 100%;
   }
 
   .review-summary,
