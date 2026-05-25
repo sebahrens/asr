@@ -34,6 +34,7 @@ services:
     environment:
       - NODE_ENV=development
       - AUTH_MODE=mock
+      - MOCK_USER_SUB=dev-user
       - PORT=3001
     depends_on:
       - forgejo
@@ -57,6 +58,7 @@ services:
       - VITE_API_URL=http://localhost:3001
       - VITE_AUTH_MODE=mock
       - VITE_MOCK_AUTH_ROLE=Admin
+      - VITE_MOCK_USER_SUB=dev-user
     depends_on:
       - api
     restart: unless-stopped

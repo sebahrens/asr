@@ -46,6 +46,8 @@ interface ReviewSubmission {
   owner: string;
   version: string;
   submitter: string;
+  submittedBy?: string;
+  submitterSub?: string;
   submittedAt: string;
   status: 'pending review' | 'scanning' | 'awaiting confirmation' | 'approved' | 'rejected';
   risk: 'low' | 'medium' | 'high';
@@ -90,6 +92,7 @@ type ReviewDetailTab = 'diff' | 'dependencies' | 'permissions' | 'scan' | 'audit
 type MockRole = 'Viewer' | 'Submitter' | 'Compliance' | 'Admin';
 
 interface Session {
+  sub: string;
   role: MockRole;
   canSubmit: boolean;
   canReview: boolean;
@@ -154,6 +157,7 @@ function getMockRole(): MockRole {
 
 function createSession(role: MockRole): Session {
   return {
+    sub: import.meta.env.VITE_MOCK_USER_SUB || 'dev-user',
     role,
     canSubmit: submitRoles.has(role),
     canReview: reviewRoles.has(role),
@@ -260,6 +264,30 @@ function getDecisionRequest(
   }
 
   return { endpoint: 'reject', body: { reason: reason.trim() } };
+}
+
+async function assertDecisionResponse(res: Response): Promise<void> {
+  if (res.ok) {
+    return;
+  }
+
+  let errorCode = '';
+  try {
+    const body = await res.json() as { error?: unknown };
+    errorCode = typeof body.error === 'string' ? body.error : '';
+  } catch {
+    errorCode = '';
+  }
+
+  throw new Error(errorCode || `Decision request failed with ${res.status}`);
+}
+
+function getSubmissionSubmitterSub(submission: ReviewSubmission): string {
+  return submission.submitterSub ?? submission.submittedBy ?? submission.submitter;
+}
+
+function isOwnSubmission(submission: ReviewSubmission, session: Session): boolean {
+  return getSubmissionSubmitterSub(submission) === session.sub;
 }
 
 function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
@@ -776,6 +804,7 @@ function formatSubmittedAt(value: string): string {
 }
 
 function ReviewDashboard() {
+  const session = useSession();
   const [submissions, setSubmissions] = useState<ReviewSubmission[]>(() => (API_URL ? [] : mockReviewQueue));
   const [loading, setLoading] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
@@ -821,6 +850,14 @@ function ReviewDashboard() {
   }, [fetchQueue]);
 
   function requestDecisionConfirmation(submission: ReviewSubmission, decision: Decision) {
+    if (isOwnSubmission(submission, session)) {
+      setDecisionError((current) => ({
+        ...current,
+        [submission.id]: 'Separation of duties: submitters cannot approve or reject their own submissions.',
+      }));
+      return;
+    }
+
     setDecisionSuccess(null);
     setDecisionError((current) => {
       const next = { ...current };
@@ -837,6 +874,16 @@ function ReviewDashboard() {
   }
 
   async function decideSubmission(id: string, decision: Decision, reason: string) {
+    const targetSubmission = submissions.find((submission) => submission.id === id);
+    if (targetSubmission && isOwnSubmission(targetSubmission, session)) {
+      setDecisionError((current) => ({
+        ...current,
+        [id]: 'Separation of duties: submitters cannot approve or reject their own submissions.',
+      }));
+      closeDecisionConfirmation();
+      return;
+    }
+
     setDecisionPending((current) => ({ ...current, [id]: decision }));
     setDecisionError((current) => {
       const next = { ...current };
@@ -853,9 +900,7 @@ function ReviewDashboard() {
           body: JSON.stringify(body),
         });
 
-        if (!res.ok) {
-          throw new Error(`Decision request failed with ${res.status}`);
-        }
+        await assertDecisionResponse(res);
       }
 
       setSubmissions((current) =>
@@ -865,10 +910,12 @@ function ReviewDashboard() {
         `${decision === 'approved' ? 'Approved' : 'Rejected'} ${pendingConfirmation?.submission.skillName ?? 'submission'}.`,
       );
       closeDecisionConfirmation();
-    } catch {
+    } catch (error) {
       setDecisionError((current) => ({
         ...current,
-        [id]: 'Decision could not be recorded. Try again after the API is available.',
+        [id]: error instanceof Error && error.message.includes('separation_of_duties_violation')
+          ? 'Separation of duties: submitters cannot approve or reject their own submissions.'
+          : 'Decision could not be recorded. Try again after the API is available.',
       }));
     } finally {
       setDecisionPending((current) => {
@@ -963,7 +1010,8 @@ function ReviewDashboard() {
               {reviewableSubmissions.map((submission) => {
                 const pendingDecision = decisionPending[submission.id];
                 const isReviewable = submission.status === 'pending review';
-                const disableActions = Boolean(pendingDecision);
+                const ownSubmission = isOwnSubmission(submission, session);
+                const disableActions = Boolean(pendingDecision) || ownSubmission;
 
                 return (
                   <article className="submission-row" key={submission.id}>
@@ -982,6 +1030,11 @@ function ReviewDashboard() {
                       </div>
                       {decisionError[submission.id] ? (
                         <p className="decision-error" role="status">{decisionError[submission.id]}</p>
+                      ) : null}
+                      {ownSubmission ? (
+                        <p className="decision-help">
+                          Separation of duties blocks decisions on your own submission.
+                        </p>
                       ) : null}
                     </div>
                     <div className="decision-actions" aria-label={`Decision actions for ${submission.skillName}`}>
@@ -1126,6 +1179,7 @@ function ReviewDashboard() {
 }
 
 function ReviewDetailPage({ submissionId }: { submissionId: string }) {
+  const session = useSession();
   const mockSubmission = mockReviewQueue.find((item) => item.id === submissionId) ?? null;
   const [submission, setSubmission] = useState<ReviewSubmission | null>(mockSubmission);
   const [detail, setDetail] = useState<ReviewSubmissionDetail | null>(() =>
@@ -1221,12 +1275,18 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
     );
   }
 
-  const canDecide = submission.status === 'pending review';
+  const ownSubmission = isOwnSubmission(submission, session);
+  const canDecide = submission.status === 'pending review' && !ownSubmission;
   const rejectDisabled = decisionReason.trim().length === 0;
   const confirmationSubmitDisabled = pendingConfirmation === 'rejected' && rejectDisabled;
   const confirmationPending = pendingConfirmation ? decisionPending === pendingConfirmation : false;
 
   function requestDecisionConfirmation(nextDecision: Decision) {
+    if (ownSubmission) {
+      setDecisionError('Separation of duties: submitters cannot approve or reject their own submissions.');
+      return;
+    }
+
     setDecisionError(null);
     setDecisionSuccess(null);
     setPendingConfirmation(nextDecision);
@@ -1244,6 +1304,12 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
       return;
     }
 
+    if (isOwnSubmission(currentSubmission, session)) {
+      setDecisionError('Separation of duties: submitters cannot approve or reject their own submissions.');
+      setPendingConfirmation(null);
+      return;
+    }
+
     setDecisionPending(nextDecision);
     setDecisionError(null);
     setDecisionSuccess(null);
@@ -1257,9 +1323,7 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
           body: JSON.stringify(body),
         });
 
-        if (!res.ok) {
-          throw new Error(`Decision request failed with ${res.status}`);
-        }
+        await assertDecisionResponse(res);
       }
 
       setDecision(nextDecision);
@@ -1268,8 +1332,12 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
       );
       setDecisionSuccess(`${nextDecision === 'approved' ? 'Approved' : 'Rejected'} ${currentSubmission.skillName}.`);
       setPendingConfirmation(null);
-    } catch {
-      setDecisionError('Decision could not be recorded. Try again after the API is available.');
+    } catch (error) {
+      setDecisionError(
+        error instanceof Error && error.message.includes('separation_of_duties_violation')
+          ? 'Separation of duties: submitters cannot approve or reject their own submissions.'
+          : 'Decision could not be recorded. Try again after the API is available.',
+      );
     } finally {
       setDecisionPending(null);
     }
@@ -1414,6 +1482,11 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
             </label>
             {canDecide && !decision && rejectDisabled ? (
               <p className="decision-help">A rejection reason is required before rejecting.</p>
+            ) : null}
+            {ownSubmission ? (
+              <p className="decision-help">
+                Separation of duties blocks decisions on your own submission.
+              </p>
             ) : null}
             {decisionSuccess ? (
               <p className="decision-success" role="status">{decisionSuccess}</p>

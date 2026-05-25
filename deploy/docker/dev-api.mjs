@@ -1,6 +1,7 @@
 import http from 'node:http';
 
 const port = Number.parseInt(process.env.PORT ?? '3001', 10);
+const mockUserSub = process.env.MOCK_USER_SUB ?? 'dev-user';
 
 const skills = [
   {
@@ -34,6 +35,7 @@ const seededSubmissions = [
     owner: 'platform',
     version: '1.4.0',
     submitter: 'maria.chen',
+    submittedBy: 'maria.chen',
     submittedAt: '2026-05-24T08:35:00Z',
     status: 'pending review',
     risk: 'high',
@@ -45,6 +47,7 @@ const seededSubmissions = [
     owner: 'docs',
     version: '0.8.2',
     submitter: 'eli.warner',
+    submittedBy: 'eli.warner',
     submittedAt: '2026-05-23T17:10:00Z',
     status: 'pending review',
     risk: 'medium',
@@ -56,6 +59,7 @@ const seededSubmissions = [
     owner: 'qa',
     version: '2.1.1',
     submitter: 'nora.patel',
+    submittedBy: 'nora.patel',
     submittedAt: '2026-05-23T11:42:00Z',
     status: 'awaiting confirmation',
     risk: 'low',
@@ -151,6 +155,7 @@ function createSubmission(fields) {
     owner,
     version,
     submitter: 'dev-user',
+    submittedBy: mockUserSub,
     submittedAt: now,
     status: 'pending review',
     risk: 'low',
@@ -361,6 +366,14 @@ const server = http.createServer((req, res) => {
       json(res, 409, {
         error: 'submission_not_reviewable',
         message: `Submission ${id} is ${submission.status}.`,
+      });
+      return;
+    }
+
+    if (submission.submittedBy === mockUserSub) {
+      json(res, 403, {
+        error: 'separation_of_duties_violation',
+        message: 'Submitters cannot approve or reject their own submissions.',
       });
       return;
     }
