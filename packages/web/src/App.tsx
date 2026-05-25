@@ -457,6 +457,7 @@ function ReviewDashboard() {
   const [queueError, setQueueError] = useState<string | null>(null);
   const [decisionPending, setDecisionPending] = useState<Record<string, Decision>>({});
   const [decisionError, setDecisionError] = useState<Record<string, string>>({});
+  const [decisionSuccess, setDecisionSuccess] = useState<string | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<{
     submission: ReviewSubmission;
     decision: Decision;
@@ -464,6 +465,7 @@ function ReviewDashboard() {
   const [decisionReason, setDecisionReason] = useState('');
 
   const fetchQueue = useCallback(async () => {
+    setDecisionSuccess(null);
     if (!API_URL) {
       setQueueError(null);
       setSubmissions(mockReviewQueue);
@@ -495,6 +497,7 @@ function ReviewDashboard() {
   }, [fetchQueue]);
 
   function requestDecisionConfirmation(submission: ReviewSubmission, decision: Decision) {
+    setDecisionSuccess(null);
     setDecisionError((current) => {
       const next = { ...current };
       delete next[submission.id];
@@ -534,6 +537,9 @@ function ReviewDashboard() {
       setSubmissions((current) =>
         current.map((submission) => (submission.id === id ? { ...submission, status: decision } : submission)),
       );
+      setDecisionSuccess(
+        `${decision === 'approved' ? 'Approved' : 'Rejected'} ${pendingConfirmation?.submission.skillName ?? 'submission'}.`,
+      );
       closeDecisionConfirmation();
     } catch {
       setDecisionError((current) => ({
@@ -563,6 +569,7 @@ function ReviewDashboard() {
   const confirmationPending = pendingConfirmation
     ? decisionPending[pendingConfirmation.submission.id] === pendingConfirmation.decision
     : false;
+  const confirmationError = pendingConfirmation ? decisionError[pendingConfirmation.submission.id] : null;
 
   return (
     <>
@@ -619,6 +626,9 @@ function ReviewDashboard() {
                   Retry
                 </button>
               </div>
+            ) : null}
+            {decisionSuccess ? (
+              <div className="decision-success" role="status">{decisionSuccess}</div>
             ) : null}
 
             <div className="submission-list">
@@ -749,6 +759,9 @@ function ReviewDashboard() {
 
             {pendingConfirmation.decision === 'rejected' && confirmationSubmitDisabled ? (
               <p className="decision-help">A rejection reason is required before submitting.</p>
+            ) : null}
+            {confirmationError ? (
+              <p className="decision-error decision-modal-error" role="alert">{confirmationError}</p>
             ) : null}
 
             <div className="decision-modal-actions">
