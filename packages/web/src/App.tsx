@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import type { FormEvent } from 'react';
+import { createContext, useState, useEffect, useCallback, useContext } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { parseSkillMd, type SkillDetail, type SkillSummary } from '@asr/core';
@@ -45,6 +45,12 @@ type PublishStatus = 'idle' | 'submitting' | 'submitted';
 type PublishWizardStep = 'upload' | 'manifest' | 'questionnaire' | 'review';
 type SkillDetailTab = 'preview' | 'versions' | 'permissions' | 'audit';
 type ReviewDetailTab = 'diff' | 'dependencies' | 'permissions' | 'scan' | 'audit';
+type MockRole = 'Viewer' | 'Submitter' | 'Compliance' | 'Admin';
+
+interface Session {
+  role: MockRole;
+  canReview: boolean;
+}
 
 interface PublishFormErrors {
   skillArchive?: string;
@@ -88,6 +94,40 @@ const emptyQuestionnaireDraft: QuestionnaireDraft = {
   filesystemAccess: '',
   reviewNotes: '',
 };
+
+const reviewRoles = new Set<MockRole>(['Compliance', 'Admin']);
+const mockRoles: MockRole[] = ['Viewer', 'Submitter', 'Compliance', 'Admin'];
+const SessionContext = createContext<Session | null>(null);
+
+function getMockRole(): MockRole {
+  const configuredRole = import.meta.env.VITE_MOCK_AUTH_ROLE;
+  if (mockRoles.includes(configuredRole as MockRole)) {
+    return configuredRole as MockRole;
+  }
+
+  return 'Viewer';
+}
+
+function createSession(role: MockRole): Session {
+  return {
+    role,
+    canReview: reviewRoles.has(role),
+  };
+}
+
+function SessionProvider({ children }: { children: ReactNode }) {
+  const [session] = useState(() => createSession(getMockRole()));
+  return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
+}
+
+function useSession(): Session {
+  const session = useContext(SessionContext);
+  if (!session) {
+    throw new Error('useSession must be used inside SessionProvider');
+  }
+
+  return session;
+}
 
 function mapSkillSummary(skill: SkillSummary): Skill {
   return {
@@ -170,17 +210,22 @@ function getDecisionRequest(
 }
 
 function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
+  const session = useSession();
+
   return (
     <nav className="primary-nav" aria-label="Primary navigation">
       <a href="/" aria-current={current === 'browse' ? 'page' : undefined}>Browse</a>
       <a href="/publish" aria-current={current === 'publish' ? 'page' : undefined}>Publish</a>
-      <a href="/review" aria-current={current === 'review' ? 'page' : undefined}>Review</a>
+      {session.canReview ? (
+        <a href="/review" aria-current={current === 'review' ? 'page' : undefined}>Review</a>
+      ) : null}
     </nav>
   );
 }
 
-function MockAuthBanner({ role }: { role: string }) {
-  return <div className="mock-auth-banner">Mock auth: {role}</div>;
+function MockAuthBanner() {
+  const session = useSession();
+  return <div className="mock-auth-banner">Mock auth: {session.role}</div>;
 }
 
 function parsePublishSkillMd(content: string): ParsedSkillMd {
@@ -528,7 +573,7 @@ function ReviewDashboard() {
             <img src="/logo.svg" alt="asr" />
           </a>
           <PrimaryNav current="review" />
-          <MockAuthBanner role="Compliance" />
+          <MockAuthBanner />
         </div>
       </header>
 
@@ -775,7 +820,7 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
             <img src="/logo.svg" alt="asr" />
           </a>
           <PrimaryNav current="review" />
-          <MockAuthBanner role="Compliance" />
+          <MockAuthBanner />
         </div>
       </header>
 
@@ -1092,7 +1137,7 @@ function PublishSkill() {
             <img src="/logo.svg" alt="asr" />
           </a>
           <PrimaryNav current="publish" />
-          <MockAuthBanner role="Submitter" />
+          <MockAuthBanner />
         </div>
       </header>
 
@@ -1479,7 +1524,7 @@ function BrowseRegistry() {
           </div>
 
           <PrimaryNav current="browse" />
-          <MockAuthBanner role="Viewer" />
+          <MockAuthBanner />
 
           <div className="search-wrapper">
             <div className="search-box">
@@ -1634,7 +1679,7 @@ function SkillNotFoundState({
             <img src="/logo.svg" alt="asr" />
           </a>
           <PrimaryNav current="browse" />
-          <MockAuthBanner role="Viewer" />
+          <MockAuthBanner />
         </div>
       </header>
 
@@ -1653,6 +1698,43 @@ function SkillNotFoundState({
       </main>
     </>
   );
+}
+
+function AccessDeniedState() {
+  return (
+    <>
+      <div className="brand-stripe" />
+      <header>
+        <div className="container app-topbar">
+          <a className="logo" href="/" aria-label="asr home">
+            <img src="/logo.svg" alt="asr" />
+          </a>
+          <PrimaryNav current="review" />
+          <MockAuthBanner />
+        </div>
+      </header>
+
+      <main className="not-found-main">
+        <section className="not-found-state" aria-labelledby="access-denied-title">
+          <p className="eyebrow">Access denied</p>
+          <h1 id="access-denied-title">Compliance role required</h1>
+          <p>Approval review is available only to Compliance and Admin sessions.</p>
+          <div className="not-found-actions">
+            <a className="primary-link" href="/">Browse skills</a>
+          </div>
+        </section>
+      </main>
+    </>
+  );
+}
+
+function RequireReviewRole({ children }: { children: ReactNode }) {
+  const session = useSession();
+  if (!session.canReview) {
+    return <AccessDeniedState />;
+  }
+
+  return <>{children}</>;
 }
 
 function NotFoundState() {
@@ -1708,7 +1790,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
               <img src="/logo.svg" alt="asr" />
             </a>
             <PrimaryNav current="browse" />
-            <MockAuthBanner role="Viewer" />
+            <MockAuthBanner />
           </div>
         </header>
         <main>
@@ -1760,7 +1842,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
             <img src="/logo.svg" alt="asr" />
           </a>
           <PrimaryNav current="browse" />
-          <MockAuthBanner role="Viewer" />
+          <MockAuthBanner />
         </div>
       </header>
 
@@ -1862,7 +1944,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
   );
 }
 
-export default function App() {
+function AppRoutes() {
   const { pathname } = window.location;
   const routeParts = pathname.split('/').filter(Boolean).map(decodeRoutePart);
 
@@ -1883,11 +1965,19 @@ export default function App() {
   }
 
   if (pathname === '/review') {
-    return <ReviewDashboard />;
+    return (
+      <RequireReviewRole>
+        <ReviewDashboard />
+      </RequireReviewRole>
+    );
   }
 
   if (routeParts[0] === 'review' && routeParts.length === 2) {
-    return <ReviewDetailPage submissionId={routeParts[1]} />;
+    return (
+      <RequireReviewRole>
+        <ReviewDetailPage submissionId={routeParts[1]} />
+      </RequireReviewRole>
+    );
   }
 
   if (pathname === '/publish' || pathname === '/submit') {
@@ -1895,4 +1985,12 @@ export default function App() {
   }
 
   return <NotFoundState />;
+}
+
+export default function App() {
+  return (
+    <SessionProvider>
+      <AppRoutes />
+    </SessionProvider>
+  );
 }
