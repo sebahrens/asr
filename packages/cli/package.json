@@ -10,7 +10,9 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
-    "dev": "tsup src/index.ts --format esm --watch"
+    "dev": "tsup src/index.ts --format esm --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@asr/core": "workspace:*",
@@ -22,6 +24,7 @@
   "devDependencies": {
     "tsup": "^8.3.0",
     "typescript": "^5.7.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "vitest": "^4.0.18"
   }
 }
