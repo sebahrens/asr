@@ -1379,38 +1379,27 @@ function PublishSkill() {
                   <h2 id="publish-manifest-title">Review manifest</h2>
                 </div>
                 <div className="manifest-grid">
-                  <label className="field" htmlFor="publish-manifest-name">
+                  <div className="field manifest-review-field">
                     <span>Name</span>
-                    <input id="publish-manifest-name" type="text" value={manifestDraft.name} readOnly />
-                  </label>
-                  <label className="field" htmlFor="publish-manifest-version">
+                    <strong>{manifestDraft.name || 'Missing'}</strong>
+                  </div>
+                  <div className="field manifest-review-field">
                     <span>Version</span>
-                    <input id="publish-manifest-version" type="text" value={manifestDraft.version} readOnly />
-                  </label>
-                  <label className="field" htmlFor="publish-manifest-author">
+                    <strong>{manifestDraft.version || 'Missing'}</strong>
+                  </div>
+                  <div className="field manifest-review-field">
                     <span>Author</span>
-                    <input id="publish-manifest-author" type="text" value={manifestDraft.author} readOnly />
-                  </label>
-                  <label className="field" htmlFor="publish-manifest-tags">
+                    <strong>{manifestDraft.author || 'Missing'}</strong>
+                  </div>
+                  <div className="field manifest-review-field">
                     <span>Tags</span>
-                    <input
-                      id="publish-manifest-tags"
-                      type="text"
-                      value={manifestDraft.tags}
-                      onChange={(event) => setManifestDraft((current) => ({ ...current, tags: event.target.value }))}
-                      placeholder="security, review"
-                    />
-                  </label>
+                    <strong>{manifestTags.length > 0 ? manifestTags.join(', ') : 'None'}</strong>
+                  </div>
                 </div>
-                <label className="field" htmlFor="publish-manifest-description">
+                <div className="field manifest-review-field manifest-review-description">
                   <span>Description</span>
-                  <textarea
-                    id="publish-manifest-description"
-                    value={manifestDraft.description}
-                    onChange={(event) => setManifestDraft((current) => ({ ...current, description: event.target.value }))}
-                    rows={5}
-                  />
-                </label>
+                  <p>{manifestDraft.description || 'Missing'}</p>
+                </div>
                 <dl className="derived-manifest">
                   <div>
                     <dt>Kind</dt>

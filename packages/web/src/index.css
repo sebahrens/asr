@@ -919,6 +919,31 @@ main {
   color: var(--text-secondary);
 }
 
+.manifest-review-field {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.manifest-review-field strong,
+.manifest-review-field p {
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.manifest-review-field p {
+  margin: 0;
+}
+
+.manifest-review-description {
+  min-height: 96px;
+}
+
 .field small {
   color: #8f1f16;
   font-size: 0.78rem;
