@@ -48,3 +48,29 @@ resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
     }
   }
 }
+
+resource forgejoStorage 'Microsoft.App/managedEnvironments/storages@2024-03-01' = {
+  parent: env
+  name: 'forgejo-storage'
+  properties: {
+    azureFile: {
+      accountName: storageAccount.name
+      accountKey: storageAccount.listKeys().keys[0].value
+      shareName: 'forgejo-data'
+      accessMode: 'ReadWrite'
+    }
+  }
+}
+
+resource apiStorage 'Microsoft.App/managedEnvironments/storages@2024-03-01' = {
+  parent: env
+  name: 'api-storage'
+  properties: {
+    azureFile: {
+      accountName: storageAccount.name
+      accountKey: storageAccount.listKeys().keys[0].value
+      shareName: 'api-data'
+      accessMode: 'ReadWrite'
+    }
+  }
+}
