@@ -171,7 +171,7 @@ function getMockRole(): MockRole {
     return configuredRole as MockRole;
   }
 
-  return 'Submitter';
+  return 'Admin';
 }
 
 function createSession(role: MockRole): Session {
@@ -866,6 +866,12 @@ function ReviewDashboard() {
     setDecisionSuccess(null);
     setLoading(true);
     setQueueError(null);
+    if (!API_URL) {
+      setSubmissions(mockReviewQueue);
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch(`${SUBMISSIONS_API_BASE}?status=pending`);
       if (!res.ok) {
