@@ -34,7 +34,7 @@ interface ReviewSubmission {
 }
 
 const API_URL = import.meta.env.VITE_API_URL || '';
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 interface RegistrySkillsResponse {
   items?: SkillSummary[];
@@ -188,7 +188,7 @@ function validateArchive(file: File | null): string | undefined {
   }
 
   if (file.size > MAX_UPLOAD_BYTES) {
-    return 'Archive must be 25 MB or smaller.';
+    return 'Archive must be 50 MB or smaller.';
   }
 
   return undefined;
@@ -930,7 +930,7 @@ function PublishSkill() {
                 aria-invalid={Boolean(errors.skillArchive)}
                 aria-describedby={errors.skillArchive ? 'publish-archive-error' : undefined}
               />
-              {archiveSize ? <em>{skillArchive?.name} - {archiveSize}</em> : <em>Zip archive, 25 MB maximum.</em>}
+              {archiveSize ? <em>{skillArchive?.name} - {archiveSize}</em> : <em>Zip archive, 50 MB maximum.</em>}
               {errors.skillArchive ? (
                 <small id="publish-archive-error" role="status">{errors.skillArchive}</small>
               ) : null}
