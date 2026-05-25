@@ -141,6 +141,10 @@ function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
   );
 }
 
+function MockAuthBanner({ role }: { role: string }) {
+  return <div className="mock-auth-banner">Mock auth: {role}</div>;
+}
+
 function validateSkillMd(content: string): string | undefined {
   if (!content.trim()) {
     return 'Paste the SKILL.md content from the archive.';
@@ -388,7 +392,7 @@ function ReviewDashboard() {
             <img src="/logo.svg" alt="asr" />
           </a>
           <PrimaryNav current="review" />
-          <div className="mock-auth-banner">Mock auth: Compliance</div>
+          <MockAuthBanner role="Compliance" />
         </div>
       </header>
 
@@ -628,7 +632,7 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
             <img src="/logo.svg" alt="asr" />
           </a>
           <PrimaryNav current="review" />
-          <div className="mock-auth-banner">Mock auth: Compliance</div>
+          <MockAuthBanner role="Compliance" />
         </div>
       </header>
 
@@ -887,7 +891,7 @@ function PublishSkill() {
             <img src="/logo.svg" alt="asr" />
           </a>
           <PrimaryNav current="publish" />
-          <div className="mock-auth-banner">Mock auth: Submitter</div>
+          <MockAuthBanner role="Submitter" />
         </div>
       </header>
 
@@ -1036,6 +1040,7 @@ function BrowseRegistry() {
           </div>
 
           <PrimaryNav current="browse" />
+          <MockAuthBanner role="Viewer" />
 
           <div className="search-wrapper">
             <div className="search-box">
@@ -1185,10 +1190,12 @@ function SkillNotFoundState({
     <>
       <div className="brand-stripe" />
       <header>
-        <div className="container">
+        <div className="container app-topbar">
           <a className="logo" href="/" aria-label="asr home">
             <img src="/logo.svg" alt="asr" />
           </a>
+          <PrimaryNav current="browse" />
+          <MockAuthBanner role="Viewer" />
         </div>
       </header>
 
@@ -1262,6 +1269,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
               <img src="/logo.svg" alt="asr" />
             </a>
             <PrimaryNav current="browse" />
+            <MockAuthBanner role="Viewer" />
           </div>
         </header>
         <main>
@@ -1311,6 +1319,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
             <img src="/logo.svg" alt="asr" />
           </a>
           <PrimaryNav current="browse" />
+          <MockAuthBanner role="Viewer" />
         </div>
       </header>
 
