@@ -4,6 +4,61 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { routes } from './router';
 
+const skillDetail = {
+  owner: 'asr',
+  name: 'security-review',
+  latestVersion: '1.0.0',
+  description: 'Review code for security issues.',
+  tags: ['security', 'review'],
+  kind: 'skill',
+  publishedAt: '2026-05-25T12:00:00.000Z',
+  downloadCount: 42,
+  riskAssessmentLatest: 'low',
+  manifestLatest: {
+    name: 'security-review',
+    version: '1.0.0',
+    author: 'Platform Team',
+    description: 'Review code for security issues.',
+    tags: ['security', 'review'],
+    kind: 'skill',
+    permissions: {
+      network: false,
+      filesystem: 'read-own',
+      subprocess: false,
+      environment: [],
+    },
+  },
+  skillMd: `---
+name: security-review
+version: 1.0.0
+author: Platform Team
+description: Review code for security issues.
+tags: [security, review]
+---
+
+# Secure Review
+
+| Check | Evidence |
+| --- | --- |
+| Secrets | scanner output |
+`,
+  versions: [
+    {
+      owner: 'asr',
+      name: 'security-review',
+      version: '1.0.0',
+      contentHash: 'sha256:abc',
+      publishedAt: '2026-05-25T12:00:00.000Z',
+      publishedBy: 'submitter',
+      approvedBy: 'reviewer',
+      prNumber: 12,
+      mergeCommit: 'abc123',
+      yanked: false,
+      riskAssessment: 'low',
+    },
+  ],
+};
+
 function renderRoute(initialEntry: string) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -12,6 +67,7 @@ function renderRoute(initialEntry: string) {
       },
     },
   });
+  window.history.pushState({}, '', initialEntry);
   const router = createMemoryRouter(routes, { initialEntries: [initialEntry] });
 
   return render(
@@ -22,9 +78,16 @@ function renderRoute(initialEntry: string) {
 }
 
 beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => ({ items: [] }),
+  vi.stubGlobal('fetch', vi.fn(async (input) => {
+    const url = String(input);
+    const body = url.endsWith('/api/v1/skills/asr/security-review')
+      ? skillDetail
+      : { items: [] };
+
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }));
 
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
@@ -40,15 +103,35 @@ beforeEach(() => {
 });
 
 describe('router', () => {
-  it('renders the review queue placeholder', () => {
+  it('routes review through the application route switch', () => {
     renderRoute('/review');
 
-    expect(screen.getByRole('heading', { name: /review queue/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /approval dashboard/i })).toBeInTheDocument();
   });
 
   it('keeps the existing browse page on the index route', async () => {
     renderRoute('/');
 
     expect(await screen.findByRole('heading', { name: /agent skill registry/i })).toBeInTheDocument();
+  });
+
+  it('renders skill detail on direct non-root navigation', async () => {
+    renderRoute('/skills/asr/security-review');
+
+    expect(await screen.findByRole('heading', { name: /security-review/i })).toBeInTheDocument();
+    expect(screen.getByText(/scanner output/i)).toBeInTheDocument();
+  });
+
+  it('renders the publish wizard on direct non-root navigation', () => {
+    renderRoute('/publish');
+
+    expect(screen.getByRole('heading', { name: /publish a skill/i })).toBeInTheDocument();
+  });
+
+  it('renders a graceful inline 404 for unknown skill routes', () => {
+    renderRoute('/skills/does-not-exist');
+
+    expect(screen.getByRole('heading', { name: /skill not found/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /registry route error/i })).not.toBeInTheDocument();
   });
 });
