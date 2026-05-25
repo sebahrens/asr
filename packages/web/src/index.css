@@ -1813,6 +1813,13 @@ main {
 
   .review-detail-tabs {
     border-radius: 8px 8px 0 0;
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .review-detail-tabs button {
+    flex: 1 1 calc(50% - 6px);
+    text-align: center;
   }
 
   .evidence-row {
