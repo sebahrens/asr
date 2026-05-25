@@ -1115,6 +1115,9 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ReviewDetailTab>('diff');
   const [decision, setDecision] = useState<Decision | null>(null);
+  const [decisionPending, setDecisionPending] = useState<Decision | null>(null);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [decisionSuccess, setDecisionSuccess] = useState<string | null>(null);
   const [decisionReason, setDecisionReason] = useState('');
 
   useEffect(() => {
@@ -1200,8 +1203,40 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
   const canDecide = submission.status === 'pending review';
   const rejectDisabled = decisionReason.trim().length === 0;
 
-  function submitDecision(nextDecision: Decision) {
-    setDecision(nextDecision);
+  async function submitDecision(nextDecision: Decision) {
+    const currentSubmission = submission;
+    if (!currentSubmission) {
+      return;
+    }
+
+    setDecisionPending(nextDecision);
+    setDecisionError(null);
+    setDecisionSuccess(null);
+
+    try {
+      if (API_URL) {
+        const { endpoint, body } = getDecisionRequest(nextDecision, decisionReason);
+        const res = await fetch(`${API_URL}/api/v1/submissions/${currentSubmission.id}/${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Decision request failed with ${res.status}`);
+        }
+      }
+
+      setDecision(nextDecision);
+      setSubmission((current) =>
+        current?.id === currentSubmission.id ? { ...current, status: nextDecision } : current,
+      );
+      setDecisionSuccess(`${nextDecision === 'approved' ? 'Approved' : 'Rejected'} ${currentSubmission.skillName}.`);
+    } catch {
+      setDecisionError('Decision could not be recorded. Try again after the API is available.');
+    } finally {
+      setDecisionPending(null);
+    }
   }
 
   return (
@@ -1344,22 +1379,28 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
             {canDecide && !decision && rejectDisabled ? (
               <p className="decision-help">A rejection reason is required before rejecting.</p>
             ) : null}
+            {decisionSuccess ? (
+              <p className="decision-success" role="status">{decisionSuccess}</p>
+            ) : null}
+            {decisionError ? (
+              <p className="decision-error decision-modal-error" role="alert">{decisionError}</p>
+            ) : null}
             <div className="decision-panel-actions">
               <button
                 className="approve-btn"
                 type="button"
                 onClick={() => submitDecision('approved')}
-                disabled={!canDecide || Boolean(decision)}
+                disabled={!canDecide || Boolean(decision) || Boolean(decisionPending)}
               >
-                {decision === 'approved' ? 'Approved' : 'Approve'}
+                {decisionPending === 'approved' ? 'Approving...' : decision === 'approved' ? 'Approved' : 'Approve'}
               </button>
               <button
                 className="reject-btn"
                 type="button"
                 onClick={() => submitDecision('rejected')}
-                disabled={!canDecide || Boolean(decision) || rejectDisabled}
+                disabled={!canDecide || Boolean(decision) || Boolean(decisionPending) || rejectDisabled}
               >
-                {decision === 'rejected' ? 'Rejected' : 'Reject'}
+                {decisionPending === 'rejected' ? 'Rejecting...' : decision === 'rejected' ? 'Rejected' : 'Reject'}
               </button>
             </div>
           </aside>
