@@ -260,7 +260,15 @@ function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
 
 function MockAuthBanner() {
   const session = useSession();
-  return <div className="mock-auth-banner">Mock auth: {session.role}</div>;
+  return (
+    <div
+      className="mock-auth-banner"
+      role="status"
+      aria-label={`Development mock auth session: ${session.role}`}
+    >
+      Dev mock auth: {session.role}
+    </div>
+  );
 }
 
 function parsePublishSkillMd(content: string): ParsedSkillMd {
