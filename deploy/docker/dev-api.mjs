@@ -64,6 +64,7 @@ const seededSubmissions = [
 ];
 
 const submissions = seededSubmissions.map((submission) => ({ ...submission }));
+let nextSubmissionNumber = 2000;
 
 function json(res, statusCode, body) {
   const payload = JSON.stringify(body);
@@ -83,6 +84,89 @@ function notFound(res) {
 
 function methodNotAllowed(res) {
   json(res, 405, { error: 'method_not_allowed' });
+}
+
+function readRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+async function readMultipartFields(req) {
+  const contentType = req.headers['content-type'] ?? '';
+  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/);
+  const boundary = boundaryMatch?.[1] ?? boundaryMatch?.[2];
+
+  if (!boundary) {
+    return {};
+  }
+
+  const body = (await readRequestBody(req)).toString('utf8');
+  const fields = {};
+
+  for (const part of body.split(`--${boundary}`)) {
+    const name = part.match(/content-disposition:[^\n]*\bname="([^"]+)"/i)?.[1];
+    if (!name || part.includes('filename=')) {
+      continue;
+    }
+
+    const valueStart = part.indexOf('\r\n\r\n');
+    if (valueStart === -1) {
+      continue;
+    }
+
+    fields[name] = part.slice(valueStart + 4).replace(/\r\n--$/, '').trim();
+  }
+
+  return fields;
+}
+
+function readFrontmatterValue(markdown, key) {
+  const normalized = markdown.replace(/\r\n/g, '\n');
+  const frontmatter = normalized.match(/^---\n([\s\S]*?)\n---/)?.[1];
+  return frontmatter?.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))?.[1]?.trim();
+}
+
+function createSubmission(fields) {
+  const skillMd = fields.skillMd ?? '';
+  const owner = fields.owner?.trim() || readFrontmatterValue(skillMd, 'author') || 'local';
+  const skillName = readFrontmatterValue(skillMd, 'name') || 'uploaded-skill';
+  const version = readFrontmatterValue(skillMd, 'version') || '0.1.0';
+  const now = new Date().toISOString();
+  const id = `sub-${nextSubmissionNumber++}`;
+  const manifest = {
+    name: skillName,
+    version,
+    author: owner,
+    description: readFrontmatterValue(skillMd, 'description') || 'Local development submission',
+    tags: [],
+    kind: readFrontmatterValue(skillMd, 'kind') || 'skill',
+  };
+  const submission = {
+    id,
+    skillName,
+    owner,
+    version,
+    submitter: 'dev-user',
+    submittedAt: now,
+    status: 'pending review',
+    risk: 'low',
+    findings: 0,
+  };
+
+  submissions.unshift(submission);
+
+  return {
+    id,
+    status: { phase: 'uploaded' },
+    manifest,
+    contentHash: `sha256:dev-${owner}-${skillName}-${version}`,
+    createdAt: now,
+    submission,
+  };
 }
 
 function findSkills(query) {
@@ -232,6 +316,20 @@ const server = http.createServer((req, res) => {
   }
 
   if (url.pathname === '/api/v1/submissions') {
+    if (req.method === 'POST') {
+      readMultipartFields(req)
+        .then((fields) => {
+          json(res, 201, createSubmission(fields));
+        })
+        .catch(() => {
+          json(res, 400, {
+            error: 'invalid_submission',
+            message: 'Submission multipart body could not be read.',
+          });
+        });
+      return;
+    }
+
     if (req.method !== 'GET') {
       methodNotAllowed(res);
       return;

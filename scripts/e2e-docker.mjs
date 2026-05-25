@@ -72,6 +72,42 @@ async function assertApprovalQueue() {
   }
 }
 
+async function assertSubmissionCreate() {
+  const body = new FormData();
+  body.set('owner', 'e2e');
+  body.set('skillMd', `---
+name: e2e-skill
+version: 0.1.0
+author: e2e
+description: Created by the Docker smoke test.
+kind: skill
+---
+
+# e2e-skill
+`);
+  body.set('archive', new Blob(['dev smoke archive']), 'skill.zip');
+
+  const created = await fetch(`${apiBaseUrl}/api/v1/submissions`, {
+    method: 'POST',
+    body,
+  });
+
+  if (created.status !== 201) {
+    throw new Error(`submission create returned ${created.status}`);
+  }
+
+  const data = await created.json();
+  if (!data.id || data.status?.phase !== 'uploaded' || data.manifest?.name !== 'e2e-skill') {
+    throw new Error('submission create did not return the expected uploaded response');
+  }
+
+  const queue = await fetch(`${apiBaseUrl}/api/v1/submissions?status=pending`);
+  const queueData = await queue.json();
+  if (!Array.isArray(queueData.submissions) || !queueData.submissions.some((item) => item.id === data.id)) {
+    throw new Error('created submission was not added to the pending queue');
+  }
+}
+
 async function assertRegistryBrowse() {
   const registry = await fetch(`${apiBaseUrl}/api/v1/skills?q=security`);
   if (!registry.ok) {
@@ -112,8 +148,9 @@ run(`${composeCmd} up -d --build`);
 try {
   await waitHealth();
   await assertRegistryBrowse();
+  await assertSubmissionCreate();
   await assertApprovalQueue();
-  console.log('E2E smoke check passed: /health, registry browse, and approval queue are OK');
+  console.log('E2E smoke check passed: /health, registry browse, submission create, and approval queue are OK');
 } catch (err) {
   console.error('E2E smoke check FAILED:', err.message);
   console.error('--- recent api logs ---');
