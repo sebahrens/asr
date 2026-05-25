@@ -337,7 +337,7 @@ function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
   return (
     <nav className="primary-nav" aria-label="Primary navigation">
       <a href="/" aria-current={current === 'browse' ? 'page' : undefined}>Browse</a>
-      <a href="/submit" aria-current={current === 'publish' ? 'page' : undefined}>Publish</a>
+      <a href="/publish" aria-current={current === 'publish' ? 'page' : undefined}>Publish</a>
       {session.canReview ? (
         <a href="/review" aria-current={current === 'review' ? 'page' : undefined}>Review</a>
       ) : null}
