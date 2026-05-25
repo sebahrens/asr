@@ -1,4 +1,4 @@
-import { ForgejoClient, type AuditAction, type ScanReport, type SkillManifest, type Submission } from '@asr/core';
+import { ForgejoClient, type AuditAction, type ScanReport, type SkillManifest, type Submission, type VersionDiff } from '@asr/core';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { app as App, createApp as CreateApp } from './index.js';
 import type { WorkflowSubmissionRecord, WorkflowSubmissionStore } from './http/workflow.js';
@@ -99,6 +99,27 @@ describe('app', () => {
       publishedVersion: '1.0.0',
     });
     expect(forgejo.publishedArtifact).toMatchObject({ owner: 'alice', name: 'demo-skill', version: '1.0.0' });
+  });
+
+  it('serves submission diff evidence on the versioned API route used by the web dashboard', async () => {
+    const store = new TestWorkflowStore();
+    const dependencies = makeDependencies(new FakeForgejoClient(), makeScanReport('pass'));
+    const submissionApp = createApp({ workflow: { store, dependencies, now: fixedNow } });
+    const record = await seedAwaitingReview(dependencies);
+    record.context.versionDiff = makeVersionDiff();
+    await store.save(record);
+
+    vi.stubEnv('MOCK_USER_SUB', 'reviewer-1');
+    vi.stubEnv('MOCK_USER_ROLES', 'Compliance');
+    const diff = await submissionApp.request('/api/v1/submissions/sub-1/diff');
+
+    expect(diff.status).toBe(200);
+    await expect(diff.json()).resolves.toMatchObject({
+      skillName: 'demo-skill',
+      fromVersion: '0.9.0',
+      toVersion: '1.0.0',
+      filesModified: ['SKILL.md'],
+    });
   });
 
   it('rejects approval by the submitter with separation-of-duties violation', async () => {
@@ -277,6 +298,38 @@ function makeScanReport(verdict: ScanReport['verdict']): ScanReport {
       opengrep: { exitCode: 0, findingCount: 0 },
       veracode: { exitCode: 0, findingCount: 0, skipped: true },
     },
+  };
+}
+
+function makeVersionDiff(): VersionDiff {
+  return {
+    skillName: 'demo-skill',
+    fromVersion: '0.9.0',
+    toVersion: '1.0.0',
+    fromContentHash: 'old-hash',
+    toContentHash: 'abc123',
+    filesAdded: [],
+    filesModified: ['SKILL.md'],
+    filesRemoved: [],
+    dependenciesAdded: {},
+    dependenciesChanged: {},
+    dependenciesRemoved: {},
+    permissionsBefore: {
+      network: false,
+      filesystem: 'read-own',
+      subprocess: false,
+      environment: [],
+    },
+    permissionsAfter: {
+      network: false,
+      filesystem: 'read-own',
+      subprocess: false,
+      environment: [],
+    },
+    permissionsExpanded: false,
+    manifestKindChanged: false,
+    riskAssessment: 'low',
+    computedAt: '2026-05-24T00:00:00.000Z',
   };
 }
 

@@ -717,18 +717,18 @@ function createReviewDetailFromVersionDiff(submission: ReviewSubmission, diff: V
 
 async function fetchReviewVersionDiff(submission: ReviewSubmission): Promise<VersionDiff | null> {
   const res = await fetch(
-    `${API_URL}/api/v1/skills/${encodeURIComponent(submission.owner)}/${encodeURIComponent(submission.skillName)}/versions/${encodeURIComponent(submission.version)}/diff`,
+    `${API_URL}/api/v1/submissions/${encodeURIComponent(submission.id)}/diff`,
   );
 
-  if (res.status === 404) {
+  if (res.status === 202 || res.status === 204) {
     return null;
   }
 
   if (!res.ok) {
-    throw new Error(`Version diff request failed with ${res.status}`);
+    throw new Error(`Submission diff request failed with ${res.status}`);
   }
 
-  return await res.json() as VersionDiff;
+  return await res.json() as VersionDiff | null;
 }
 
 function ReviewDiffPanel({ files }: { files: ReviewDiffFile[] }) {

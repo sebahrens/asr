@@ -1,4 +1,4 @@
-import { ForgejoClient, type ScanReport, type SubmissionStatus } from '@asr/core';
+import { ForgejoClient, type ScanReport, type SubmissionStatus, type VersionDiff } from '@asr/core';
 import { Hono } from 'hono';
 import { apiError } from './errors.js';
 import { requireRole } from '../auth/requireRole.js';
@@ -94,6 +94,19 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
     }
 
     return c.json(report);
+  });
+
+  routes.get('/:id/diff', async (c) => {
+    const identity = c.get('identity');
+    const record = await store.get(c.req.param('id'));
+    if (!record) {
+      return apiError(c, 404, 'submission_not_found');
+    }
+    if (!canView(record, identity)) {
+      return apiError(c, 403, 'insufficient_permissions');
+    }
+
+    return c.json((record.context.versionDiff ?? null) satisfies VersionDiff | null);
   });
 
   routes.post('/:id/confirm', requireRole('Submitter'), async (c) => {
