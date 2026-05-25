@@ -16,8 +16,31 @@ export function createMcpServer(): McpServer {
 }
 
 export const mcpHandler: Handler = async (c) => {
+  if (c.req.method === 'GET') {
+    const transport = getTransportForSession(c.req.header('mcp-session-id'));
+    if (!transport) {
+      return sessionNotFound(c);
+    }
+
+    return transport.handleRequest(c.req.raw);
+  }
+
+  if (c.req.method === 'DELETE') {
+    const sessionId = c.req.header('mcp-session-id');
+    const transport = getTransportForSession(sessionId);
+    if (!transport) {
+      return sessionNotFound(c);
+    }
+
+    const response = await transport.handleRequest(c.req.raw);
+    if (response.ok && sessionId) {
+      sessions.delete(sessionId);
+    }
+    return response;
+  }
+
   if (c.req.method !== 'POST') {
-    return c.json(jsonRpcError(-32000, 'Method not allowed'), 405, { Allow: 'POST' });
+    return c.json(jsonRpcError(-32000, 'Method not allowed'), 405, { Allow: 'GET, POST, DELETE' });
   }
 
   const body = await readJson(c.req.raw);
@@ -33,6 +56,14 @@ export const mcpHandler: Handler = async (c) => {
 
   return transport.handleRequest(c.req.raw, { parsedBody: body });
 };
+
+function getTransportForSession(sessionId: string | undefined): WebStandardStreamableHTTPServerTransport | undefined {
+  return sessionId ? sessions.get(sessionId) : undefined;
+}
+
+function sessionNotFound(c: Parameters<Handler>[0]): Response {
+  return c.json(jsonRpcError(-32000, 'MCP session not found'), 404);
+}
 
 async function createTransportForInitialize(body: unknown): Promise<WebStandardStreamableHTTPServerTransport | undefined> {
   if (!isInitializeRequest(body)) {
