@@ -1,4 +1,4 @@
-import { createContext, useState, useEffect, useCallback, useContext } from 'react';
+import { createContext, useState, useEffect, useCallback, useContext, useRef } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import ReactDiffViewer from 'react-diff-viewer-continued';
 import ReactMarkdown from 'react-markdown';
@@ -53,6 +53,12 @@ interface ReviewDiffFile {
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+const ZIP_LOCAL_FILE_HEADER = 0x04034b50;
+const ZIP_EMPTY_ARCHIVE_HEADER = 0x06054b50;
+const ZIP_SPANNED_ARCHIVE_HEADER = 0x08074b50;
+const ZIP_EOCD_HEADER = 0x06054b50;
+const ZIP_EOCD_MIN_BYTES = 22;
+const ZIP_EOCD_MAX_COMMENT_BYTES = 0xffff;
 
 interface RegistrySkillsResponse {
   items?: SkillSummary[];
@@ -341,6 +347,33 @@ function validateArchive(file: File | null): string | undefined {
   }
 
   return undefined;
+}
+
+async function validateZipArchive(file: File | null): Promise<string | undefined> {
+  const archiveError = validateArchive(file);
+  if (archiveError || !file) {
+    return archiveError;
+  }
+
+  if (file.size < 4) {
+    return 'Archive file is not a valid zip archive.';
+  }
+
+  const header = new DataView(await file.slice(0, 4).arrayBuffer()).getUint32(0, true);
+  if (![ZIP_LOCAL_FILE_HEADER, ZIP_EMPTY_ARCHIVE_HEADER, ZIP_SPANNED_ARCHIVE_HEADER].includes(header)) {
+    return 'Archive file is not a valid zip archive.';
+  }
+
+  const tailLength = Math.min(file.size, ZIP_EOCD_MIN_BYTES + ZIP_EOCD_MAX_COMMENT_BYTES);
+  const tailOffset = file.size - tailLength;
+  const tail = new DataView(await file.slice(tailOffset).arrayBuffer());
+  for (let offset = tail.byteLength - ZIP_EOCD_MIN_BYTES; offset >= 0; offset -= 1) {
+    if (tail.getUint32(offset, true) === ZIP_EOCD_HEADER) {
+      return undefined;
+    }
+  }
+
+  return 'Archive file is not a valid zip archive.';
 }
 
 function getParsedSkillMd(content: string): ParsedSkillMd | null {
@@ -1330,6 +1363,7 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
 
 function PublishSkill() {
   const session = useSession();
+  const archiveSelectionId = useRef(0);
   const [owner, setOwner] = useState('');
   const [skillMd, setSkillMd] = useState('');
   const [skillArchive, setSkillArchive] = useState<File | null>(null);
@@ -1362,7 +1396,9 @@ function PublishSkill() {
       nextErrors.owner = 'A registry owner or namespace is required.';
     }
 
-    const archiveError = validateArchive(skillArchive);
+    const archiveError = skillArchive
+      ? validateArchive(skillArchive)
+      : errors.skillArchive ?? validateArchive(skillArchive);
     if (archiveError) {
       nextErrors.skillArchive = archiveError;
     }
@@ -1463,8 +1499,16 @@ function PublishSkill() {
     }
   }
 
-  function selectArchive(file: File | null, input: HTMLInputElement) {
-    const archiveError = validateArchive(file);
+  async function selectArchive(file: File | null, input: HTMLInputElement) {
+    const selectionId = archiveSelectionId.current + 1;
+    archiveSelectionId.current = selectionId;
+    setSkillArchive(null);
+
+    const archiveError = await validateZipArchive(file);
+    if (archiveSelectionId.current !== selectionId) {
+      return;
+    }
+
     if (archiveError) {
       setSkillArchive(null);
       setErrors((current) => ({ ...current, skillArchive: archiveError }));
@@ -1563,7 +1607,7 @@ function PublishSkill() {
                     const file = event.dataTransfer.files?.[0] ?? null;
                     const input = document.getElementById('publish-archive') as HTMLInputElement | null;
                     if (input) {
-                      selectArchive(file, input);
+                      void selectArchive(file, input);
                     }
                   }}
                 >
@@ -1574,7 +1618,7 @@ function PublishSkill() {
                     id="publish-archive"
                     type="file"
                     accept=".zip,application/zip"
-                    onChange={(event) => selectArchive(event.target.files?.[0] ?? null, event.currentTarget)}
+                    onChange={(event) => void selectArchive(event.target.files?.[0] ?? null, event.currentTarget)}
                     aria-invalid={Boolean(errors.skillArchive)}
                     aria-describedby={errors.skillArchive ? 'publish-archive-error' : undefined}
                   />
