@@ -33,6 +33,14 @@ interface ReviewSubmission {
   findings: number;
 }
 
+interface ReviewSubmissionDetail {
+  diff: { file: string; summary: string; additions: number; removals: number }[];
+  dependencies: { name: string; version: string; status: string }[];
+  permissions: { label: string; value: string; risk: ReviewSubmission['risk'] }[];
+  scan: { scanner: string; result: string; severity: ReviewSubmission['risk'] }[];
+  audit: { actor: string; action: string; at: string }[];
+}
+
 const API_URL = import.meta.env.VITE_API_URL || '';
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
@@ -384,13 +392,7 @@ const mockReviewQueue: ReviewSubmission[] = [
   },
 ];
 
-const mockReviewDetails: Record<string, {
-  diff: { file: string; summary: string; additions: number; removals: number }[];
-  dependencies: { name: string; version: string; status: string }[];
-  permissions: { label: string; value: string; risk: ReviewSubmission['risk'] }[];
-  scan: { scanner: string; result: string; severity: ReviewSubmission['risk'] }[];
-  audit: { actor: string; action: string; at: string }[];
-}> = {
+const mockReviewDetails: Record<string, ReviewSubmissionDetail> = {
   'sub-1042': {
     diff: [
       { file: 'SKILL.md', summary: 'Adds secure review instructions and scanner guidance.', additions: 42, removals: 8 },
@@ -441,6 +443,41 @@ const mockReviewDetails: Record<string, {
     ],
   },
 };
+
+function createReviewDetail(submission: ReviewSubmission): ReviewSubmissionDetail {
+  const findingSummary = submission.findings === 1
+    ? '1 scan finding is awaiting compliance review.'
+    : `${submission.findings} scan findings are awaiting compliance review.`;
+
+  return {
+    diff: [
+      {
+        file: 'SKILL.md',
+        summary: `Initial review package for ${submission.skillName} v${submission.version}.`,
+        additions: 1,
+        removals: 0,
+      },
+    ],
+    dependencies: [
+      { name: 'Submitted archive', version: submission.version, status: 'Queued for registry review' },
+    ],
+    permissions: [
+      { label: 'Submission risk', value: `${submission.risk} risk from scanner summary`, risk: submission.risk },
+      { label: 'Review owner', value: submission.owner, risk: 'low' },
+    ],
+    scan: [
+      {
+        scanner: 'Security scan',
+        result: findingSummary,
+        severity: submission.risk,
+      },
+    ],
+    audit: [
+      { actor: submission.submitter, action: 'Submitted skill archive', at: submission.submittedAt },
+      { actor: 'asr', action: 'Queued compliance review', at: submission.submittedAt },
+    ],
+  };
+}
 
 function formatSubmittedAt(value: string): string {
   return new Intl.DateTimeFormat('en', {
@@ -802,17 +839,86 @@ function ReviewDashboard() {
 }
 
 function ReviewDetailPage({ submissionId }: { submissionId: string }) {
-  const submission = mockReviewQueue.find((item) => item.id === submissionId);
-  const detail = mockReviewDetails[submissionId];
+  const mockSubmission = mockReviewQueue.find((item) => item.id === submissionId) ?? null;
+  const [submission, setSubmission] = useState<ReviewSubmission | null>(mockSubmission);
+  const [detail, setDetail] = useState<ReviewSubmissionDetail | null>(() =>
+    mockSubmission ? (mockReviewDetails[submissionId] ?? createReviewDetail(mockSubmission)) : null,
+  );
+  const [loading, setLoading] = useState(Boolean(API_URL && !mockSubmission));
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ReviewDetailTab>('diff');
   const [decision, setDecision] = useState<Decision | null>(null);
   const [decisionReason, setDecisionReason] = useState('');
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function fetchSubmission() {
+      if (mockSubmission) {
+        setSubmission(mockSubmission);
+        setDetail(mockReviewDetails[submissionId] ?? createReviewDetail(mockSubmission));
+        setLoadError(null);
+        setLoading(false);
+        return;
+      }
+
+      if (!API_URL) {
+        setSubmission(null);
+        setDetail(null);
+        setLoadError(null);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const res = await fetch(`${API_URL}/api/v1/submissions?status=pending`);
+        if (!res.ok) {
+          throw new Error(`Submission request failed with ${res.status}`);
+        }
+
+        const data = await res.json();
+        const items = Array.isArray(data.submissions) ? data.submissions as ReviewSubmission[] : [];
+        const nextSubmission = items.find((item) => item.id === submissionId) ?? null;
+        if (!ignore) {
+          setSubmission(nextSubmission);
+          setDetail(nextSubmission ? createReviewDetail(nextSubmission) : null);
+        }
+      } catch {
+        if (!ignore) {
+          setSubmission(null);
+          setDetail(null);
+          setLoadError('Unable to load this submission from the API.');
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchSubmission();
+
+    return () => {
+      ignore = true;
+    };
+  }, [mockSubmission, submissionId]);
+
+  if (loading) {
+    return (
+      <SkillNotFoundState
+        title="Loading submission"
+        message={`Loading review evidence for ${submissionId}.`}
+      />
+    );
+  }
 
   if (!submission || !detail) {
     return (
       <SkillNotFoundState
         title="Submission not found"
-        message={`No review submission exists for ${submissionId}. Return to the approval dashboard and choose another item.`}
+        message={loadError ?? `No review submission exists for ${submissionId}. Return to the approval dashboard and choose another item.`}
       />
     );
   }
