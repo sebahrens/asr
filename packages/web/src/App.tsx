@@ -2,7 +2,7 @@ import { createContext, useState, useEffect, useCallback, useContext } from 'rea
 import type { FormEvent, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { parseSkillMd, type SkillDetail, type SkillSummary } from '@asr/core';
+import { parseSkillMd, type SkillDetail, type SkillSummary, type VersionDiff } from '@asr/core';
 
 function stripFrontmatter(content: string): string {
   return content.replace(/^---\n[\s\S]*?\n---\n*/, '');
@@ -207,6 +207,14 @@ function decodeRoutePart(value: string): string {
   } catch {
     return value;
   }
+}
+
+function encodeRoutePart(value: string): string {
+  return encodeURIComponent(value);
+}
+
+function getSkillVersionDiffPath(owner: string, name: string, version: string): string {
+  return `/skills/${encodeRoutePart(owner)}/${encodeRoutePart(name)}/versions/${encodeRoutePart(version)}/diff`;
 }
 
 function getDecisionRequest(
@@ -1890,6 +1898,160 @@ function NotFoundState() {
   );
 }
 
+function SkillVersionDiffPage({ owner, name, version }: { owner: string; name: string; version: string }) {
+  const [diff, setDiff] = useState<VersionDiff | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<'not-found' | 'unavailable' | null>(null);
+
+  const fetchDiff = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch(
+        `${API_URL}/api/v1/skills/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/diff`,
+      );
+      if (res.status === 404) {
+        setDiff(null);
+        setError('not-found');
+        return;
+      }
+      if (!res.ok) {
+        throw new Error(`Skill version diff request failed with ${res.status}`);
+      }
+
+      setDiff((await res.json()) as VersionDiff);
+    } catch {
+      setDiff(null);
+      setError('unavailable');
+    } finally {
+      setLoading(false);
+    }
+  }, [name, owner, version]);
+
+  useEffect(() => {
+    fetchDiff();
+  }, [fetchDiff]);
+
+  if (loading) {
+    return (
+      <>
+        <div className="brand-stripe" />
+        <header>
+          <div className="container app-topbar">
+            <a className="logo" href="/" aria-label="asr home">
+              <img src="/logo.svg" alt="asr" />
+            </a>
+            <PrimaryNav current="browse" />
+            <MockAuthBanner />
+          </div>
+        </header>
+        <main>
+          <div className="loading">
+            <div className="spinner" />
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  if (error === 'not-found') {
+    return (
+      <SkillNotFoundState
+        title="Diff not found"
+        message={`No version diff is available for ${owner}/${name} v${version}. Return to the skill detail page or retry the lookup.`}
+        onRetry={fetchDiff}
+      />
+    );
+  }
+
+  if (error === 'unavailable' || !diff) {
+    return (
+      <SkillNotFoundState
+        title="Diff unavailable"
+        message={`Unable to load the version diff for ${owner}/${name} v${version} from the registry API.`}
+        onRetry={fetchDiff}
+      />
+    );
+  }
+
+  const fileRows = [
+    ['Added', diff.filesAdded],
+    ['Modified', diff.filesModified],
+    ['Removed', diff.filesRemoved],
+  ] as const;
+  const dependencyRows = [
+    ['Added', Object.entries(diff.dependenciesAdded).map(([dep, depVersion]) => `${dep}@${depVersion}`)],
+    ['Changed', Object.entries(diff.dependenciesChanged).map(([dep, change]) => `${dep}: ${change.from} -> ${change.to}`)],
+    ['Removed', Object.entries(diff.dependenciesRemoved).map(([dep, depVersion]) => `${dep}@${depVersion}`)],
+  ] as const;
+
+  return (
+    <>
+      <div className="brand-stripe" />
+      <header>
+        <div className="container app-topbar">
+          <a className="logo" href="/" aria-label="asr home">
+            <img src="/logo.svg" alt="asr" />
+          </a>
+          <PrimaryNav current="browse" />
+          <MockAuthBanner />
+        </div>
+      </header>
+
+      <main className="skill-detail-main">
+        <article className="container skill-detail-page">
+          <a className="secondary-link" href={`/skills/${encodeRoutePart(owner)}/${encodeRoutePart(name)}`}>Back to skill</a>
+          <div className="skill-detail-header">
+            <p className="eyebrow">Version diff</p>
+            <h1>{owner}/{name}</h1>
+            <p>Changes from {diff.fromVersion || 'first publish'} to {diff.toVersion}.</p>
+            <div className="skill-detail-meta">
+              <span>{diff.riskAssessment} risk</span>
+              <span>{diff.permissionsExpanded ? 'permissions expanded' : 'permissions unchanged'}</span>
+              <span>{formatDate(diff.computedAt)}</span>
+            </div>
+          </div>
+
+          <section className="version-diff-grid" aria-label="Version diff summary">
+            <div className="version-diff-section">
+              <h2>Files</h2>
+              {fileRows.map(([label, files]) => (
+                <div className="version-diff-row" key={label}>
+                  <strong>{label}</strong>
+                  <span>{files.length ? files.join(', ') : 'none'}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="version-diff-section">
+              <h2>Dependencies</h2>
+              {dependencyRows.map(([label, dependencies]) => (
+                <div className="version-diff-row" key={label}>
+                  <strong>{label}</strong>
+                  <span>{dependencies.length ? dependencies.join(', ') : 'none'}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="version-diff-section">
+              <h2>Manifest</h2>
+              <div className="version-diff-row">
+                <strong>Kind changed</strong>
+                <span>{diff.manifestKindChanged ? 'yes' : 'no'}</span>
+              </div>
+              <div className="version-diff-row">
+                <strong>Content hash</strong>
+                <span>{diff.toContentHash}</span>
+              </div>
+            </div>
+          </section>
+        </article>
+      </main>
+    </>
+  );
+}
+
 function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
   const [detail, setDetail] = useState<SkillDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2058,7 +2220,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
                     <div className="version-row-meta">
                       <span>{version.riskAssessment} risk</span>
                       {version.yanked && <span>Yanked</span>}
-                      <a href={`/api/v1/skills/${detail.owner}/${detail.name}/versions/${version.version}/diff`}>Diff</a>
+                      <a href={getSkillVersionDiffPath(detail.owner, detail.name, version.version)}>Diff</a>
                     </div>
                   </div>
                 ))}
@@ -2097,6 +2259,10 @@ function AppRoutes() {
   }
 
   if (routeParts[0] === 'skills') {
+    if (routeParts.length === 6 && routeParts[3] === 'versions' && routeParts[5] === 'diff') {
+      return <SkillVersionDiffPage owner={routeParts[1]} name={routeParts[2]} version={routeParts[4]} />;
+    }
+
     if (routeParts.length === 3) {
       return <SkillDetailPage owner={routeParts[1]} name={routeParts[2]} />;
     }

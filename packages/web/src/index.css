@@ -735,6 +735,50 @@ main {
   justify-content: flex-end;
 }
 
+.version-diff-grid {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 48px;
+}
+
+.version-diff-section {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.version-diff-section h2 {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text);
+  font-size: 0.9rem;
+  margin: 0;
+  padding: 12px 14px;
+}
+
+.version-diff-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 150px minmax(0, 1fr);
+  padding: 12px 14px;
+}
+
+.version-diff-row + .version-diff-row {
+  border-top: 1px solid var(--border-light);
+}
+
+.version-diff-row strong {
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.version-diff-row span {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .permissions-list {
   border: 1px solid var(--border-light);
   border-radius: 8px;
