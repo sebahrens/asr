@@ -1793,7 +1793,12 @@ main {
 }
 
 .review-diff-viewer table {
+  table-layout: fixed;
   min-width: 760px;
+}
+
+.review-diff-viewer td {
+  max-width: 100%;
 }
 
 .review-diff-viewer pre {
@@ -1917,9 +1922,15 @@ main {
     width: 100%;
   }
 
+  .review-diff-viewer td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
   .review-diff-viewer pre {
     overflow-wrap: anywhere;
     white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .wizard-progress,

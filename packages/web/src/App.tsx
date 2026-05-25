@@ -253,6 +253,28 @@ const reviewDetailTabs: { id: ReviewDetailTab; label: string }[] = [
   { id: 'audit', label: 'Audit' },
 ];
 
+const reviewDiffViewerStyles = {
+  diffContainer: {
+    minWidth: 0,
+    tableLayout: 'fixed',
+    width: '100%',
+  },
+  content: {
+    maxWidth: '100%',
+    minWidth: 0,
+    overflow: 'visible',
+  },
+  contentText: {
+    lineBreak: 'anywhere',
+    overflowWrap: 'anywhere',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+  },
+  lineContent: {
+    overflow: 'visible',
+  },
+};
+
 function decodeRoutePart(value: string): string {
   try {
     return decodeURIComponent(value);
@@ -801,8 +823,10 @@ function ReviewDiffPanel({ files }: { files: ReviewDiffFile[] }) {
               newValue={file.newValue}
               splitView={!isNarrowDiff}
               showDiffOnly={false}
+              hideLineNumbers={isNarrowDiff}
               leftTitle="Previous"
               rightTitle="Submitted"
+              styles={reviewDiffViewerStyles}
               useDarkTheme={false}
             />
           </div>
