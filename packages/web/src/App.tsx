@@ -9,6 +9,24 @@ function stripFrontmatter(content: string): string {
   return content.replace(/^---\n[\s\S]*?\n---\n*/, '');
 }
 
+function useMediaQuery(query: string): boolean {
+  const getMatches = useCallback(() => (
+    typeof window !== 'undefined' ? window.matchMedia(query).matches : false
+  ), [query]);
+  const [matches, setMatches] = useState(getMatches);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(query);
+    const handleChange = () => setMatches(mediaQuery.matches);
+
+    handleChange();
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [query]);
+
+  return matches;
+}
+
 interface Skill {
   id: string;
   owner: string;
@@ -714,6 +732,8 @@ async function fetchReviewVersionDiff(submission: ReviewSubmission): Promise<Ver
 }
 
 function ReviewDiffPanel({ files }: { files: ReviewDiffFile[] }) {
+  const isNarrowDiff = useMediaQuery('(max-width: 640px)');
+
   if (files.length === 0) {
     return <p className="empty-review-queue">No changed files are available for this submission.</p>;
   }
@@ -733,7 +753,7 @@ function ReviewDiffPanel({ files }: { files: ReviewDiffFile[] }) {
             <ReactDiffViewer
               oldValue={file.oldValue}
               newValue={file.newValue}
-              splitView
+              splitView={!isNarrowDiff}
               showDiffOnly={false}
               leftTitle="Previous"
               rightTitle="Submitted"

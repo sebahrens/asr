@@ -1758,12 +1758,14 @@ main {
   color: var(--text);
   font-size: 0.95rem;
   margin-bottom: 5px;
+  overflow-wrap: anywhere;
 }
 
 .review-diff-file-header p {
   color: var(--text-secondary);
   font-size: 0.84rem;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .review-diff-file-header span {
@@ -1775,6 +1777,7 @@ main {
 }
 
 .review-diff-viewer {
+  max-width: 100%;
   overflow-x: auto;
 }
 
@@ -1896,6 +1899,16 @@ main {
 
   .review-diff-file-header {
     display: grid;
+  }
+
+  .review-diff-viewer table {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .review-diff-viewer pre {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
   }
 
   .wizard-progress,
