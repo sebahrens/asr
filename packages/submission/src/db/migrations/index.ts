@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { migration0001Submissions } from './0001_submissions.js';
 import { migration0002ScanResults } from './0002_scan_results.js';
+import { migration0003WorkflowLocks } from './0003_workflow_locks.js';
 import { migration0005Versioning } from './0005_versioning.js';
 
 export interface Migration {
@@ -12,6 +13,7 @@ export interface Migration {
 export const migrations: Migration[] = [
   migration0001Submissions,
   migration0002ScanResults,
+  migration0003WorkflowLocks,
   migration0005Versioning,
 ];
 
