@@ -58,7 +58,7 @@ specs/             # See SPEC.md for the index
 
 ```bash
 pnpm install
-docker compose -f deploy/docker/docker-compose.yml up -d   # Forgejo + API + Web
+docker compose -f deploy/docker/docker-compose.yml up -d   # Forgejo + API
 pnpm dev                                                    # workspace dev
 ```
 

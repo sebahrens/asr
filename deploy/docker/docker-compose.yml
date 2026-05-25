@@ -2,7 +2,8 @@
 #
 # Phase 1 (see SPEC.md) will replace the dev-api shim with packages/submission.
 # Until then, the api service exposes the health and mock registry endpoints
-# needed for visual review and smoke tests.
+# needed for visual review and smoke tests. The web service is opt-in so the
+# local Vite dev server can bind http://localhost:5173 during visual review.
 # See specs/deployment.md for the canonical dev stack definition.
 
 services:
@@ -43,6 +44,8 @@ services:
   web:
     image: node:22-alpine
     container_name: asr-web
+    profiles:
+      - web
     working_dir: /workspace
     command:
       - sh
