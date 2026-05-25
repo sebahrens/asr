@@ -22,6 +22,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use('*', authMiddleware({ authMode: env.AUTH_MODE }));
   app.route('/health', healthRoutes);
   app.route('/healthz', healthRoutes);
+  app.route('/api/v1/submissions', createWorkflowRoutes(options.workflow));
   app.route('/submissions', createWorkflowRoutes(options.workflow));
 
   return app;

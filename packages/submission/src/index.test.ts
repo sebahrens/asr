@@ -75,6 +75,32 @@ describe('app', () => {
     expect(forgejo.publishedArtifact).toMatchObject({ owner: 'alice', name: 'demo-skill', version: '1.0.0' });
   });
 
+  it('accepts approval decisions on the versioned API route used by the web dashboard', async () => {
+    const store = new TestWorkflowStore();
+    const forgejo = new FakeForgejoClient();
+    const dependencies = makeDependencies(forgejo, makeScanReport('pass'));
+    const submissionApp = createApp({ workflow: { store, dependencies, now: fixedNow } });
+    await store.save(await seedAwaitingReview(dependencies));
+
+    vi.stubEnv('MOCK_USER_SUB', 'reviewer-1');
+    vi.stubEnv('MOCK_USER_ROLES', 'Compliance');
+    const approve = await submissionApp.request('/api/v1/submissions/sub-1/approve', {
+      method: 'POST',
+      body: JSON.stringify({ comment: 'approved from review dashboard' }),
+      headers: { 'content-type': 'application/json' },
+    });
+
+    expect(approve.status).toBe(200);
+    await expect(approve.json()).resolves.toMatchObject({
+      status: {
+        phase: 'published',
+        mergeCommit: 'merge-sha',
+      },
+      publishedVersion: '1.0.0',
+    });
+    expect(forgejo.publishedArtifact).toMatchObject({ owner: 'alice', name: 'demo-skill', version: '1.0.0' });
+  });
+
   it('rejects approval by the submitter with separation-of-duties violation', async () => {
     const store = new TestWorkflowStore();
     const dependencies = makeDependencies(new FakeForgejoClient(), makeScanReport('pass'));
