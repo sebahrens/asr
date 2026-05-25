@@ -27,6 +27,13 @@ describe('app', () => {
     await expect(res.json()).resolves.toEqual({ status: 'ok' });
   });
 
+  it('returns health status on the API-prefixed readiness route', async () => {
+    const res = await app.request('/api/health');
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ status: 'ok' });
+  });
+
   it('drives questionnaire, scan, confirm, and approve endpoints', async () => {
     const store = new TestWorkflowStore();
     const forgejo = new FakeForgejoClient();

@@ -49,6 +49,7 @@ describe('requireRole', () => {
 describe('isExemptPath', () => {
   it('matches unauthenticated paths from the role matrix', () => {
     expect(isExemptPath('/health')).toBe(true);
+    expect(isExemptPath('/api/health')).toBe(true);
     expect(isExemptPath('/version')).toBe(true);
     expect(isExemptPath('/webhooks/forgejo')).toBe(true);
     expect(isExemptPath('/submissions')).toBe(false);

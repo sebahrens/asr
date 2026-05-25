@@ -43,9 +43,9 @@ describe('authMiddleware', () => {
   it('skips auth for exempt paths', async () => {
     const app = new Hono<{ Variables: AuthVariables }>();
     app.use('*', authMiddleware({ authMode: 'entra' }));
-    app.get('/health', (c) => c.json({ status: 'ok' }));
+    app.get('/api/health', (c) => c.json({ status: 'ok' }));
 
-    const res = await app.request('/health');
+    const res = await app.request('/api/health');
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ status: 'ok' });
