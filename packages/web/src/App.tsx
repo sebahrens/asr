@@ -27,6 +27,23 @@ function useMediaQuery(query: string): boolean {
   return matches;
 }
 
+function useEscapeDismiss(active: boolean, onDismiss: () => void) {
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onDismiss();
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [active, onDismiss]);
+}
+
 interface Skill {
   id: string;
   owner: string;
@@ -942,6 +959,8 @@ function ReviewDashboard() {
     : false;
   const confirmationError = pendingConfirmation ? decisionError[pendingConfirmation.submission.id] : null;
 
+  useEscapeDismiss(Boolean(pendingConfirmation) && !confirmationPending, closeDecisionConfirmation);
+
   return (
     <>
       <div className="brand-stripe" />
@@ -1075,7 +1094,15 @@ function ReviewDashboard() {
       </main>
 
       {pendingConfirmation ? (
-        <div className="decision-modal-backdrop" role="presentation">
+        <div
+          className="decision-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !confirmationPending) {
+              closeDecisionConfirmation();
+            }
+          }}
+        >
           <section
             className="decision-modal"
             role="dialog"
@@ -1298,6 +1325,8 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
     }
   }
 
+  useEscapeDismiss(Boolean(pendingConfirmation) && !confirmationPending, closeDecisionConfirmation);
+
   async function submitDecision(nextDecision: Decision) {
     const currentSubmission = submission;
     if (!currentSubmission) {
@@ -1517,7 +1546,15 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
       </main>
 
       {pendingConfirmation ? (
-        <div className="decision-modal-backdrop" role="presentation">
+        <div
+          className="decision-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !confirmationPending) {
+              closeDecisionConfirmation();
+            }
+          }}
+        >
           <section
             className="decision-modal"
             role="dialog"

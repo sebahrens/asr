@@ -1518,17 +1518,22 @@ main {
   inset: 0;
   justify-content: center;
   padding: 24px;
+  pointer-events: auto;
   position: fixed;
-  z-index: 20;
+  z-index: 300;
 }
 
 .decision-modal {
   background: #ffffff;
   border-radius: 8px;
   box-shadow: 0 24px 60px rgba(17, 24, 39, 0.22);
+  max-height: calc(100dvh - 48px);
   max-width: 520px;
+  overflow: auto;
   padding: 24px;
+  position: relative;
   width: min(100%, 520px);
+  z-index: 1;
 }
 
 .decision-modal-header {
@@ -1945,6 +1950,7 @@ main {
   }
 
   .decision-modal {
+    max-height: calc(100dvh - 24px);
     padding: 18px;
   }
 
