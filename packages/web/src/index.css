@@ -1726,6 +1726,59 @@ main {
   white-space: nowrap;
 }
 
+.review-diff-list {
+  display: grid;
+  gap: 0;
+}
+
+.review-diff-file + .review-diff-file {
+  border-top: 1px solid var(--border-light);
+}
+
+.review-diff-file-header {
+  align-items: flex-start;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 16px 18px;
+}
+
+.review-diff-file-header h2 {
+  color: var(--text);
+  font-size: 0.95rem;
+  margin-bottom: 5px;
+}
+
+.review-diff-file-header p {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.review-diff-file-header span {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.review-diff-viewer {
+  overflow-x: auto;
+}
+
+.review-diff-viewer table {
+  min-width: 760px;
+}
+
+.review-diff-viewer pre {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .decision-panel {
   background: var(--bg-card);
   border: 1px solid var(--border-light);
@@ -1830,6 +1883,10 @@ main {
 
   .publish-layout {
     grid-template-columns: 1fr;
+  }
+
+  .review-diff-file-header {
+    display: grid;
   }
 
   .wizard-progress,

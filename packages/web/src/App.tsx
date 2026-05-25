@@ -1,5 +1,6 @@
 import { createContext, useState, useEffect, useCallback, useContext } from 'react';
 import type { FormEvent, ReactNode } from 'react';
+import ReactDiffViewer from 'react-diff-viewer-continued';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { parseSkillMd, type SkillDetail, type SkillSummary, type VersionDiff } from '@asr/core';
@@ -34,11 +35,20 @@ interface ReviewSubmission {
 }
 
 interface ReviewSubmissionDetail {
-  diff: { file: string; summary: string; additions: number; removals: number }[];
+  diff: ReviewDiffFile[];
   dependencies: { name: string; version: string; status: string }[];
   permissions: { label: string; value: string; risk: ReviewSubmission['risk'] }[];
   scan: { scanner: string; result: string; severity: ReviewSubmission['risk'] }[];
   audit: { actor: string; action: string; at: string }[];
+}
+
+interface ReviewDiffFile {
+  file: string;
+  summary: string;
+  additions: number;
+  removals: number;
+  oldValue: string;
+  newValue: string;
 }
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -406,8 +416,77 @@ const mockReviewQueue: ReviewSubmission[] = [
 const mockReviewDetails: Record<string, ReviewSubmissionDetail> = {
   'sub-1042': {
     diff: [
-      { file: 'SKILL.md', summary: 'Adds secure review instructions and scanner guidance.', additions: 42, removals: 8 },
-      { file: 'scripts/check-deps.ts', summary: 'Adds dependency manifest checks before reporting.', additions: 27, removals: 0 },
+      {
+        file: 'SKILL.md',
+        summary: 'Adds secure review instructions and scanner guidance.',
+        additions: 42,
+        removals: 8,
+        oldValue: `---
+name: secure-review
+version: 1.1.0
+kind: workflow
+---
+
+# Secure Review
+
+Review dependency changes before release.
+
+## Steps
+
+1. Read package manifests.
+2. Check scanner output.
+3. Summarize notable dependency changes.`,
+        newValue: `---
+name: secure-review
+version: 1.2.0
+kind: workflow
+permissions:
+  network: restricted
+  filesystem: read-only
+  subprocess: npm-audit
+---
+
+# Secure Review
+
+Review dependency changes before release and document compliance evidence.
+
+## Steps
+
+1. Read package manifests and lockfiles.
+2. Run dependency checks in the sandbox.
+3. Verify scanner output for high-severity findings.
+4. Summarize notable dependency changes with remediation status.
+
+## Scanner Guidance
+
+Escalate subprocess usage unless the command is pinned and read-only.`,
+      },
+      {
+        file: 'scripts/check-deps.ts',
+        summary: 'Adds dependency manifest checks before reporting.',
+        additions: 27,
+        removals: 0,
+        oldValue: '',
+        newValue: `import { readFile } from 'node:fs/promises';
+
+interface DependencyCheck {
+  name: string;
+  version: string;
+  pinned: boolean;
+}
+
+export async function checkDependencies(manifestPath: string): Promise<DependencyCheck[]> {
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+    dependencies?: Record<string, string>;
+  };
+
+  return Object.entries(manifest.dependencies ?? {}).map(([name, version]) => ({
+    name,
+    version,
+    pinned: /^\\d+\\.\\d+\\.\\d+$/.test(version),
+  }));
+}`,
+      },
     ],
     dependencies: [
       { name: '@actions/core', version: '1.10.1', status: 'Pinned' },
@@ -431,8 +510,43 @@ const mockReviewDetails: Record<string, ReviewSubmissionDetail> = {
   },
   'sub-1039': {
     diff: [
-      { file: 'SKILL.md', summary: 'Updates release note drafting guidance for dependency and migration notes.', additions: 18, removals: 3 },
-      { file: 'templates/changelog.md', summary: 'Adds a structured upgrade-impact section for reviewers.', additions: 12, removals: 0 },
+      {
+        file: 'SKILL.md',
+        summary: 'Updates release note drafting guidance for dependency and migration notes.',
+        additions: 18,
+        removals: 3,
+        oldValue: `# Release Notes
+
+Draft concise release notes from merged pull requests.
+
+Include features, fixes, and known issues.`,
+        newValue: `# Release Notes
+
+Draft concise release notes from merged pull requests.
+
+Include features, fixes, migration notes, dependency changes, and known issues.
+
+Flag dependency upgrades that change runtime behavior or deployment steps.`,
+      },
+      {
+        file: 'templates/changelog.md',
+        summary: 'Adds a structured upgrade-impact section for reviewers.',
+        additions: 12,
+        removals: 0,
+        oldValue: '',
+        newValue: `## Upgrade Impact
+
+- Runtime changes:
+- Dependency changes:
+- Required migrations:
+- Rollback notes:
+
+## Reviewer Checklist
+
+- [ ] Breaking changes identified
+- [ ] Migration guidance included
+- [ ] Dependency risk noted`,
+      },
     ],
     dependencies: [
       { name: 'markdown-it', version: '14.1.0', status: 'Allowed' },
@@ -467,6 +581,10 @@ function createReviewDetail(submission: ReviewSubmission): ReviewSubmissionDetai
         summary: `Initial review package for ${submission.skillName} v${submission.version}.`,
         additions: 1,
         removals: 0,
+        oldValue: '',
+        newValue: `# ${submission.skillName}
+
+Initial review package for ${submission.owner}/${submission.skillName} v${submission.version}.`,
       },
     ],
     dependencies: [
@@ -488,6 +606,103 @@ function createReviewDetail(submission: ReviewSubmission): ReviewSubmissionDetai
       { actor: 'asr', action: 'Queued compliance review', at: submission.submittedAt },
     ],
   };
+}
+
+function createReviewDetailFromVersionDiff(submission: ReviewSubmission, diff: VersionDiff): ReviewSubmissionDetail {
+  const baseDetail = createReviewDetail(submission);
+  const changedFiles: ReviewDiffFile[] = [
+    ...diff.filesModified.map((file) => ({
+      file,
+      summary: 'Modified in this version.',
+      additions: 1,
+      removals: 1,
+      oldValue: `${file}\n\nPrevious version content is represented by the registry diff payload.`,
+      newValue: `${file}\n\nUpdated content is represented by the registry diff payload.`,
+    })),
+    ...diff.filesAdded.map((file) => ({
+      file,
+      summary: 'Added in this version.',
+      additions: 1,
+      removals: 0,
+      oldValue: '',
+      newValue: `${file}\n\nAdded in ${diff.toVersion}.`,
+    })),
+    ...diff.filesRemoved.map((file) => ({
+      file,
+      summary: 'Removed in this version.',
+      additions: 0,
+      removals: 1,
+      oldValue: `${file}\n\nRemoved after ${diff.fromVersion || 'initial publish'}.`,
+      newValue: '',
+    })),
+  ];
+
+  return {
+    ...baseDetail,
+    diff: changedFiles.length > 0 ? changedFiles : baseDetail.diff,
+    permissions: [
+      {
+        label: 'Version risk',
+        value: `${diff.riskAssessment} risk from registry version diff`,
+        risk: diff.riskAssessment,
+      },
+      {
+        label: 'Permissions',
+        value: diff.permissionsExpanded ? 'Expanded from previous version' : 'No expansion detected',
+        risk: diff.permissionsExpanded ? 'high' : 'low',
+      },
+      ...baseDetail.permissions.slice(1),
+    ],
+  };
+}
+
+async function fetchReviewVersionDiff(submission: ReviewSubmission): Promise<VersionDiff | null> {
+  const res = await fetch(
+    `${API_URL}/api/v1/skills/${encodeURIComponent(submission.owner)}/${encodeURIComponent(submission.skillName)}/versions/${encodeURIComponent(submission.version)}/diff`,
+  );
+
+  if (res.status === 404) {
+    return null;
+  }
+
+  if (!res.ok) {
+    throw new Error(`Version diff request failed with ${res.status}`);
+  }
+
+  return await res.json() as VersionDiff;
+}
+
+function ReviewDiffPanel({ files }: { files: ReviewDiffFile[] }) {
+  if (files.length === 0) {
+    return <p className="empty-review-queue">No changed files are available for this submission.</p>;
+  }
+
+  return (
+    <div className="review-diff-list">
+      {files.map((file) => (
+        <section className="review-diff-file" key={file.file} aria-label={`${file.file} diff`}>
+          <header className="review-diff-file-header">
+            <div>
+              <h2>{file.file}</h2>
+              <p>{file.summary}</p>
+            </div>
+            <span>+{file.additions} / -{file.removals}</span>
+          </header>
+          <div className="review-diff-viewer">
+            <ReactDiffViewer
+              oldValue={file.oldValue}
+              newValue={file.newValue}
+              splitView
+              showDiffOnly={false}
+              leftTitle="Previous"
+              rightTitle="Submitted"
+              useDarkTheme={false}
+            />
+          </div>
+        </section>
+      ))}
+    </div>
+  );
 }
 
 function formatSubmittedAt(value: string): string {
@@ -892,9 +1107,16 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
         const data = await res.json();
         const items = Array.isArray(data.submissions) ? data.submissions as ReviewSubmission[] : [];
         const nextSubmission = items.find((item) => item.id === submissionId) ?? null;
+        const versionDiff = nextSubmission ? await fetchReviewVersionDiff(nextSubmission) : null;
         if (!ignore) {
           setSubmission(nextSubmission);
-          setDetail(nextSubmission ? createReviewDetail(nextSubmission) : null);
+          setDetail(
+            nextSubmission
+              ? versionDiff
+                ? createReviewDetailFromVersionDiff(nextSubmission, versionDiff)
+                : createReviewDetail(nextSubmission)
+              : null,
+          );
         }
       } catch {
         if (!ignore) {
@@ -993,17 +1215,7 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
 
             <section className="review-detail-panel" role="tabpanel" aria-label={reviewDetailTabs.find((tab) => tab.id === activeTab)?.label}>
               {activeTab === 'diff' && (
-                <div className="evidence-list">
-                  {detail.diff.map((item) => (
-                    <div className="evidence-row" key={item.file}>
-                      <div>
-                        <strong>{item.file}</strong>
-                        <p>{item.summary}</p>
-                      </div>
-                      <span>+{item.additions} / -{item.removals}</span>
-                    </div>
-                  ))}
-                </div>
+                <ReviewDiffPanel files={detail.diff} />
               )}
 
               {activeTab === 'dependencies' && (
