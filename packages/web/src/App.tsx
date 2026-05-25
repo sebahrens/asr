@@ -434,11 +434,11 @@ function ReviewDashboard() {
             {queueError ? <div className="queue-error" role="status">{queueError}</div> : null}
 
             <div className="submission-list">
-              {submissions.length === 0 && !loading ? (
+              {reviewableSubmissions.length === 0 && !loading ? (
                 <div className="empty-review-queue" role="status">No pending submissions need compliance review.</div>
               ) : null}
 
-              {submissions.map((submission) => {
+              {reviewableSubmissions.map((submission) => {
                 const pendingDecision = decisionPending[submission.id];
                 const isReviewable = submission.status === 'pending review';
                 const disableActions = Boolean(pendingDecision);
