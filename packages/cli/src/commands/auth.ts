@@ -1,7 +1,9 @@
 import { Buffer } from 'buffer';
 import { Command } from 'commander';
 import pc from 'picocolors';
-import { clearTokens, getStoredTokens, type StoredTokens } from '../auth/token-store.js';
+import { pollForToken, requestDeviceCode, type FetchLike } from '../auth/device-code.js';
+import { clearTokens, getStoredTokens, storeTokens, type StoredTokens } from '../auth/token-store.js';
+import { getApiBaseUrl, isAuthDisabled } from '../env.js';
 
 interface AccessTokenClaims {
   email?: string;
@@ -11,17 +13,6 @@ interface AccessTokenClaims {
   scp?: string;
   sub?: string;
   upn?: string;
-}
-
-function isAuthDisabled(): boolean {
-  const url = process.env.ASR_URL;
-  if (!url) return false;
-
-  try {
-    return new URL(url).protocol !== 'https:';
-  } catch {
-    return false;
-  }
 }
 
 function decodeAccessTokenClaims(accessToken: string): AccessTokenClaims {
@@ -71,12 +62,53 @@ export function describeStoredIdentity(tokens: StoredTokens): { identity: string
   };
 }
 
+interface RegisterLoginOptions {
+  fetch?: FetchLike;
+}
+
+function formatRoles(roles: string[]): string {
+  return roles.length > 0 ? roles.join(', ') : 'none';
+}
+
+export function registerLogin(program: Command, opts: RegisterLoginOptions = {}): void {
+  program
+    .command('login')
+    .description('Sign in with Microsoft Entra ID device code flow')
+    .action(async () => {
+      const baseUrl = getApiBaseUrl();
+      if (isAuthDisabled(baseUrl)) {
+        console.log(pc.yellow('Authentication is skipped in dev mode'));
+        return;
+      }
+
+      try {
+        const deviceCode = await requestDeviceCode(baseUrl, opts.fetch);
+        console.log(`To sign in, visit ${pc.cyan(deviceCode.verificationUri)}`);
+        console.log(`Enter code: ${pc.bold(deviceCode.userCode)}`);
+        console.log('Waiting for authentication...');
+
+        const tokens = await pollForToken(baseUrl, deviceCode.deviceCode, {
+          fetch: opts.fetch,
+          initialIntervalSeconds: deviceCode.interval,
+        });
+        await storeTokens(tokens);
+
+        const { identity, roles } = describeStoredIdentity(tokens);
+        console.log(`Logged in as ${pc.green(identity)} (roles: ${formatRoles(roles)})`);
+        console.log(pc.dim('Token cached in OS keyring.'));
+      } catch (err) {
+        console.error(pc.red(String(err)));
+        process.exit(1);
+      }
+    });
+}
+
 export function registerWhoami(program: Command): void {
   program
     .command('whoami')
     .description('Show signed-in identity and roles')
     .action(async () => {
-      if (isAuthDisabled()) {
+      if (process.env.ASR_URL && isAuthDisabled(process.env.ASR_URL)) {
         console.log(pc.yellow('Not signed in'));
         return;
       }
@@ -88,8 +120,7 @@ export function registerWhoami(program: Command): void {
       }
 
       const { identity, roles } = describeStoredIdentity(tokens);
-      const roleText = roles.length > 0 ? roles.join(', ') : 'none';
-      console.log(`Signed in as ${pc.green(identity)} (roles: ${roleText})`);
+      console.log(`Signed in as ${pc.green(identity)} (roles: ${formatRoles(roles)})`);
     });
 }
 
