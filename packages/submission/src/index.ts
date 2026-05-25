@@ -7,6 +7,7 @@ import type { AuthVariables } from './auth/types.js';
 import { getEnv } from './env.js';
 import { healthRoutes } from './http/health.js';
 import { createWorkflowRoutes, type WorkflowRouteOptions } from './http/workflow.js';
+import { mcpHandler } from './mcp/server.js';
 
 assertAuthModeAllowed();
 
@@ -22,6 +23,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use('*', authMiddleware({ authMode: env.AUTH_MODE }));
   app.route('/health', healthRoutes);
   app.route('/healthz', healthRoutes);
+  app.all('/mcp', mcpHandler);
   app.route('/api/v1/submissions', createWorkflowRoutes(options.workflow));
   app.route('/submissions', createWorkflowRoutes(options.workflow));
 
