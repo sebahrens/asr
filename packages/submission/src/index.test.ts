@@ -34,6 +34,112 @@ describe('app', () => {
     await expect(res.json()).resolves.toEqual({ status: 'ok' });
   });
 
+  it('allows the local Vite app to call the API during mock-auth development', async () => {
+    const res = await app.request('/api/v1/skills', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://localhost:5173',
+        'Access-Control-Request-Method': 'GET',
+      },
+    });
+
+    expect(res.status).toBe(204);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    expect(res.headers.get('Access-Control-Allow-Methods')).toContain('GET');
+  });
+
+  it('serves public registry skills on the route used by the web browse page', async () => {
+    const res = await app.request('/api/v1/skills?q=security');
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      items: [
+        {
+          owner: 'asr',
+          name: 'security-review',
+          latestVersion: '1.0.0',
+        },
+      ],
+    });
+  });
+
+  it('serves pending submissions on the route used by the review dashboard', async () => {
+    const store = new TestWorkflowStore();
+    const dependencies = makeDependencies(new FakeForgejoClient(), makeScanReport('pass'));
+    const submissionApp = createApp({ workflow: { store, dependencies, now: fixedNow } });
+    await store.save({
+      id: 'sub-1',
+      submittedBy: 'submitter-1',
+      serializedContext: '{}',
+      context: {
+        ...makeContext(),
+        status: 'compliance-review',
+        scanReport: makeScanReport('review_required'),
+      },
+    });
+
+    vi.stubEnv('MOCK_USER_SUB', 'reviewer-1');
+    vi.stubEnv('MOCK_USER_ROLES', 'Compliance');
+    const res = await submissionApp.request('/api/v1/submissions?status=pending');
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      submissions: [
+        {
+          id: 'sub-1',
+          skillName: 'demo-skill',
+          owner: 'alice',
+          version: '1.0.0',
+          status: 'pending review',
+        },
+      ],
+    });
+  });
+
+  it('creates a dev submission from skill markdown and queues it for review', async () => {
+    const store = new TestWorkflowStore();
+    const submissionApp = createApp({ workflow: { store, now: fixedNow } });
+
+    vi.stubEnv('MOCK_USER_SUB', 'submitter-1');
+    vi.stubEnv('MOCK_USER_ROLES', 'Submitter');
+    const body = new FormData();
+    body.set('owner', 'alice');
+    body.set('skillMd', `---
+name: demo-skill
+version: 1.0.0
+description: Demo skill
+tags:
+  - demo
+---
+
+# demo-skill
+`);
+
+    const created = await submissionApp.request('/api/v1/submissions', {
+      method: 'POST',
+      body,
+    });
+
+    expect(created.status).toBe(201);
+    const data = await created.json();
+    expect(data).toMatchObject({
+      manifest: {
+        author: 'alice',
+        name: 'demo-skill',
+        version: '1.0.0',
+      },
+      status: { phase: 'uploaded' },
+    });
+
+    const queued = store.list()[0];
+    expect(queued).toMatchObject({
+      id: data.id,
+      context: {
+        status: 'compliance-review',
+      },
+    });
+  });
+
   it('drives questionnaire, scan, confirm, and approve endpoints', async () => {
     const store = new TestWorkflowStore();
     const forgejo = new FakeForgejoClient();
@@ -166,6 +272,10 @@ class TestWorkflowStore implements WorkflowSubmissionStore {
 
   get(id: string): WorkflowSubmissionRecord | undefined {
     return this.records.get(id);
+  }
+
+  list(): WorkflowSubmissionRecord[] {
+    return Array.from(this.records.values());
   }
 
   save(record: WorkflowSubmissionRecord): void {

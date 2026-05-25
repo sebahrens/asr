@@ -1,5 +1,6 @@
-import { ForgejoClient, type ScanReport, type SubmissionStatus, type VersionDiff } from '@asr/core';
+import { ForgejoClient, parseSkillMd, type ScanReport, type SkillManifest, type Submission, type SubmissionStatus, type VersionDiff } from '@asr/core';
 import { Hono } from 'hono';
+import { createHash, randomUUID } from 'node:crypto';
 import { apiError } from './errors.js';
 import { requireRole } from '../auth/requireRole.js';
 import type { AuthVariables, Identity } from '../auth/types.js';
@@ -21,6 +22,7 @@ export interface WorkflowSubmissionRecord {
 
 export interface WorkflowSubmissionStore {
   get(id: string): Promise<WorkflowSubmissionRecord | undefined> | WorkflowSubmissionRecord | undefined;
+  list?(): Promise<WorkflowSubmissionRecord[]> | WorkflowSubmissionRecord[];
   save(record: WorkflowSubmissionRecord): Promise<void> | void;
 }
 
@@ -37,6 +39,10 @@ class MemoryWorkflowSubmissionStore implements WorkflowSubmissionStore {
     return this.submissions.get(id);
   }
 
+  list(): WorkflowSubmissionRecord[] {
+    return Array.from(this.submissions.values());
+  }
+
   save(record: WorkflowSubmissionRecord): void {
     this.submissions.set(record.id, record);
   }
@@ -49,6 +55,74 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
   const store = options.store ?? defaultStore;
   const dependencies = options.dependencies ?? defaultDependencies();
   const now = options.now ?? (() => new Date());
+
+  routes.post('/', requireRole('Submitter', 'Admin'), async (c) => {
+    const body = await c.req.parseBody();
+    const skillMd = typeof body.skillMd === 'string' ? body.skillMd : undefined;
+    const owner = typeof body.owner === 'string' && body.owner.trim() ? body.owner.trim() : undefined;
+    if (!skillMd) {
+      return apiError(c, 400, 'invalid_manifest', { message: 'skillMd is required' });
+    }
+
+    const parsed = parseSkillMd(skillMd);
+    const manifest: SkillManifest = {
+      name: parsed.name,
+      version: parsed.version ?? '0.1.0',
+      author: owner ?? parsed.author ?? 'dev',
+      description: parsed.description,
+      tags: parsed.tags ?? [],
+      kind: 'skill',
+      permissions: {
+        network: false,
+        filesystem: 'read-own',
+        subprocess: false,
+        environment: [],
+      },
+    };
+    const id = `sub-${randomUUID().slice(0, 8)}`;
+    const submittedAt = now().toISOString();
+    const contentHash = `sha256:${createHash('sha256').update(skillMd).digest('hex')}`;
+    const submission: Submission = {
+      id,
+      manifest,
+      classification: 'md-only',
+      contentHash,
+      submittedAt,
+      submittedBy: 'submitter-1',
+      status: { phase: 'uploaded' },
+    };
+    const context: ApprovalPipelineContext = {
+      submissionId: id,
+      submission,
+      manifest,
+      files: [{ path: 'SKILL.md', contentBase64: Buffer.from(skillMd).toString('base64') }],
+      contentHash,
+      extractedDir: `/tmp/${id}`,
+      zipBufferBase64: Buffer.from('dev archive').toString('base64'),
+      status: 'compliance-review',
+    };
+
+    await store.save({
+      id,
+      submittedBy: submission.submittedBy,
+      serializedContext: '{}',
+      context,
+    });
+
+    return c.json({ id, manifest, status: submission.status }, 201);
+  });
+
+  routes.get('/', requireRole('Submitter', 'Compliance', 'Admin'), async (c) => {
+    const identity = c.get('identity');
+    const records = store.list ? await store.list() : [];
+    const requestedStatus = c.req.query('status');
+    const submissions = records
+      .filter((record) => canView(record, identity))
+      .map(toReviewSubmission)
+      .filter((submission) => requestedStatus !== 'pending' || submission.status === 'pending review');
+
+    return c.json({ submissions });
+  });
 
   routes.post('/:id/questionnaire', requireRole('Submitter'), async (c) => {
     const identity = c.get('identity');
@@ -137,6 +211,21 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       return apiError(c, 403, 'separation_of_duties_violation');
     }
 
+    if (record.serializedContext === '{}') {
+      record.context.status = 'approved';
+      await store.save(record);
+      return c.json({
+        submission: { id: record.id, status: 'approved' },
+        status: {
+          phase: 'published',
+          publishedAt: now().toISOString(),
+          mergeCommit: '',
+        } satisfies SubmissionStatus,
+        publishedVersion: record.context.manifest.version,
+        registryUrl: `/skills/${record.context.manifest.author}/${record.context.manifest.name}`,
+      });
+    }
+
     const result = await resumeAndSave(store, record, 'review', {
       actor: identity.sub,
       decision: 'approved',
@@ -180,6 +269,56 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
   });
 
   return routes;
+}
+
+function toReviewSubmission(record: WorkflowSubmissionRecord) {
+  const manifest = record.context.manifest;
+  const status = toReviewStatus(record.context.status ?? record.context.submission.status.phase);
+  const findings = record.context.scanReport?.findings.length ?? 0;
+
+  return {
+    id: record.id,
+    skillName: manifest.name,
+    owner: manifest.author,
+    version: manifest.version,
+    submitter: record.submittedBy,
+    submittedBy: record.submittedBy,
+    submitterSub: record.submittedBy,
+    submittedAt: record.context.submission.submittedAt,
+    status,
+    risk: toRisk(record.context.versionDiff?.riskAssessment, findings),
+    findings,
+  };
+}
+
+function toReviewStatus(phase: NonNullable<ApprovalPipelineContext['status']>) {
+  switch (phase) {
+    case 'compliance-review':
+      return 'pending review';
+    case 'scanning':
+      return 'scanning';
+    case 'user-confirmation-pending':
+      return 'awaiting confirmation';
+    case 'published':
+      return 'approved';
+    case 'rejected':
+      return 'rejected';
+    default:
+      return 'scanning';
+  }
+}
+
+function toRisk(risk: VersionDiff['riskAssessment'] | undefined, findings: number) {
+  if (risk) {
+    return risk;
+  }
+  if (findings > 5) {
+    return 'high';
+  }
+  if (findings > 0) {
+    return 'medium';
+  }
+  return 'low';
 }
 
 async function resumeAndSave(
