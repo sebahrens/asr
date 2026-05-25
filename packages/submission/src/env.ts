@@ -6,6 +6,10 @@ const envSchema = z
     NODE_ENV: z.enum(['development', 'production']),
     AUTH_MODE: z.enum(['mock', 'entra']),
     FORGEJO_URL: z.string().optional(),
+    FORGEJO_UPLOAD_TOKEN: z.string().optional(),
+    FORGEJO_MERGE_TOKEN: z.string().optional(),
+    FORGEJO_OWNER: z.string().optional(),
+    FORGEJO_REPO: z.string().optional(),
     DATABASE_PATH: z.string().optional(),
   })
   .superRefine((env, ctx) => {
