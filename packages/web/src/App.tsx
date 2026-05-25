@@ -2310,7 +2310,7 @@ function SkillNotFoundState({
       </header>
 
       <main className="not-found-main">
-        <section className="not-found-state" aria-labelledby="not-found-title">
+        <section className="not-found-state" role="alert" aria-live="assertive" aria-labelledby="not-found-title">
           <p className="eyebrow">Skill lookup</p>
           <h1 id="not-found-title">{title}</h1>
           <p>{message}</p>
