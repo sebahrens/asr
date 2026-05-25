@@ -42,6 +42,7 @@ interface RegistrySkillsResponse {
 
 type Decision = 'approved' | 'rejected';
 type PublishStatus = 'idle' | 'submitting' | 'submitted';
+type PublishWizardStep = 'upload' | 'manifest' | 'questionnaire' | 'review';
 type SkillDetailTab = 'preview' | 'versions' | 'permissions' | 'audit';
 type ReviewDetailTab = 'diff' | 'dependencies' | 'permissions' | 'scan' | 'audit';
 
@@ -50,6 +51,43 @@ interface PublishFormErrors {
   skillMd?: string;
   owner?: string;
 }
+
+interface PublishManifestDraft {
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  tags: string;
+}
+
+interface QuestionnaireDraft {
+  externalNetwork: string;
+  filesystemAccess: string;
+  reviewNotes: string;
+}
+
+type ParsedSkillMd = ReturnType<typeof parseSkillMd>;
+
+const publishWizardSteps: { id: PublishWizardStep; label: string }[] = [
+  { id: 'upload', label: 'Upload' },
+  { id: 'manifest', label: 'Manifest' },
+  { id: 'questionnaire', label: 'Questionnaire' },
+  { id: 'review', label: 'Review & Submit' },
+];
+
+const emptyManifestDraft: PublishManifestDraft = {
+  name: '',
+  version: '',
+  author: '',
+  description: '',
+  tags: '',
+};
+
+const emptyQuestionnaireDraft: QuestionnaireDraft = {
+  externalNetwork: '',
+  filesystemAccess: '',
+  reviewNotes: '',
+};
 
 function mapSkillSummary(skill: SkillSummary): Skill {
   return {
@@ -145,6 +183,43 @@ function MockAuthBanner({ role }: { role: string }) {
   return <div className="mock-auth-banner">Mock auth: {role}</div>;
 }
 
+function parsePublishSkillMd(content: string): ParsedSkillMd {
+  try {
+    return parseSkillMd(content);
+  } catch {
+    const match = content.match(/^---\n([\s\S]*?)\n---\n*([\s\S]*)$/);
+    if (!match) {
+      throw new Error('Missing frontmatter');
+    }
+
+    const data: Record<string, string> = {};
+    for (const line of match[1].split('\n')) {
+      const separator = line.indexOf(':');
+      if (separator === -1) {
+        continue;
+      }
+
+      const key = line.slice(0, separator).trim();
+      const value = line.slice(separator + 1).trim();
+      data[key] = value.replace(/^["']|["']$/g, '');
+    }
+
+    const tags = data.tags?.replace(/^\[|\]$/g, '')
+      .split(',')
+      .map((tag) => tag.trim().replace(/^["']|["']$/g, ''))
+      .filter(Boolean) ?? [];
+
+    return {
+      name: data.name || 'unnamed',
+      description: data.description || '',
+      tags,
+      author: data.author,
+      version: data.version,
+      body: match[2].trim(),
+    };
+  }
+}
+
 function validateSkillMd(content: string): string | undefined {
   if (!content.trim()) {
     return 'Paste the SKILL.md content from the archive.';
@@ -155,7 +230,7 @@ function validateSkillMd(content: string): string | undefined {
   }
 
   try {
-    const manifest = parseSkillMd(content);
+    const manifest = parsePublishSkillMd(content);
     if (!manifest.name || manifest.name === 'unnamed') {
       return 'SKILL.md frontmatter must include a name.';
     }
@@ -192,6 +267,40 @@ function validateArchive(file: File | null): string | undefined {
   }
 
   return undefined;
+}
+
+function getParsedSkillMd(content: string): ParsedSkillMd | null {
+  if (validateSkillMd(content)) {
+    return null;
+  }
+
+  try {
+    return parsePublishSkillMd(content);
+  } catch {
+    return null;
+  }
+}
+
+function createManifestDraft(content: string): PublishManifestDraft {
+  const manifest = getParsedSkillMd(content);
+  if (!manifest) {
+    return emptyManifestDraft;
+  }
+  const tags = Array.isArray(manifest.tags)
+    ? manifest.tags
+    : String(manifest.tags ?? '')
+      .replace(/^\[|\]$/g, '')
+      .split(',')
+      .map((tag) => tag.trim().replace(/^["']|["']$/g, ''))
+      .filter(Boolean);
+
+  return {
+    name: manifest.name,
+    version: manifest.version ?? '',
+    author: manifest.author ?? '',
+    description: manifest.description,
+    tags: tags.join(', '),
+  };
 }
 
 const mockReviewQueue: ReviewSubmission[] = [
@@ -812,11 +921,29 @@ function PublishSkill() {
   const [owner, setOwner] = useState('');
   const [skillMd, setSkillMd] = useState('');
   const [skillArchive, setSkillArchive] = useState<File | null>(null);
+  const [currentStep, setCurrentStep] = useState<PublishWizardStep>('upload');
+  const [manifestDraft, setManifestDraft] = useState<PublishManifestDraft>(emptyManifestDraft);
+  const [questionnaire, setQuestionnaire] = useState<QuestionnaireDraft>(emptyQuestionnaireDraft);
   const [errors, setErrors] = useState<PublishFormErrors>({});
   const [status, setStatus] = useState<PublishStatus>('idle');
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
 
-  function validateForm() {
+  const uploadIsValid = Boolean(owner.trim() && skillArchive && getParsedSkillMd(skillMd));
+  const manifestIsValid = Boolean(
+    manifestDraft.name.trim()
+      && manifestDraft.version.trim()
+      && manifestDraft.author.trim()
+      && manifestDraft.description.trim(),
+  );
+  const questionnaireIsValid = Boolean(questionnaire.externalNetwork && questionnaire.filesystemAccess);
+  const canSubmit = uploadIsValid && manifestIsValid && questionnaireIsValid && status !== 'submitting';
+  const archiveSize = skillArchive ? `${(skillArchive.size / 1024 / 1024).toFixed(2)} MB` : null;
+  const manifestTags = manifestDraft.tags
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+  function validateUploadStep() {
     const nextErrors: PublishFormErrors = {};
 
     if (!owner.trim()) {
@@ -837,11 +964,53 @@ function PublishSkill() {
     return Object.keys(nextErrors).length === 0;
   }
 
+  function goToStep(step: PublishWizardStep) {
+    const targetIndex = publishWizardSteps.findIndex((item) => item.id === step);
+    const currentIndex = publishWizardSteps.findIndex((item) => item.id === currentStep);
+
+    if (targetIndex <= currentIndex) {
+      setCurrentStep(step);
+      return;
+    }
+
+    if (!validateUploadStep()) {
+      setCurrentStep('upload');
+      return;
+    }
+
+    if (targetIndex > 1 && !manifestIsValid) {
+      setCurrentStep('manifest');
+      return;
+    }
+
+    if (targetIndex > 2 && !questionnaireIsValid) {
+      setCurrentStep('questionnaire');
+      return;
+    }
+
+    setCurrentStep(step);
+  }
+
+  function continueFromUpload() {
+    setSubmitMessage(null);
+    if (!validateUploadStep()) {
+      return;
+    }
+
+    setManifestDraft(createManifestDraft(skillMd));
+    setCurrentStep('manifest');
+  }
+
   async function submitSkill(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitMessage(null);
 
-    if (!validateForm() || !skillArchive) {
+    if (!validateUploadStep() || !skillArchive || !manifestIsValid || !questionnaireIsValid) {
+      if (!manifestIsValid) {
+        setCurrentStep('manifest');
+      } else if (!questionnaireIsValid) {
+        setCurrentStep('questionnaire');
+      }
       return;
     }
 
@@ -890,8 +1059,6 @@ function PublishSkill() {
     });
   }
 
-  const archiveSize = skillArchive ? `${(skillArchive.size / 1024 / 1024).toFixed(2)} MB` : null;
-
   return (
     <>
       <div className="brand-stripe" />
@@ -911,62 +1078,300 @@ function PublishSkill() {
             <p className="eyebrow">Skill submission</p>
             <h1 id="publish-title">Publish a skill</h1>
             <p>
-              Upload a zip archive, paste the included SKILL.md, and submit it for scanning and approval.
+              Upload an archive, confirm the parsed manifest, complete review questions, and submit for approval.
             </p>
           </section>
 
-          <form className="publish-form" onSubmit={submitSkill} noValidate>
-            <label className="field" htmlFor="publish-owner">
-              <span>Registry owner</span>
-              <input
-                id="publish-owner"
-                type="text"
-                value={owner}
-                onChange={(event) => setOwner(event.target.value)}
-                placeholder="platform"
-                aria-invalid={Boolean(errors.owner)}
-                aria-describedby={errors.owner ? 'publish-owner-error' : undefined}
-              />
-              {errors.owner ? <small id="publish-owner-error" role="status">{errors.owner}</small> : null}
-            </label>
+          <form className="publish-form publish-wizard" onSubmit={submitSkill} noValidate>
+            <ol className="wizard-progress" aria-label="Submission steps">
+              {publishWizardSteps.map((step, index) => {
+                const isActive = currentStep === step.id;
+                const isComplete =
+                  (step.id === 'upload' && uploadIsValid)
+                  || (step.id === 'manifest' && manifestIsValid)
+                  || (step.id === 'questionnaire' && questionnaireIsValid)
+                  || (step.id === 'review' && status === 'submitted');
 
-            <label className="field file-field" htmlFor="publish-archive">
-              <span>Skill archive</span>
-              <input
-                id="publish-archive"
-                type="file"
-                accept=".zip,application/zip"
-                onChange={(event) => selectArchive(event.target.files?.[0] ?? null, event.currentTarget)}
-                aria-invalid={Boolean(errors.skillArchive)}
-                aria-describedby={errors.skillArchive ? 'publish-archive-error' : undefined}
-              />
-              {archiveSize ? <em>{skillArchive?.name} - {archiveSize}</em> : <em>Zip archive, 50 MB maximum.</em>}
-              {errors.skillArchive ? (
-                <small id="publish-archive-error" role="status">{errors.skillArchive}</small>
-              ) : null}
-            </label>
+                return (
+                  <li key={step.id}>
+                    <button
+                      type="button"
+                      onClick={() => goToStep(step.id)}
+                      aria-current={isActive ? 'step' : undefined}
+                      data-complete={isComplete}
+                    >
+                      <span>{index + 1}</span>
+                      {step.label}
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
 
-            <label className="field" htmlFor="publish-skill-md">
-              <span>SKILL.md</span>
-              <textarea
-                id="publish-skill-md"
-                value={skillMd}
-                onChange={(event) => setSkillMd(event.target.value)}
-                rows={14}
-                placeholder={'---\nname: secure-code-review\nversion: 1.0.0\nauthor: Platform Team\ndescription: Review code for security issues.\n---\n\nUse this skill when...'}
-                aria-invalid={Boolean(errors.skillMd)}
-                aria-describedby={errors.skillMd ? 'publish-skill-md-error' : undefined}
-              />
-              {errors.skillMd ? <small id="publish-skill-md-error" role="status">{errors.skillMd}</small> : null}
-            </label>
+            {currentStep === 'upload' ? (
+              <section className="wizard-panel" aria-labelledby="publish-upload-title">
+                <div className="wizard-panel-header">
+                  <p className="eyebrow">Step 1</p>
+                  <h2 id="publish-upload-title">Upload archive</h2>
+                </div>
+                <label className="field" htmlFor="publish-owner">
+                  <span>Registry owner</span>
+                  <input
+                    id="publish-owner"
+                    type="text"
+                    value={owner}
+                    onChange={(event) => {
+                      setOwner(event.target.value);
+                      if (errors.owner) {
+                        setErrors((current) => ({ ...current, owner: undefined }));
+                      }
+                    }}
+                    placeholder="platform"
+                    aria-invalid={Boolean(errors.owner)}
+                    aria-describedby={errors.owner ? 'publish-owner-error' : undefined}
+                  />
+                  {errors.owner ? <small id="publish-owner-error" role="status">{errors.owner}</small> : null}
+                </label>
+
+                <label
+                  className="field file-field archive-dropzone"
+                  htmlFor="publish-archive"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const file = event.dataTransfer.files?.[0] ?? null;
+                    const input = document.getElementById('publish-archive') as HTMLInputElement | null;
+                    if (input) {
+                      selectArchive(file, input);
+                    }
+                  }}
+                >
+                  <span>Skill archive</span>
+                  <strong>{skillArchive ? skillArchive.name : 'Drop zip archive here'}</strong>
+                  <em>{archiveSize ? `${archiveSize} selected` : 'Zip archive, 50 MB maximum.'}</em>
+                  <input
+                    id="publish-archive"
+                    type="file"
+                    accept=".zip,application/zip"
+                    onChange={(event) => selectArchive(event.target.files?.[0] ?? null, event.currentTarget)}
+                    aria-invalid={Boolean(errors.skillArchive)}
+                    aria-describedby={errors.skillArchive ? 'publish-archive-error' : undefined}
+                  />
+                  {errors.skillArchive ? (
+                    <small id="publish-archive-error" role="status">{errors.skillArchive}</small>
+                  ) : null}
+                </label>
+
+                <label className="field" htmlFor="publish-skill-md">
+                  <span>SKILL.md</span>
+                  <textarea
+                    id="publish-skill-md"
+                    value={skillMd}
+                    onChange={(event) => {
+                      setSkillMd(event.target.value);
+                      setManifestDraft(createManifestDraft(event.target.value));
+                      if (errors.skillMd) {
+                        setErrors((current) => ({ ...current, skillMd: undefined }));
+                      }
+                    }}
+                    rows={10}
+                    placeholder={'---\nname: secure-code-review\nversion: 1.0.0\nauthor: Platform Team\ndescription: Review code for security issues.\ntags: [security, review]\n---\n\nUse this skill when...'}
+                    aria-invalid={Boolean(errors.skillMd)}
+                    aria-describedby={errors.skillMd ? 'publish-skill-md-error' : undefined}
+                  />
+                  {errors.skillMd ? <small id="publish-skill-md-error" role="status">{errors.skillMd}</small> : null}
+                </label>
+              </section>
+            ) : null}
+
+            {currentStep === 'manifest' ? (
+              <section className="wizard-panel" aria-labelledby="publish-manifest-title">
+                <div className="wizard-panel-header">
+                  <p className="eyebrow">Step 2</p>
+                  <h2 id="publish-manifest-title">Review manifest</h2>
+                </div>
+                <div className="manifest-grid">
+                  <label className="field" htmlFor="publish-manifest-name">
+                    <span>Name</span>
+                    <input id="publish-manifest-name" type="text" value={manifestDraft.name} readOnly />
+                  </label>
+                  <label className="field" htmlFor="publish-manifest-version">
+                    <span>Version</span>
+                    <input id="publish-manifest-version" type="text" value={manifestDraft.version} readOnly />
+                  </label>
+                  <label className="field" htmlFor="publish-manifest-author">
+                    <span>Author</span>
+                    <input id="publish-manifest-author" type="text" value={manifestDraft.author} readOnly />
+                  </label>
+                  <label className="field" htmlFor="publish-manifest-tags">
+                    <span>Tags</span>
+                    <input
+                      id="publish-manifest-tags"
+                      type="text"
+                      value={manifestDraft.tags}
+                      onChange={(event) => setManifestDraft((current) => ({ ...current, tags: event.target.value }))}
+                      placeholder="security, review"
+                    />
+                  </label>
+                </div>
+                <label className="field" htmlFor="publish-manifest-description">
+                  <span>Description</span>
+                  <textarea
+                    id="publish-manifest-description"
+                    value={manifestDraft.description}
+                    onChange={(event) => setManifestDraft((current) => ({ ...current, description: event.target.value }))}
+                    rows={5}
+                  />
+                </label>
+                <dl className="derived-manifest">
+                  <div>
+                    <dt>Kind</dt>
+                    <dd>skill</dd>
+                  </div>
+                  <div>
+                    <dt>Permissions</dt>
+                    <dd>Derived during server-side classification</dd>
+                  </div>
+                </dl>
+              </section>
+            ) : null}
+
+            {currentStep === 'questionnaire' ? (
+              <section className="wizard-panel" aria-labelledby="publish-questionnaire-title">
+                <div className="wizard-panel-header">
+                  <p className="eyebrow">Step 3</p>
+                  <h2 id="publish-questionnaire-title">Questionnaire</h2>
+                </div>
+                <fieldset className="question-group">
+                  <legend>Does this skill require external network access?</legend>
+                  <label>
+                    <input
+                      type="radio"
+                      name="external-network"
+                      value="yes"
+                      checked={questionnaire.externalNetwork === 'yes'}
+                      onChange={(event) => setQuestionnaire((current) => ({ ...current, externalNetwork: event.target.value }))}
+                    />
+                    Yes
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="external-network"
+                      value="no"
+                      checked={questionnaire.externalNetwork === 'no'}
+                      onChange={(event) => setQuestionnaire((current) => ({ ...current, externalNetwork: event.target.value }))}
+                    />
+                    No
+                  </label>
+                </fieldset>
+                <label className="field" htmlFor="publish-filesystem-access">
+                  <span>Filesystem access</span>
+                  <select
+                    id="publish-filesystem-access"
+                    value={questionnaire.filesystemAccess}
+                    onChange={(event) => setQuestionnaire((current) => ({ ...current, filesystemAccess: event.target.value }))}
+                  >
+                    <option value="">Select access level</option>
+                    <option value="none">None</option>
+                    <option value="read-own">Read own files</option>
+                    <option value="read-write-own">Read and write own files</option>
+                  </select>
+                </label>
+                <label className="field" htmlFor="publish-review-notes">
+                  <span>Reviewer notes</span>
+                  <textarea
+                    id="publish-review-notes"
+                    value={questionnaire.reviewNotes}
+                    onChange={(event) => setQuestionnaire((current) => ({ ...current, reviewNotes: event.target.value }))}
+                    rows={5}
+                    placeholder="Add context for compliance review."
+                  />
+                </label>
+              </section>
+            ) : null}
+
+            {currentStep === 'review' ? (
+              <section className="wizard-panel" aria-labelledby="publish-review-title">
+                <div className="wizard-panel-header">
+                  <p className="eyebrow">Step 4</p>
+                  <h2 id="publish-review-title">Review & submit</h2>
+                </div>
+                <dl className="publish-review-summary">
+                  <div>
+                    <dt>Owner</dt>
+                    <dd>{owner || 'Missing'}</dd>
+                  </div>
+                  <div>
+                    <dt>Archive</dt>
+                    <dd>{skillArchive ? `${skillArchive.name} (${archiveSize})` : 'Missing'}</dd>
+                  </div>
+                  <div>
+                    <dt>Skill</dt>
+                    <dd>{manifestDraft.name || 'Missing'} {manifestDraft.version ? `v${manifestDraft.version}` : ''}</dd>
+                  </div>
+                  <div>
+                    <dt>Tags</dt>
+                    <dd>{manifestTags.length > 0 ? manifestTags.join(', ') : 'None'}</dd>
+                  </div>
+                  <div>
+                    <dt>Network</dt>
+                    <dd>{questionnaire.externalNetwork || 'Missing'}</dd>
+                  </div>
+                  <div>
+                    <dt>Filesystem</dt>
+                    <dd>{questionnaire.filesystemAccess || 'Missing'}</dd>
+                  </div>
+                </dl>
+              </section>
+            ) : null}
 
             {submitMessage ? <div className="publish-message" role="status">{submitMessage}</div> : null}
 
             <div className="publish-actions">
               <a className="secondary-link" href="/">Cancel</a>
-              <button className="submit-btn" type="submit" disabled={status === 'submitting'}>
-                {status === 'submitting' ? 'Submitting...' : 'Submit for review'}
-              </button>
+              {currentStep !== 'upload' ? (
+                <button
+                  className="secondary-btn"
+                  type="button"
+                  onClick={() => {
+                    const currentIndex = publishWizardSteps.findIndex((step) => step.id === currentStep);
+                    setCurrentStep(publishWizardSteps[Math.max(0, currentIndex - 1)].id);
+                  }}
+                >
+                  Back
+                </button>
+              ) : null}
+              {currentStep === 'upload' ? (
+                <button className="submit-btn" type="button" onClick={continueFromUpload}>
+                  Continue
+                </button>
+              ) : null}
+              {currentStep === 'manifest' ? (
+                <button
+                  className="submit-btn"
+                  type="button"
+                  onClick={() => setCurrentStep('questionnaire')}
+                  disabled={!manifestIsValid}
+                >
+                  Continue
+                </button>
+              ) : null}
+              {currentStep === 'questionnaire' ? (
+                <button
+                  className="submit-btn"
+                  type="button"
+                  onClick={() => setCurrentStep('review')}
+                  disabled={!questionnaireIsValid}
+                >
+                  Continue
+                </button>
+              ) : null}
+              {currentStep === 'review' ? (
+                <button className="submit-btn" type="submit" disabled={!canSubmit}>
+                  {status === 'submitting' ? 'Submitting...' : 'Submit for review'}
+                </button>
+              ) : null}
             </div>
           </form>
         </div>

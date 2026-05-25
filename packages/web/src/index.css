@@ -811,6 +811,68 @@ main {
   padding: 22px;
 }
 
+.publish-wizard {
+  gap: 20px;
+}
+
+.wizard-progress {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  list-style: none;
+}
+
+.wizard-progress button {
+  align-items: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.wizard-progress button[aria-current='step'] {
+  background: #ffffff;
+  border-color: var(--accent);
+  color: var(--text);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.wizard-progress button[data-complete='true'] span {
+  background: #226b4a;
+  color: #ffffff;
+}
+
+.wizard-progress span {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 22px;
+  justify-content: center;
+  width: 22px;
+}
+
+.wizard-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.wizard-panel-header h2 {
+  font-size: 1.2rem;
+  line-height: 1.2;
+}
+
 .field {
   color: var(--text);
   display: grid;
@@ -820,7 +882,8 @@ main {
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.field select {
   background: #ffffff;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -839,7 +902,8 @@ main {
 }
 
 .field input:focus,
-.field textarea:focus {
+.field textarea:focus,
+.field select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-light);
   outline: none;
@@ -848,6 +912,11 @@ main {
 .field input[aria-invalid='true'],
 .field textarea[aria-invalid='true'] {
   border-color: #b42318;
+}
+
+.field input[readonly] {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
 }
 
 .field small {
@@ -861,6 +930,105 @@ main {
   font-size: 0.78rem;
   font-style: normal;
   font-weight: 600;
+}
+
+.archive-dropzone {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 18px;
+  text-align: center;
+}
+
+.archive-dropzone:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.archive-dropzone strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.archive-dropzone input {
+  margin: 0 auto;
+  max-width: 100%;
+}
+
+.manifest-grid,
+.publish-review-summary {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.derived-manifest,
+.publish-review-summary {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+}
+
+.derived-manifest div,
+.publish-review-summary div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+}
+
+.derived-manifest div + div,
+.publish-review-summary div + div {
+  border-top: 1px solid var(--border);
+}
+
+.derived-manifest dt,
+.derived-manifest dd,
+.publish-review-summary dt,
+.publish-review-summary dd {
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.derived-manifest dt,
+.publish-review-summary dt {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.derived-manifest dd,
+.publish-review-summary dd {
+  color: var(--text);
+  font-weight: 700;
+  text-align: right;
+}
+
+.question-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px;
+}
+
+.question-group legend {
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+.question-group label {
+  align-items: center;
+  color: var(--text-secondary);
+  display: flex;
+  font-size: 0.86rem;
+  font-weight: 700;
+  gap: 7px;
 }
 
 .publish-message {
@@ -1574,6 +1742,16 @@ main {
 
   .publish-layout {
     grid-template-columns: 1fr;
+  }
+
+  .wizard-progress,
+  .manifest-grid,
+  .publish-review-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .wizard-progress button {
+    min-height: 38px;
   }
 
   .decision-actions {
