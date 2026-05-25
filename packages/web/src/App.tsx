@@ -371,6 +371,30 @@ const mockReviewDetails: Record<string, {
       { actor: 'compliance', action: 'Opened review', at: '2026-05-24T08:44:00Z' },
     ],
   },
+  'sub-1039': {
+    diff: [
+      { file: 'SKILL.md', summary: 'Updates release note drafting guidance for dependency and migration notes.', additions: 18, removals: 3 },
+      { file: 'templates/changelog.md', summary: 'Adds a structured upgrade-impact section for reviewers.', additions: 12, removals: 0 },
+    ],
+    dependencies: [
+      { name: 'markdown-it', version: '14.1.0', status: 'Allowed' },
+    ],
+    permissions: [
+      { label: 'Network', value: 'No network access requested', risk: 'low' },
+      { label: 'Filesystem', value: 'Reads repository markdown and changelog files', risk: 'medium' },
+      { label: 'Subprocess', value: 'No subprocess execution requested', risk: 'low' },
+    ],
+    scan: [
+      { scanner: 'Static policy', result: 'Filesystem read scope requires reviewer confirmation', severity: 'medium' },
+      { scanner: 'Archive malware scan', result: 'No malware detected', severity: 'low' },
+      { scanner: 'Secret scan', result: 'No secrets detected', severity: 'low' },
+    ],
+    audit: [
+      { actor: 'eli.warner', action: 'Submitted skill archive', at: '2026-05-23T17:10:00Z' },
+      { actor: 'asr-scanner', action: 'Completed security scan', at: '2026-05-23T17:12:00Z' },
+      { actor: 'compliance', action: 'Opened review', at: '2026-05-23T17:18:00Z' },
+    ],
+  },
 };
 
 function formatSubmittedAt(value: string): string {
