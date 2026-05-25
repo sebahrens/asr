@@ -1,9 +1,5 @@
 # asr dev stack
 #
-# Phase 1 (see SPEC.md) will replace the dev-api shim with packages/submission.
-# Until then, the api service exposes the health and mock registry endpoints
-# needed for visual review and smoke tests. The web service is opt-in so the
-# local Vite dev server can bind http://localhost:5173 during visual review.
 # See specs/deployment.md for the canonical dev stack definition.
 
 services:
@@ -24,48 +20,46 @@ services:
     restart: unless-stopped
 
   api:
-    image: node:22-alpine
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.api
     container_name: asr-api
-    working_dir: /workspace
-    command: ["node", "deploy/docker/dev-api.mjs"]
     ports:
       - "3001:3001"
     volumes:
-      - ../..:/workspace:ro
+      - ./data/api:/app/data
     environment:
       - NODE_ENV=development
       - AUTH_MODE=mock
-      - MOCK_USER_SUB=dev-user
+      - MOCK_USER_SUB=dev-user-0001
+      - MOCK_USER_ROLES=Submitter,Compliance
+      - FORGEJO_URL=http://forgejo:3000
+      - FORGEJO_UPLOAD_TOKEN=${FORGEJO_ADMIN_TOKEN:-}
+      - FORGEJO_MERGE_TOKEN=${FORGEJO_ADMIN_TOKEN:-}
+      - FORGEJO_OWNER=asr-admin
+      - FORGEJO_REPO=skills-registry
+      - DATABASE_PATH=/app/data/workflow.db
       - PORT=3001
     depends_on:
       - forgejo
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     restart: unless-stopped
 
   web:
-    image: node:22-alpine
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.web
+      args:
+        - VITE_API_URL=http://localhost:3001
+        - VITE_AUTH_MODE=mock
     container_name: asr-web
-    profiles:
-      - web
-    working_dir: /workspace
-    command:
-      - sh
-      - -lc
-      - corepack enable && corepack prepare pnpm@9.15.0 --activate && pnpm install --no-frozen-lockfile --lockfile=false && pnpm --filter @asr/web dev --host 0.0.0.0
     ports:
       - "5173:5173"
-    volumes:
-      - ../..:/workspace
-      - asr-node-modules:/workspace/node_modules
-      - asr-web-node-modules:/workspace/packages/web/node_modules
-    environment:
-      - VITE_API_URL=http://localhost:3001
-      - VITE_AUTH_MODE=mock
-      - VITE_MOCK_AUTH_ROLE=Admin
-      - VITE_MOCK_USER_SUB=dev-user
     depends_on:
       - api
     restart: unless-stopped
-
-volumes:
-  asr-node-modules:
-  asr-web-node-modules:
