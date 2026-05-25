@@ -1124,7 +1124,7 @@ function PublishSkill() {
       && manifestDraft.description.trim(),
   );
   const questionnaireIsValid = Boolean(questionnaire.externalNetwork && questionnaire.filesystemAccess);
-  const canSubmit = uploadIsValid && manifestIsValid && questionnaireIsValid && status !== 'submitting';
+  const canSubmit = uploadIsValid && manifestIsValid && questionnaireIsValid && status === 'idle';
   const archiveSize = skillArchive ? `${(skillArchive.size / 1024 / 1024).toFixed(2)} MB` : null;
   const manifestTags = manifestDraft.tags
     .split(',')
@@ -1192,6 +1192,10 @@ function PublishSkill() {
   async function submitSkill(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitMessage(null);
+
+    if (status !== 'idle') {
+      return;
+    }
 
     if (!validateUploadStep() || !skillArchive || !manifestIsValid || !questionnaireIsValid) {
       if (!manifestIsValid) {
@@ -1546,7 +1550,7 @@ function PublishSkill() {
               ) : null}
               {currentStep === 'review' ? (
                 <button className="submit-btn" type="submit" disabled={!canSubmit}>
-                  {status === 'submitting' ? 'Submitting...' : 'Submit for review'}
+                  {status === 'submitted' ? 'Submitted' : status === 'submitting' ? 'Submitting...' : 'Submit for review'}
                 </button>
               ) : null}
             </div>
