@@ -1,3 +1,5 @@
+import type { AuditAction } from './audit.js';
+
 export interface SkillMeta {
   name: string;
   description: string;
@@ -168,31 +170,6 @@ export interface Questionnaire {
 
 export type QuestionnaireSchema = Questionnaire;
 export type QuestionnaireAnswer = QuestionnaireResponse;
-
-export type AuditAction =
-  | 'submission.created'
-  | 'submission.classified'
-  | 'submission.withdrawn'
-  | 'submission.expired'
-  | 'workflow.classify.completed'
-  | 'workflow.pushed_to_forgejo'
-  | 'workflow.questionnaire.completed'
-  | 'workflow.scan.started'
-  | 'workflow.scan.completed'
-  | 'workflow.confirmation.received'
-  | 'workflow.review.assigned'
-  | 'workflow.review.approved'
-  | 'workflow.review.rejected'
-  | 'workflow.published'
-  | 'scan.finding'
-  | 'version.published'
-  | 'version.yanked'
-  | 'version.diff.computed'
-  | 'hash.blocked'
-  | 'token.rotated'
-  | 'key.rotated'
-  | 'audit.anchored'
-  | 'audit.verify.failed';
 
 export interface AuditEvent {
   id: string;

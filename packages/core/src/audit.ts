@@ -1,0 +1,27 @@
+export const AUDIT_ACTIONS = [
+  'submission.created',
+  'submission.classified',
+  'submission.withdrawn',
+  'submission.expired',
+  'workflow.classify.completed',
+  'workflow.pushed_to_forgejo',
+  'workflow.questionnaire.completed',
+  'workflow.scan.started',
+  'workflow.scan.completed',
+  'workflow.confirmation.received',
+  'workflow.review.assigned',
+  'workflow.review.approved',
+  'workflow.review.rejected',
+  'workflow.published',
+  'scan.finding',
+  'version.published',
+  'version.yanked',
+  'version.diff.computed',
+  'hash.blocked',
+  'token.rotated',
+  'key.rotated',
+  'audit.anchored',
+  'audit.verify.failed',
+] as const;
+
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
