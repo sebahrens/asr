@@ -337,21 +337,21 @@ const mobileReviewDiffViewerStyles = {
   ...reviewDiffViewerStyles,
   diffContainer: {
     ...reviewDiffViewerStyles.diffContainer,
-    minWidth: '720px',
-    tableLayout: 'auto',
-    width: 'max-content',
+    minWidth: 0,
+    tableLayout: 'fixed',
+    width: '100%',
   },
   content: {
     ...reviewDiffViewerStyles.content,
-    width: 'auto',
+    width: '100%',
   },
   contentText: {
     ...reviewDiffViewerStyles.contentText,
-    whiteSpace: 'pre',
+    whiteSpace: 'pre-wrap',
   },
   wordDiff: {
     overflowWrap: 'anywhere',
-    whiteSpace: 'pre',
+    whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
   },
 } satisfies NonNullable<ReactDiffViewerProps['styles']>;
