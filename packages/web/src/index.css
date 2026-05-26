@@ -1906,8 +1906,8 @@ main {
 
 .review-diff-viewer table {
   table-layout: fixed;
-  min-width: 760px;
-  width: max(100%, 760px);
+  min-width: 100%;
+  width: 100%;
 }
 
 .review-diff-viewer td {
@@ -2036,8 +2036,8 @@ main {
   }
 
   .review-diff-viewer table {
-    min-width: 620px;
-    width: 620px;
+    min-width: 100%;
+    width: 100%;
   }
 
   .review-diff-viewer td {
@@ -2045,7 +2045,9 @@ main {
   }
 
   .review-diff-viewer pre {
-    white-space: pre;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .wizard-progress,
