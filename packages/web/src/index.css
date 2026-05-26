@@ -1933,6 +1933,8 @@ main {
   border-top: 0;
   border-radius: 0 0 8px 8px;
   box-shadow: var(--shadow-sm);
+  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -2208,6 +2210,13 @@ main {
   width: 100%;
 }
 
+.review-diff-viewer thead,
+.review-diff-viewer tbody,
+.review-diff-viewer tr {
+  max-width: 100%;
+  min-width: 0;
+}
+
 .review-diff-viewer td {
   max-width: 100%;
 }
@@ -2217,6 +2226,7 @@ main {
   font-size: 0.78rem;
   line-height: 1.5;
   max-width: 100%;
+  min-width: 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   word-break: break-word;
@@ -2257,9 +2267,21 @@ main {
   min-width: 0;
 }
 
+.review-diff-viewer-mobile [class*="marker"] {
+  min-width: 24px !important;
+  width: 24px !important;
+}
+
+.review-diff-viewer-mobile td[class*="content"] {
+  max-width: none;
+  width: auto !important;
+}
+
 .review-diff-viewer-mobile pre {
+  display: block;
   line-break: anywhere !important;
   max-width: 100% !important;
+  min-width: 0 !important;
   overflow-wrap: anywhere !important;
   white-space: pre-wrap !important;
   width: auto !important;

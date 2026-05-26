@@ -1085,7 +1085,7 @@ function ReviewDiffPanel({ files }: { files: ReviewDiffFile[] }) {
           <div
             className={`review-diff-viewer${isNarrowDiff ? ' review-diff-viewer-mobile' : ''}`}
             role="region"
-            aria-label={`${file.file} line-level diff, scrollable code region`}
+            aria-label={`${file.file} line-level diff, ${isNarrowDiff ? 'wrapped code region' : 'scrollable code region'}`}
             tabIndex={0}
           >
             <ReactDiffViewer

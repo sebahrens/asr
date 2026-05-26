@@ -220,7 +220,7 @@ describe('router', () => {
     renderRoute('/review/sub-1039');
 
     expect(await screen.findByRole('heading', { name: /release-notes/i })).toBeInTheDocument();
-    const diffRegion = screen.getByRole('region', { name: /SKILL\.md line-level diff/i });
+    const diffRegion = screen.getByRole('region', { name: /SKILL\.md line-level diff, wrapped code region/i });
     expect(diffRegion).toHaveClass('review-diff-viewer-mobile');
     expect(diffRegion).toHaveAttribute('tabindex', '0');
     expect(diffRegion.querySelector('table')).toBeInTheDocument();
