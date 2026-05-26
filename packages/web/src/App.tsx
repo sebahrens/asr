@@ -74,10 +74,35 @@ interface ReviewSubmission {
 
 interface ReviewSubmissionDetail {
   diff: ReviewDiffFile[];
-  dependencies: { name: string; version: string; status: string }[];
-  permissions: { label: string; value: string; risk: ReviewSubmission['risk'] }[];
-  scan: { scanner: string; result: string; severity: ReviewSubmission['risk'] }[];
+  dependencies: ReviewDependencyChange[];
+  permissions: ReviewPermissionChange[];
+  scan: ReviewScanFinding[];
   audit: { actor: string; action: string; at: string }[];
+}
+
+interface ReviewDependencyChange {
+  name: string;
+  beforeVersion: string | null;
+  afterVersion: string | null;
+  change: 'added' | 'removed' | 'changed' | 'unchanged';
+  scope: string;
+  risk: ReviewSubmission['risk'];
+}
+
+interface ReviewPermissionChange {
+  capability: string;
+  before: unknown;
+  after: unknown;
+  expanded: boolean;
+}
+
+interface ReviewScanFinding {
+  id: string;
+  scanner: string;
+  title: string;
+  result: string;
+  severity: ReviewSubmission['risk'];
+  location: string;
 }
 
 interface ReviewDiffFile {
@@ -118,6 +143,7 @@ type SkillDetailTab = 'preview' | 'versions' | 'permissions' | 'audit';
 type ReviewDetailTab = 'diff' | 'dependencies' | 'permissions' | 'scan' | 'audit';
 type MockRole = 'Viewer' | 'Submitter' | 'Compliance' | 'Admin';
 type RegistryConnectionStatus = 'checking' | 'connected' | 'unavailable';
+type ScanSeverityFilter = 'all' | ReviewSubmission['risk'];
 
 interface Session {
   sub: string;
@@ -261,6 +287,12 @@ const reviewDetailTabs: { id: ReviewDetailTab; label: string }[] = [
   { id: 'permissions', label: 'Permissions' },
   { id: 'scan', label: 'Scan' },
   { id: 'audit', label: 'Audit' },
+];
+const scanSeverityFilters: { id: ScanSeverityFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'high', label: 'High' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'low', label: 'Low' },
 ];
 
 const reviewDiffViewerStyles = {
@@ -709,18 +741,39 @@ export async function checkDependencies(manifestPath: string): Promise<Dependenc
       },
     ],
     dependencies: [
-      { name: '@actions/core', version: '1.10.1', status: 'Pinned' },
-      { name: 'semver', version: '7.6.3', status: 'Allowed' },
+      { name: '@actions/core', beforeVersion: null, afterVersion: '1.10.1', change: 'added', scope: 'runtime', risk: 'medium' },
+      { name: 'semver', beforeVersion: '7.5.4', afterVersion: '7.6.3', change: 'changed', scope: 'runtime', risk: 'low' },
     ],
     permissions: [
-      { label: 'Network', value: 'Restricted to registry and advisory APIs', risk: 'medium' },
-      { label: 'Filesystem', value: 'Read-only project workspace access', risk: 'low' },
-      { label: 'Subprocess', value: 'Runs npm audit in sandbox', risk: 'high' },
+      { capability: 'network', before: false, after: { mode: 'restricted', hosts: ['registry.npmjs.org', 'api.osv.dev'] }, expanded: true },
+      { capability: 'filesystem', before: 'read-own', after: 'read-workspace', expanded: true },
+      { capability: 'subprocess', before: false, after: ['npm audit --json'], expanded: true },
     ],
     scan: [
-      { scanner: 'Static policy', result: 'Requires subprocess justification', severity: 'high' },
-      { scanner: 'Archive malware scan', result: 'No malware detected', severity: 'low' },
-      { scanner: 'Secret scan', result: 'No secrets detected', severity: 'low' },
+      {
+        id: 'static-subprocess',
+        scanner: 'Static policy',
+        title: 'Subprocess capability requires justification',
+        result: 'scripts/check-deps.ts invokes npm audit; reviewer must verify command pinning and read-only execution.',
+        severity: 'high',
+        location: 'scripts/check-deps.ts:16',
+      },
+      {
+        id: 'sca-semver',
+        scanner: 'Trivy SCA',
+        title: 'Dependency upgrade requires review',
+        result: 'semver changed from 7.5.4 to 7.6.3 with no known blocking CVE.',
+        severity: 'medium',
+        location: 'package.json',
+      },
+      {
+        id: 'secret-clean',
+        scanner: 'Secret scan',
+        title: 'No secrets detected',
+        result: 'Archive scan completed without credential findings.',
+        severity: 'low',
+        location: 'archive',
+      },
     ],
     audit: [
       { actor: 'maria.chen', action: 'Submitted skill archive', at: '2026-05-24T08:35:00Z' },
@@ -769,17 +822,38 @@ Flag dependency upgrades that change runtime behavior or deployment steps.`,
       },
     ],
     dependencies: [
-      { name: 'markdown-it', version: '14.1.0', status: 'Allowed' },
+      { name: 'markdown-it', beforeVersion: '13.0.2', afterVersion: '14.1.0', change: 'changed', scope: 'runtime', risk: 'medium' },
     ],
     permissions: [
-      { label: 'Network', value: 'No network access requested', risk: 'low' },
-      { label: 'Filesystem', value: 'Reads repository markdown and changelog files', risk: 'medium' },
-      { label: 'Subprocess', value: 'No subprocess execution requested', risk: 'low' },
+      { capability: 'network', before: false, after: false, expanded: false },
+      { capability: 'filesystem', before: 'read-own', after: 'read-workspace', expanded: true },
+      { capability: 'subprocess', before: false, after: false, expanded: false },
     ],
     scan: [
-      { scanner: 'Static policy', result: 'Filesystem read scope requires reviewer confirmation', severity: 'medium' },
-      { scanner: 'Archive malware scan', result: 'No malware detected', severity: 'low' },
-      { scanner: 'Secret scan', result: 'No secrets detected', severity: 'low' },
+      {
+        id: 'filesystem-scope',
+        scanner: 'Static policy',
+        title: 'Filesystem read scope expanded',
+        result: 'Skill now reads repository markdown and changelog files.',
+        severity: 'medium',
+        location: 'manifest.yaml',
+      },
+      {
+        id: 'malware-clean',
+        scanner: 'Archive malware scan',
+        title: 'No malware detected',
+        result: 'Archive scan completed without malware findings.',
+        severity: 'low',
+        location: 'archive',
+      },
+      {
+        id: 'secret-clean',
+        scanner: 'Secret scan',
+        title: 'No secrets detected',
+        result: 'Archive scan completed without credential findings.',
+        severity: 'low',
+        location: 'archive',
+      },
     ],
     audit: [
       { actor: 'eli.warner', action: 'Submitted skill archive', at: '2026-05-23T17:10:00Z' },
@@ -808,17 +882,27 @@ Initial review package for ${submission.owner}/${submission.skillName} v${submis
       },
     ],
     dependencies: [
-      { name: 'Submitted archive', version: submission.version, status: 'Queued for registry review' },
+      {
+        name: 'Submitted archive',
+        beforeVersion: null,
+        afterVersion: submission.version,
+        change: 'added',
+        scope: 'registry package',
+        risk: submission.risk,
+      },
     ],
     permissions: [
-      { label: 'Submission risk', value: `${submission.risk} risk from scanner summary`, risk: submission.risk },
-      { label: 'Review owner', value: submission.owner, risk: 'low' },
+      { capability: 'riskAssessment', before: null, after: submission.risk, expanded: submission.risk !== 'low' },
+      { capability: 'owner', before: null, after: submission.owner, expanded: false },
     ],
     scan: [
       {
+        id: 'security-scan-summary',
         scanner: 'Security scan',
+        title: 'Scanner summary',
         result: findingSummary,
         severity: submission.risk,
+        location: 'scan report',
       },
     ],
     audit: [
@@ -862,14 +946,16 @@ function createReviewDetailFromVersionDiff(submission: ReviewSubmission, diff: V
     diff: changedFiles.length > 0 ? changedFiles : baseDetail.diff,
     permissions: [
       {
-        label: 'Version risk',
-        value: `${diff.riskAssessment} risk from registry version diff`,
-        risk: diff.riskAssessment,
+        capability: 'riskAssessment',
+        before: baseDetail.permissions.find((permission) => permission.capability === 'riskAssessment')?.after ?? null,
+        after: diff.riskAssessment,
+        expanded: diff.riskAssessment !== 'low',
       },
       {
-        label: 'Permissions',
-        value: diff.permissionsExpanded ? 'Expanded from previous version' : 'No expansion detected',
-        risk: diff.permissionsExpanded ? 'high' : 'low',
+        capability: 'permissions',
+        before: diff.permissionsBefore,
+        after: diff.permissionsAfter,
+        expanded: diff.permissionsExpanded,
       },
       ...baseDetail.permissions.slice(1),
     ],
@@ -925,6 +1011,136 @@ function ReviewDiffPanel({ files }: { files: ReviewDiffFile[] }) {
           </div>
         </section>
       ))}
+    </div>
+  );
+}
+
+function formatReviewValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value === null || value === undefined) {
+    return 'Not declared';
+  }
+
+  return JSON.stringify(value, null, 2);
+}
+
+function ReviewDependenciesPanel({ dependencies }: { dependencies: ReviewDependencyChange[] }) {
+  if (dependencies.length === 0) {
+    return <p className="empty-review-queue">No dependency changes are available for this submission.</p>;
+  }
+
+  return (
+    <div className="review-table-wrap">
+      <table className="review-evidence-table">
+        <thead>
+          <tr>
+            <th scope="col">Dependency</th>
+            <th scope="col">Before</th>
+            <th scope="col">After</th>
+            <th scope="col">Change</th>
+            <th scope="col">Scope</th>
+            <th scope="col">Risk</th>
+          </tr>
+        </thead>
+        <tbody>
+          {dependencies.map((dependency) => (
+            <tr key={dependency.name}>
+              <th scope="row">{dependency.name}</th>
+              <td>{dependency.beforeVersion ?? '-'}</td>
+              <td>{dependency.afterVersion ?? '-'}</td>
+              <td>{dependency.change}</td>
+              <td>{dependency.scope}</td>
+              <td><span className={`risk-pill risk-${dependency.risk}`}>{dependency.risk}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ReviewPermissionsPanel({ permissions }: { permissions: ReviewPermissionChange[] }) {
+  if (permissions.length === 0) {
+    return <p className="empty-review-queue">No permission changes are available for this submission.</p>;
+  }
+
+  return (
+    <div className="permission-diff-list">
+      {permissions.map((permission) => (
+        <section
+          className={`permission-diff-row${permission.expanded ? ' permission-expanded' : ''}`}
+          key={permission.capability}
+          aria-label={`${permission.capability} permission change`}
+        >
+          <header>
+            <h2>{permission.capability}</h2>
+            <span>{permission.expanded ? 'Expanded capability' : 'No expansion'}</span>
+          </header>
+          <div className="permission-json-grid">
+            <div>
+              <strong>Before</strong>
+              <pre>{formatReviewValue(permission.before)}</pre>
+            </div>
+            <div>
+              <strong>After</strong>
+              <pre>{formatReviewValue(permission.after)}</pre>
+            </div>
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function ReviewScanPanel({
+  findings,
+  severityFilter,
+  onSeverityFilterChange,
+}: {
+  findings: ReviewScanFinding[];
+  severityFilter: ScanSeverityFilter;
+  onSeverityFilterChange: (filter: ScanSeverityFilter) => void;
+}) {
+  const filteredFindings = severityFilter === 'all'
+    ? findings
+    : findings.filter((finding) => finding.severity === severityFilter);
+
+  return (
+    <div className="scan-review-panel">
+      <div className="scan-filter-bar" role="group" aria-label="Filter scan findings by severity">
+        {scanSeverityFilters.map((filter) => (
+          <button
+            key={filter.id}
+            type="button"
+            className={severityFilter === filter.id ? 'active' : undefined}
+            onClick={() => onSeverityFilterChange(filter.id)}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
+
+      {filteredFindings.length === 0 ? (
+        <p className="empty-review-queue">No {severityFilter} scan findings are present.</p>
+      ) : (
+        <div className="scan-finding-list">
+          {filteredFindings.map((finding) => (
+            <article className="scan-finding-row" key={finding.id}>
+              <div>
+                <div className="scan-finding-title">
+                  <strong>{finding.title}</strong>
+                  <span className={`risk-pill risk-${finding.severity}`}>{finding.severity}</span>
+                </div>
+                <p>{finding.result}</p>
+                <small>{finding.scanner} - {finding.location}</small>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1336,6 +1552,7 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
   const [decisionSuccess, setDecisionSuccess] = useState<string | null>(null);
   const [decisionReason, setDecisionReason] = useState('');
   const [pendingConfirmation, setPendingConfirmation] = useState<Decision | null>(null);
+  const [scanSeverityFilter, setScanSeverityFilter] = useState<ScanSeverityFilter>('all');
 
   useEffect(() => {
     let ignore = false;
@@ -1543,45 +1760,19 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
               )}
 
               {activeTab === 'dependencies' && (
-                <div className="evidence-list">
-                  {detail.dependencies.map((dependency) => (
-                    <div className="evidence-row" key={dependency.name}>
-                      <div>
-                        <strong>{dependency.name}</strong>
-                        <p>Version {dependency.version}</p>
-                      </div>
-                      <span>{dependency.status}</span>
-                    </div>
-                  ))}
-                </div>
+                <ReviewDependenciesPanel dependencies={detail.dependencies} />
               )}
 
               {activeTab === 'permissions' && (
-                <div className="evidence-list">
-                  {detail.permissions.map((permission) => (
-                    <div className="evidence-row" key={permission.label}>
-                      <div>
-                        <strong>{permission.label}</strong>
-                        <p>{permission.value}</p>
-                      </div>
-                      <span className={`risk-pill risk-${permission.risk}`}>{permission.risk}</span>
-                    </div>
-                  ))}
-                </div>
+                <ReviewPermissionsPanel permissions={detail.permissions} />
               )}
 
               {activeTab === 'scan' && (
-                <div className="evidence-list">
-                  {detail.scan.map((scan) => (
-                    <div className="evidence-row" key={scan.scanner}>
-                      <div>
-                        <strong>{scan.scanner}</strong>
-                        <p>{scan.result}</p>
-                      </div>
-                      <span className={`risk-pill risk-${scan.severity}`}>{scan.severity}</span>
-                    </div>
-                  ))}
-                </div>
+                <ReviewScanPanel
+                  findings={detail.scan}
+                  severityFilter={scanSeverityFilter}
+                  onSeverityFilterChange={setScanSeverityFilter}
+                />
               )}
 
               {activeTab === 'audit' && (
