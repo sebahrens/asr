@@ -181,6 +181,14 @@ describe('router', () => {
     expect(await screen.findByRole('heading', { name: /agent skill registry/i })).toBeInTheDocument();
   });
 
+  it('renders browse loading as content skeletons instead of a spinner', () => {
+    const { container } = renderRoute('/');
+
+    expect(screen.getByRole('status', { name: /loading skills/i })).toBeInTheDocument();
+    expect(container.querySelector('.skill-card-skeleton')).toBeInTheDocument();
+    expect(container.querySelector('.spinner')).not.toBeInTheDocument();
+  });
+
   it('renders skill detail on direct non-root navigation', async () => {
     renderRoute('/skills/asr/security-review');
 

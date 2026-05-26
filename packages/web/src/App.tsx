@@ -2249,6 +2249,39 @@ function PublishSkill() {
   );
 }
 
+function BrowseLoadingSkeleton() {
+  return (
+    <div className="browse-loading-skeleton" role="status" aria-live="polite" aria-label="Loading skills">
+      <div className="skeleton-filter-row" aria-hidden="true">
+        {Array.from({ length: 4 }, (_, index) => (
+          <span key={index} className="skeleton-chip" />
+        ))}
+      </div>
+      <div className="skills-grid" aria-hidden="true">
+        {Array.from({ length: 6 }, (_, index) => (
+          <div key={index} className="skill-card skill-card-skeleton">
+            <div className="skill-header">
+              <div className="skeleton-stack">
+                <span className="skeleton-line skeleton-line-title" />
+                <span className="skeleton-line skeleton-line-short" />
+              </div>
+              <span className="skeleton-version" />
+            </div>
+            <div className="skeleton-copy">
+              <span className="skeleton-line" />
+              <span className="skeleton-line skeleton-line-medium" />
+            </div>
+            <div className="skill-footer">
+              <span className="skeleton-line skeleton-line-stat" />
+              <span className="skeleton-line skeleton-line-stat" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function BrowseRegistry() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2414,9 +2447,7 @@ function BrowseRegistry() {
           )}
 
           {loading ? (
-            <div className="loading">
-              <div className="spinner" />
-            </div>
+            <BrowseLoadingSkeleton />
           ) : registryError ? (
             <div className="empty-state registry-error-state" role="alert" aria-live="assertive">
               <p>{registryError}</p>
