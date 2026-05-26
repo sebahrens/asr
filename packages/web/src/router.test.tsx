@@ -152,7 +152,7 @@ beforeEach(() => {
     const url = String(input);
     const body = url.endsWith('/api/v1/skills/asr/security-review')
       ? skillDetail
-      : { items: [] };
+      : { items: [skillDetail] };
 
     return new Response(JSON.stringify(body), {
       status: 200,
@@ -231,6 +231,14 @@ describe('router', () => {
     renderRoute('/');
 
     expect(await screen.findByRole('heading', { name: /agent skill registry/i })).toBeInTheDocument();
+  });
+
+  it('shows kind and risk badges on browse skill cards', async () => {
+    renderRoute('/');
+
+    const card = await screen.findByRole('link', { name: /open asr\/security-review details/i });
+    expect(within(card).getByText('skill')).toBeInTheDocument();
+    expect(within(card).getByText(/low risk/i)).toBeInTheDocument();
   });
 
   it('opens primary navigation from the mobile drawer control', async () => {

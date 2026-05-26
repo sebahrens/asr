@@ -51,9 +51,11 @@ interface Skill {
   name: string;
   description: string;
   tags: string[];
+  kind: SkillSummary['kind'];
   stars: number;
   installs: number;
   version?: string;
+  riskAssessmentLatest: SkillSummary['riskAssessmentLatest'];
   content?: string;
   updated_at: string;
 }
@@ -239,9 +241,11 @@ function mapSkillSummary(skill: SkillSummary): Skill {
     name: skill.name,
     description: skill.description,
     tags: skill.tags,
+    kind: skill.kind,
     stars: 0,
     installs: skill.downloadCount,
     version: skill.latestVersion,
+    riskAssessmentLatest: skill.riskAssessmentLatest,
     updated_at: skill.publishedAt,
   };
 }
@@ -2776,6 +2780,12 @@ function BrowseRegistry() {
                     {skill.version && (
                       <span className="skill-version">v{skill.version}</span>
                     )}
+                  </div>
+                  <div className="skill-card-badges" aria-label="Skill metadata">
+                    <span className="skill-kind-badge">{skill.kind}</span>
+                    <span className={`risk-pill risk-${skill.riskAssessmentLatest}`}>
+                      {skill.riskAssessmentLatest} risk
+                    </span>
                   </div>
                   <div className="skill-description">
                     {skill.description || 'No description available'}

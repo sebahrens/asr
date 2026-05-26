@@ -271,6 +271,25 @@ main {
   font-weight: 500;
 }
 
+.skill-card-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.skill-kind-badge {
+  background: #eef2ff;
+  border-radius: 4px;
+  color: #3730a3;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 5px 8px;
+  text-transform: capitalize;
+}
+
 .skill-description {
   color: var(--text-secondary);
   font-size: 0.875rem;
