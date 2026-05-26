@@ -203,6 +203,36 @@ describe('router', () => {
     expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
   });
 
+  it('keeps future publish steps locked after invalid archive validation', async () => {
+    renderRoute('/publish');
+
+    fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'asr' } });
+    fireEvent.change(screen.getByLabelText(/skill.md/i), {
+      target: {
+        value: `---
+name: valid-skill
+version: 1.0.0
+author: Platform Team
+description: Valid skill.
+---
+
+Use this skill when testing upload validation.`,
+      },
+    });
+    fireEvent.change(screen.getByLabelText(/skill archive/i), {
+      target: {
+        files: [createZipFile(['valid-skill/SKILL.md', 'valid-skill/README.txt'])],
+      },
+    });
+
+    expect(await screen.findByText(/archive must include manifest.yaml/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /manifest/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /questionnaire/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
+    expect(screen.getByRole('heading', { name: /upload archive/i })).toBeInTheDocument();
+  });
+
   it('rejects archive uploads that omit manifest.yaml from the root directory', async () => {
     renderRoute('/publish');
 
