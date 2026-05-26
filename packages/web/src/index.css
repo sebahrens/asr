@@ -15,12 +15,17 @@
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --sticky-header-offset: 96px;
 }
 
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+html {
+  scroll-padding-top: var(--sticky-header-offset);
 }
 
 body {
@@ -1022,6 +1027,18 @@ main {
   color: var(--text-secondary);
   line-height: 1.55;
   max-width: 430px;
+}
+
+.publish-intro,
+.publish-form,
+.wizard-progress,
+.wizard-panel,
+.field,
+.field input,
+.field textarea,
+.field select,
+.field small {
+  scroll-margin-top: var(--sticky-header-offset);
 }
 
 .publish-form {
@@ -2076,6 +2093,10 @@ main {
 
 /* Responsive */
 @media (max-width: 768px) {
+  :root {
+    --sticky-header-offset: 180px;
+  }
+
   .hero h1 {
     font-size: 1.5rem;
   }
