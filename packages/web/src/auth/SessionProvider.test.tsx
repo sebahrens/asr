@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe('SessionProvider', () => {
-  it('provides mock session env values and renders the mock banner', () => {
+  it('provides mock session env values without rendering a competing auth banner', () => {
     vi.stubEnv('VITE_MOCK_SUB', 'u1');
     vi.stubEnv('VITE_MOCK_ROLES', 'Compliance');
 
@@ -30,7 +30,7 @@ describe('SessionProvider', () => {
     expect(screen.getByLabelText('session')).toHaveTextContent(
       JSON.stringify({ sub: 'u1', roles: ['Compliance'] }),
     );
-    expect(screen.getByText('Mock auth: Compliance')).toBeInTheDocument();
+    expect(screen.queryByText('Mock auth: Compliance')).not.toBeInTheDocument();
   });
 
   it('throws when useSession is called outside SessionProvider', () => {
