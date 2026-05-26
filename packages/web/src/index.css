@@ -2222,16 +2222,26 @@ main {
   word-break: break-word;
 }
 
-.review-diff-viewer [class*="content"] {
-  min-width: 0;
-}
-
+.review-diff-viewer td[class*="content"],
+.review-diff-viewer [class*="content"],
 .review-diff-viewer [class*="content-text"] {
   display: block;
+  line-break: anywhere !important;
   max-width: 100%;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-  word-break: break-word;
+  min-width: 0;
+  overflow: visible !important;
+  overflow-wrap: anywhere !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+}
+
+.review-diff-viewer [class*="word-diff"],
+.review-diff-viewer ins,
+.review-diff-viewer del {
+  line-break: anywhere !important;
+  overflow-wrap: anywhere !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
 }
 
 .review-diff-viewer-mobile table,
@@ -2251,11 +2261,12 @@ main {
 
 .review-diff-viewer-mobile [class*="content"],
 .review-diff-viewer-mobile [class*="content-text"] {
+  line-break: anywhere !important;
   max-width: 100%;
   min-width: 0;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
 }
 
 .decision-panel {
