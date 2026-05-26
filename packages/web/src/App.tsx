@@ -2167,6 +2167,21 @@ function PublishSkill() {
     setCurrentStep('review');
   }
 
+  function updateSkillMd(content: string) {
+    setSkillMd(content);
+    setManifestDraft(createManifestDraft(content));
+    setErrors((current) => {
+      const next = { ...current };
+      const skillMdError = content.trim() ? validateSkillMd(content) : undefined;
+      if (skillMdError) {
+        next.skillMd = skillMdError;
+      } else {
+        delete next.skillMd;
+      }
+      return next;
+    });
+  }
+
   async function submitSkill(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitMessage(null);
@@ -2350,13 +2365,7 @@ function PublishSkill() {
                   <textarea
                     id="publish-skill-md"
                     value={skillMd}
-                    onChange={(event) => {
-                      setSkillMd(event.target.value);
-                      setManifestDraft(createManifestDraft(event.target.value));
-                      if (errors.skillMd) {
-                        setErrors((current) => ({ ...current, skillMd: undefined }));
-                      }
-                    }}
+                    onChange={(event) => updateSkillMd(event.target.value)}
                     rows={10}
                     placeholder={'---\nname: secure-code-review\nversion: 1.0.0\nauthor: Platform Team\ndescription: Review code for security issues.\ntags: [security, review]\n---\n\nUse this skill when...'}
                     aria-invalid={Boolean(errors.skillMd)}

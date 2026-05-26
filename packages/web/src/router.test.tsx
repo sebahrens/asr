@@ -346,6 +346,29 @@ Use this skill when testing upload validation.`,
     expect(screen.queryByText(/upload a skill archive/i)).not.toBeInTheDocument();
   });
 
+  it('shows SKILL.md validation while upload advancement is disabled', async () => {
+    renderRoute('/publish');
+
+    fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'asr' } });
+    fireEvent.change(screen.getByLabelText(/skill archive/i), {
+      target: {
+        files: [createZipFile(['valid-skill/manifest.yaml', 'valid-skill/SKILL.md'])],
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/archive must/i)).not.toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/skill.md/i), {
+      target: { value: 'name: invalid-skill' },
+    });
+
+    expect(screen.getByText(/skill.md must start with yaml frontmatter/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/skill.md/i)).toHaveAttribute('aria-describedby', 'publish-skill-md-error');
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeDisabled();
+  });
+
   it('keeps later publish steps locked until each previous step is completed', async () => {
     renderRoute('/publish');
 
