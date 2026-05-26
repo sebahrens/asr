@@ -37,14 +37,22 @@ describe('migration0001Submissions', () => {
     return db;
   }
 
+  function columnNames(database: Database.Database, tableName: string): string[] {
+    const columns = database.pragma(`table_info(${tableName})`) as PragmaColumn[];
+    return columns.map((column: PragmaColumn) => column.name);
+  }
+
+  function indexNames(database: Database.Database, tableName: string): string[] {
+    const indexes = database.pragma(`index_list(${tableName})`) as PragmaIndex[];
+    return indexes.map((index: PragmaIndex) => index.name);
+  }
+
   it('creates the submissions table schema and indexes', () => {
     const database = openDatabase();
 
     runMigrations(database);
 
-    const columns = (database.pragma('table_info(submissions)') as PragmaColumn[]).map(
-      (column) => column.name,
-    );
+    const columns = columnNames(database, 'submissions');
 
     expect(columns).toEqual([
       'id',
@@ -60,9 +68,7 @@ describe('migration0001Submissions', () => {
       'lock_version',
     ]);
 
-    const indexes = (database.pragma('index_list(submissions)') as PragmaIndex[]).map(
-      (index) => index.name,
-    );
+    const indexes = indexNames(database, 'submissions');
 
     expect(indexes).toEqual(
       expect.arrayContaining([
