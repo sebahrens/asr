@@ -104,16 +104,21 @@ export class ForgejoClient {
     manifest: SkillManifest;
     files: Array<{ path: string; content: Buffer }>;
     autoApprove: boolean;
+    branch?: string;
+    pathPrefix?: string;
+    title?: string;
+    body?: string;
+    labels?: string[];
   }): Promise<{ branch: string; prNumber: number; headSha: string }> {
     const { owner, repo } = this.cfg;
-    const branch = `submit/${input.submissionId}`;
-    const skillPath = `skills/${input.manifest.author}/${input.manifest.name}`;
+    const branch = input.branch ?? `submit/${input.submissionId}`;
+    const pathPrefix = input.pathPrefix ?? `skills/${input.manifest.author}/${input.manifest.name}`;
     let headSha = await this.createOrGetBranch(branch);
 
     for (const file of input.files) {
       headSha = await this.putFile(
         branch,
-        `${skillPath}/${file.path}`,
+        joinPath(pathPrefix, file.path),
         file.content,
         input.submissionId,
       );
@@ -122,11 +127,11 @@ export class ForgejoClient {
     const { data } = await this.upload.request('POST /repos/{owner}/{repo}/pulls', {
       owner,
       repo,
-      title: `[Skill] ${input.manifest.name}@${input.manifest.version}`,
+      title: input.title ?? `[Skill] ${input.manifest.name}@${input.manifest.version}`,
       head: branch,
       base: this.cfg.defaultBranch ?? 'main',
-      body: prBody(input.manifest, input.submissionId, input.autoApprove),
-      labels: input.autoApprove ? ['auto-approve'] : ['needs-review'],
+      body: input.body ?? prBody(input.manifest, input.submissionId, input.autoApprove),
+      labels: input.labels ?? (input.autoApprove ? ['auto-approve'] : ['needs-review']),
     });
     const pr = forgejoPull(data);
 
@@ -243,6 +248,8 @@ const forgejoFileCommitSha = (data: unknown): string => {
 };
 
 const forgejoPull = (data: unknown): ForgejoPullResponse => data as ForgejoPullResponse;
+
+const joinPath = (prefix: string, path: string): string => (prefix ? `${prefix}/${path}` : path);
 
 const prBody = (manifest: SkillManifest, submissionId: string, autoApprove: boolean): string =>
   [

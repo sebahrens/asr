@@ -218,6 +218,67 @@ describe('ForgejoClient', () => {
     });
   });
 
+  it('opens a PR with custom branch, root path, and PR metadata overrides', async () => {
+    const client = new ForgejoClient(cfg);
+    const uploadRequest = vi
+      .spyOn(internals(client).upload, 'request')
+      .mockResolvedValueOnce({ data: { commit: { id: 'branch-head-sha' } } } as never)
+      .mockResolvedValueOnce({ data: { commit: { sha: 'marketplace-sha' } } } as never)
+      .mockResolvedValueOnce({ data: { number: 38 } } as never)
+      .mockResolvedValueOnce({ data: { number: 38, mergeable: true } } as never);
+
+    const manifest: SkillManifest = {
+      name: 'skill-marketplace',
+      version: '1',
+      author: 'asr',
+      description: 'Generated marketplace sync.',
+      tags: ['marketplace'],
+      kind: 'skill',
+      permissions: {
+        network: false,
+        filesystem: 'none',
+        subprocess: false,
+        environment: [],
+      },
+    };
+
+    await client.openSubmissionPR({
+      submissionId: 'marketplace-sync-1',
+      manifest,
+      branch: 'marketplace-sync/1',
+      pathPrefix: '',
+      title: '[Marketplace] Sync',
+      body: 'Generated marketplace sync.',
+      labels: ['auto-approve', 'marketplace-sync'],
+      files: [{ path: 'marketplace.json', content: Buffer.from('{}\n') }],
+      autoApprove: true,
+    });
+
+    expect(uploadRequest).toHaveBeenNthCalledWith(1, 'POST /repos/{owner}/{repo}/branches', {
+      owner: 'asr',
+      repo: 'skills',
+      new_branch_name: 'marketplace-sync/1',
+      old_branch_name: 'main',
+    });
+    expect(uploadRequest).toHaveBeenNthCalledWith(2, 'PUT /repos/{owner}/{repo}/contents/{path}', {
+      owner: 'asr',
+      repo: 'skills',
+      path: 'marketplace.json',
+      message: 'submit: marketplace.json (marketplace-sync-1)',
+      content: Buffer.from('{}\n').toString('base64'),
+      branch: 'marketplace-sync/1',
+    });
+    expect(uploadRequest).toHaveBeenNthCalledWith(3, 'POST /repos/{owner}/{repo}/pulls', {
+      owner: 'asr',
+      repo: 'skills',
+      title: '[Marketplace] Sync',
+      head: 'marketplace-sync/1',
+      base: 'main',
+      body: 'Generated marketplace sync.',
+      labels: ['auto-approve', 'marketplace-sync'],
+    });
+  });
+
   it('uploads a generic package artifact with the upload token', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 201 }));
     vi.stubGlobal('fetch', fetch);
