@@ -2322,32 +2322,33 @@ main {
 }
 
 .review-diff-viewer-mobile td[class*="content"] {
-  max-width: 100%;
+  max-width: none;
   width: auto !important;
 }
 
 .review-diff-viewer-mobile [class*="diff-container"],
 .review-diff-viewer-mobile table {
-  min-width: 0 !important;
-  width: 100% !important;
+  min-width: 720px !important;
+  table-layout: auto !important;
+  width: max-content !important;
 }
 
 .review-diff-viewer-mobile pre {
   display: block;
-  max-width: 100% !important;
+  max-width: none !important;
   min-width: 0 !important;
   overflow-wrap: anywhere !important;
-  white-space: pre-wrap !important;
+  white-space: pre !important;
   width: auto !important;
   word-break: break-word !important;
 }
 
 .review-diff-viewer-mobile [class*="content"],
 .review-diff-viewer-mobile [class*="content-text"] {
-  max-width: 100%;
+  max-width: none;
   min-width: 0;
   overflow-wrap: anywhere !important;
-  white-space: pre-wrap !important;
+  white-space: pre !important;
   word-break: break-word !important;
 }
 
@@ -2620,8 +2621,8 @@ main {
   }
 
   .review-diff-viewer table {
-    min-width: 100%;
-    width: 100%;
+    min-width: 720px;
+    width: max-content;
   }
 
   .review-diff-viewer td {
@@ -2630,7 +2631,7 @@ main {
 
   .review-diff-viewer pre {
     overflow-wrap: break-word;
-    white-space: pre-wrap;
+    white-space: pre;
     word-break: normal;
   }
 
