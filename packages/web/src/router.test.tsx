@@ -215,12 +215,12 @@ describe('router', () => {
     expect(within(dialog).getByText(/high risk/i)).toBeInTheDocument();
   });
 
-  it('uses the wrapped mobile diff layout for narrow review detail screens', async () => {
+  it('uses the scrollable mobile diff layout for narrow review detail screens', async () => {
     stubMatchMedia(true);
     renderRoute('/review/sub-1039');
 
     expect(await screen.findByRole('heading', { name: /release-notes/i })).toBeInTheDocument();
-    const diffRegion = screen.getByRole('region', { name: /SKILL\.md line-level diff, wrapped code region/i });
+    const diffRegion = screen.getByRole('region', { name: /SKILL\.md line-level diff, scrollable code region/i });
     expect(diffRegion).toHaveClass('review-diff-viewer-mobile');
     expect(diffRegion).toHaveAttribute('tabindex', '0');
     expect(diffRegion.querySelector('table')).toBeInTheDocument();

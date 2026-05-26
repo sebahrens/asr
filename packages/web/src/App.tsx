@@ -301,32 +301,30 @@ const scanSeverityFilters: { id: ScanSeverityFilter; label: string }[] = [
 
 const reviewDiffViewerStyles = {
   diffContainer: {
-    minWidth: 0,
-    tableLayout: 'fixed',
-    width: '100%',
+    minWidth: '760px',
+    tableLayout: 'auto',
+    width: 'max-content',
     pre: {
-      lineBreak: 'anywhere',
-      maxWidth: '100%',
-      overflowWrap: 'anywhere',
-      whiteSpace: 'pre-wrap',
-      width: 'auto',
-      wordBreak: 'break-word',
+      maxWidth: 'none',
+      overflowWrap: 'normal',
+      whiteSpace: 'pre',
+      width: 'max-content',
+      wordBreak: 'normal',
     },
   },
   content: {
-    maxWidth: '100%',
+    maxWidth: 'none',
     minWidth: 0,
     overflow: 'visible',
     width: 'auto',
   },
   contentText: {
     display: 'block',
-    lineBreak: 'anywhere',
-    maxWidth: '100%',
-    overflowWrap: 'anywhere',
-    whiteSpace: 'pre-wrap',
-    width: 'auto',
-    wordBreak: 'break-word',
+    maxWidth: 'none',
+    overflowWrap: 'normal',
+    whiteSpace: 'pre',
+    width: 'max-content',
+    wordBreak: 'normal',
   },
   lineContent: {
     overflow: 'visible',
@@ -337,6 +335,7 @@ const mobileReviewDiffViewerStyles = {
   ...reviewDiffViewerStyles,
   diffContainer: {
     ...reviewDiffViewerStyles.diffContainer,
+    minWidth: '620px',
   },
   content: {
     ...reviewDiffViewerStyles.content,
@@ -345,9 +344,9 @@ const mobileReviewDiffViewerStyles = {
     ...reviewDiffViewerStyles.contentText,
   },
   wordDiff: {
-    lineBreak: 'anywhere',
-    overflowWrap: 'anywhere',
-    wordBreak: 'break-word',
+    overflowWrap: 'normal',
+    whiteSpace: 'pre',
+    wordBreak: 'normal',
   },
 } satisfies NonNullable<ReactDiffViewerProps['styles']>;
 
@@ -1089,7 +1088,7 @@ function ReviewDiffPanel({ files }: { files: ReviewDiffFile[] }) {
           <div
             className={`review-diff-viewer${isNarrowDiff ? ' review-diff-viewer-mobile' : ''}`}
             role="region"
-            aria-label={`${file.file} line-level diff, ${isNarrowDiff ? 'wrapped code region' : 'scrollable code region'}`}
+            aria-label={`${file.file} line-level diff, scrollable code region`}
             tabIndex={0}
           >
             <ReactDiffViewer

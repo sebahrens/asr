@@ -2206,9 +2206,20 @@ main {
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
+  position: relative;
   scrollbar-gutter: stable;
+  scrollbar-width: thin;
   width: 100%;
   -webkit-overflow-scrolling: touch;
+}
+
+.review-diff-viewer::-webkit-scrollbar {
+  height: 10px;
+}
+
+.review-diff-viewer::-webkit-scrollbar-thumb {
+  background: #b8c0cc;
+  border-radius: 999px;
 }
 
 .review-diff-viewer:focus-visible {
@@ -2217,16 +2228,16 @@ main {
 }
 
 .review-diff-viewer [class*="diff-container"] {
-  max-width: 100%;
-  min-width: 100% !important;
-  table-layout: fixed;
-  width: 100% !important;
+  max-width: none;
+  min-width: 760px !important;
+  table-layout: auto;
+  width: max-content !important;
 }
 
 .review-diff-viewer table {
-  table-layout: fixed;
-  min-width: 100%;
-  width: 100%;
+  min-width: 760px;
+  table-layout: auto;
+  width: max-content;
 }
 
 .review-diff-viewer thead,
@@ -2237,47 +2248,45 @@ main {
 }
 
 .review-diff-viewer td {
-  max-width: 100%;
+  max-width: none;
 }
 
 .review-diff-viewer pre {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.78rem;
   line-height: 1.5;
-  max-width: 100%;
+  max-width: none;
   min-width: 0;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: normal;
+  white-space: pre;
+  word-break: normal;
 }
 
 .review-diff-viewer td[class*="content"] {
   display: table-cell !important;
-  max-width: 0;
+  max-width: none;
   min-width: 0;
   overflow: visible !important;
   vertical-align: top;
-  white-space: normal !important;
+  white-space: pre !important;
 }
 
 .review-diff-viewer [class*="content-text"] {
   display: block;
-  line-break: anywhere !important;
-  max-width: 100%;
+  max-width: none;
   min-width: 0;
   overflow: visible !important;
-  overflow-wrap: anywhere !important;
-  white-space: pre-wrap !important;
-  word-break: break-word !important;
+  overflow-wrap: normal !important;
+  white-space: pre !important;
+  word-break: normal !important;
 }
 
 .review-diff-viewer [class*="word-diff"],
 .review-diff-viewer ins,
 .review-diff-viewer del {
-  line-break: anywhere !important;
-  overflow-wrap: anywhere !important;
-  white-space: pre-wrap !important;
-  word-break: break-word !important;
+  overflow-wrap: normal !important;
+  white-space: pre !important;
+  word-break: normal !important;
 }
 
 .review-diff-viewer-mobile table,
@@ -2296,25 +2305,29 @@ main {
   width: auto !important;
 }
 
+.review-diff-viewer-mobile [class*="diff-container"],
+.review-diff-viewer-mobile table {
+  min-width: 620px !important;
+  width: max-content !important;
+}
+
 .review-diff-viewer-mobile pre {
   display: block;
-  line-break: anywhere !important;
-  max-width: 100% !important;
+  max-width: none !important;
   min-width: 0 !important;
-  overflow-wrap: anywhere !important;
-  white-space: pre-wrap !important;
-  width: auto !important;
-  word-break: break-word !important;
+  overflow-wrap: normal !important;
+  white-space: pre !important;
+  width: max-content !important;
+  word-break: normal !important;
 }
 
 .review-diff-viewer-mobile [class*="content"],
 .review-diff-viewer-mobile [class*="content-text"] {
-  line-break: anywhere !important;
-  max-width: 100%;
+  max-width: none;
   min-width: 0;
-  overflow-wrap: anywhere !important;
-  white-space: pre-wrap !important;
-  word-break: break-word !important;
+  overflow-wrap: normal !important;
+  white-space: pre !important;
+  word-break: normal !important;
 }
 
 .decision-panel {
