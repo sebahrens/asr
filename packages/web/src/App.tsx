@@ -1844,6 +1844,19 @@ function PublishSkill() {
     setCurrentStep(step);
   }
 
+  function canOpenStep(step: PublishWizardStep) {
+    switch (step) {
+      case 'upload':
+        return true;
+      case 'manifest':
+        return uploadIsValid;
+      case 'questionnaire':
+        return uploadIsValid && manifestIsValid;
+      case 'review':
+        return uploadIsValid && manifestIsValid && questionnaireIsValid;
+    }
+  }
+
   function continueFromUpload() {
     setSubmitMessage(null);
     if (!validateUploadStep()) {
@@ -1965,6 +1978,7 @@ function PublishSkill() {
                       onClick={() => goToStep(step.id)}
                       aria-current={isActive ? 'step' : undefined}
                       data-complete={isComplete}
+                      disabled={!canOpenStep(step.id)}
                     >
                       <span>{index + 1}</span>
                       {step.label}
@@ -2198,7 +2212,7 @@ function PublishSkill() {
                 </button>
               ) : null}
               {currentStep === 'upload' ? (
-                <button className="submit-btn" type="button" onClick={continueFromUpload}>
+                <button className="submit-btn" type="button" onClick={continueFromUpload} disabled={!uploadIsValid}>
                   Continue
                 </button>
               ) : null}

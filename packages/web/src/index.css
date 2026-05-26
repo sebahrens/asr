@@ -974,6 +974,11 @@ main {
   box-shadow: 0 0 0 3px var(--accent-light);
 }
 
+.wizard-progress button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .wizard-progress button[data-complete='true'] span {
   background: #226b4a;
   color: #ffffff;

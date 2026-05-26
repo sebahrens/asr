@@ -194,6 +194,15 @@ describe('router', () => {
     expect(screen.getByRole('heading', { name: /publish a skill/i })).toBeInTheDocument();
   });
 
+  it('keeps publish wizard advancement disabled until upload fields are valid', () => {
+    renderRoute('/publish');
+
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /manifest/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /questionnaire/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
+  });
+
   it('rejects archive uploads that omit manifest.yaml from the root directory', async () => {
     renderRoute('/publish');
 
