@@ -284,6 +284,14 @@ describe('router', () => {
     expect(screen.getByText(/scanner output/i)).toBeInTheDocument();
   });
 
+  it('renders the documented install command on skill detail', async () => {
+    renderRoute('/skills/asr/security-review');
+
+    expect(await screen.findByText('asr install asr/security-review')).toBeInTheDocument();
+    expect(screen.queryByText(/asr add/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/asr install asr\/skills-registry\/security-review/i)).not.toBeInTheDocument();
+  });
+
   it('renders the publish wizard on direct non-root navigation', () => {
     renderRoute('/publish');
 
