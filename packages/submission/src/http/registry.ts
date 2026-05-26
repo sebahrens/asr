@@ -1,5 +1,10 @@
-import type { SkillDetail, SkillSummary, VersionDiff } from '@asr/core';
+import type { SkillDetail, SkillKind, VersionDiff } from '@asr/core';
+import BetterSqlite3 from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
+import { runMigrations } from '../db/migrations/index.js';
+import { getPublishedSkill, listPublishedSkills } from '../db/repositories/skills.js';
+import { insertSubmission } from '../db/repositories/submissions.js';
 import { apiError } from './errors.js';
 
 const publishedAt = '2026-05-23T10:00:00.000Z';
@@ -210,71 +215,130 @@ const registryDiffs: VersionDiff[] = [
   },
 ];
 
-export const registryRoutes = new Hono();
-
-registryRoutes.get('/', (c) => {
-  const query = c.req.query('q')?.trim().toLowerCase();
-  const tags = c.req.queries('tag') ?? [];
-  const items = registrySkills
-    .filter((skill) => matchesQuery(skill, query))
-    .filter((skill) => tags.every((tag) => skill.tags.includes(tag)))
-    .map(toSummary);
-
-  return c.json({ items });
-});
-
-registryRoutes.get('/:owner/:name', (c) => {
-  const skill = findSkill(c.req.param('owner'), c.req.param('name'));
-  if (!skill) {
-    return apiError(c, 404, 'skill_not_found');
-  }
-
-  return c.json(skill);
-});
-
-registryRoutes.get('/:owner/:name/versions/:version/diff', (c) => {
-  const skill = findSkill(c.req.param('owner'), c.req.param('name'));
-  if (!skill || !skill.versions.some((version) => version.version === c.req.param('version'))) {
-    return apiError(c, 404, 'skill_not_found');
-  }
-
-  const diff = registryDiffs.find((candidate) =>
-    candidate.skillName === skill.name && candidate.toVersion === c.req.param('version'),
-  );
-  if (!diff) {
-    return apiError(c, 404, 'version_diff_not_found');
-  }
-
-  return c.json(diff);
-});
-
-function matchesQuery(skill: SkillDetail, query: string | undefined): boolean {
-  if (!query) {
-    return true;
-  }
-
-  return [
-    skill.owner,
-    skill.name,
-    skill.description,
-    ...skill.tags,
-  ].some((value) => value.toLowerCase().includes(query));
+export interface RegistryRouteOptions {
+  db?: Database.Database;
 }
 
-function findSkill(owner: string, name: string): SkillDetail | undefined {
-  return registrySkills.find((skill) => skill.owner === owner && skill.name === name);
+const defaultRegistryDb = createDefaultRegistryDb();
+
+export function createRegistryRoutes(options: RegistryRouteOptions = {}) {
+  const routes = new Hono();
+  const db = options.db ?? defaultRegistryDb;
+
+  routes.get('/', (c) => {
+    const limit = parseLimit(c.req.query('limit'));
+    const offset = decodeCursor(c.req.query('cursor'));
+    const result = listPublishedSkills(db, {
+      q: c.req.query('q'),
+      tag: c.req.query('tag'),
+      kind: parseKind(c.req.query('kind')),
+      limit,
+      offset,
+    });
+
+    c.header('Cache-Control', 'public, max-age=60');
+    return c.json({
+      items: result.items,
+      nextCursor: result.nextOffset === null ? null : encodeCursor(result.nextOffset),
+    });
+  });
+
+  routes.get('/:owner/:name', (c) => {
+    const skill = getPublishedSkill(db, c.req.param('owner'), c.req.param('name'));
+    if (!skill) {
+      return apiError(c, 404, 'submission_not_found');
+    }
+
+    c.header('Cache-Control', 'public, max-age=60');
+    return c.json(skill);
+  });
+
+  routes.get('/:owner/:name/versions/:version/diff', (c) => {
+    const skill = getPublishedSkill(db, c.req.param('owner'), c.req.param('name'));
+    if (!skill || !skill.versions.some((version) => version.version === c.req.param('version'))) {
+      return apiError(c, 404, 'skill_not_found');
+    }
+
+    const diff = registryDiffs.find((candidate) =>
+      candidate.skillName === skill.name && candidate.toVersion === c.req.param('version'),
+    );
+    if (!diff) {
+      return apiError(c, 404, 'version_diff_not_found');
+    }
+
+    c.header('Cache-Control', 'public, max-age=60');
+    return c.json(diff);
+  });
+
+  return routes;
 }
 
-function toSummary(skill: SkillDetail): SkillSummary {
-  return {
-    owner: skill.owner,
-    name: skill.name,
-    latestVersion: skill.latestVersion,
-    description: skill.description,
-    tags: skill.tags,
-    kind: skill.kind,
-    publishedAt: skill.publishedAt,
-    downloadCount: skill.downloadCount,
-    riskAssessmentLatest: skill.riskAssessmentLatest,
-  };
+export const registryRoutes = createRegistryRoutes();
+
+function parseLimit(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const limit = Number(value);
+  return Number.isFinite(limit) ? Math.min(Math.trunc(limit), 100) : undefined;
+}
+
+function parseKind(value: string | undefined): SkillKind | undefined {
+  return value === 'skill' || value === 'persona' ? value : undefined;
+}
+
+function decodeCursor(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    const decoded = JSON.parse(Buffer.from(value, 'base64').toString('utf8')) as { offset?: unknown };
+    return typeof decoded.offset === 'number' ? decoded.offset : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function encodeCursor(offset: number): string {
+  return Buffer.from(JSON.stringify({ offset }), 'utf8').toString('base64');
+}
+
+function createDefaultRegistryDb(): Database.Database {
+  const db = new BetterSqlite3(':memory:');
+  runMigrations(db);
+
+  for (const skill of registrySkills) {
+    for (const version of skill.versions) {
+      insertSubmission(db, {
+        id: `${skill.owner}-${skill.name}-${version.version}`,
+        manifestJson: JSON.stringify(
+          version.version === skill.latestVersion
+            ? skill.manifestLatest
+            : {
+                ...skill.manifestLatest,
+                version: version.version,
+                description: skill.description,
+              },
+        ),
+        classification: 'md-only',
+        contentHash: version.contentHash,
+        submittedAt: version.publishedAt,
+        submittedBy: version.publishedBy,
+        prNumber: version.prNumber,
+        statusPhase: 'published',
+        statusJson: JSON.stringify({
+          phase: 'published',
+          publishedAt: version.publishedAt,
+          approvedBy: version.approvedBy,
+          mergeCommit: version.mergeCommit,
+          riskAssessment: version.riskAssessment,
+          skillMd: version.version === skill.latestVersion ? skill.skillMd : undefined,
+        }),
+      });
+    }
+  }
+
+  return db;
 }

@@ -7,7 +7,7 @@ import { authMiddleware } from './auth/middleware.js';
 import type { AuthVariables } from './auth/types.js';
 import { getEnv } from './env.js';
 import { healthRoutes } from './http/health.js';
-import { registryRoutes } from './http/registry.js';
+import { createRegistryRoutes, type RegistryRouteOptions } from './http/registry.js';
 import { createWorkflowRoutes, type WorkflowRouteOptions } from './http/workflow.js';
 import { mcpHandler } from './mcp/server.js';
 
@@ -16,6 +16,7 @@ assertAuthModeAllowed();
 const env = getEnv();
 
 export interface CreateAppOptions {
+  registry?: RegistryRouteOptions;
   workflow?: WorkflowRouteOptions;
 }
 
@@ -23,11 +24,11 @@ export function createApp(options: CreateAppOptions = {}) {
   const app = new Hono<{ Variables: AuthVariables }>();
 
   app.use('*', devCorsMiddleware);
-  app.use('*', authMiddleware({ authMode: env.AUTH_MODE }));
   app.route('/health', healthRoutes);
   app.route('/api/health', healthRoutes);
+  app.route('/api/v1/skills', createRegistryRoutes(options.registry));
   app.all('/mcp', mcpHandler);
-  app.route('/api/v1/skills', registryRoutes);
+  app.use('*', authMiddleware({ authMode: env.AUTH_MODE }));
   app.route('/api/v1/submissions', createWorkflowRoutes(options.workflow));
   app.route('/submissions', createWorkflowRoutes(options.workflow));
 
