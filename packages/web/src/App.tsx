@@ -301,30 +301,29 @@ const scanSeverityFilters: { id: ScanSeverityFilter; label: string }[] = [
 
 const reviewDiffViewerStyles = {
   diffContainer: {
-    minWidth: '760px',
-    tableLayout: 'auto',
-    width: 'max-content',
+    maxWidth: '100%',
+    minWidth: 0,
+    tableLayout: 'fixed',
+    width: '100%',
     pre: {
-      maxWidth: 'none',
-      overflowWrap: 'normal',
-      whiteSpace: 'pre',
-      width: 'max-content',
-      wordBreak: 'normal',
+      maxWidth: '100%',
+      overflowWrap: 'anywhere',
+      whiteSpace: 'pre-wrap',
+      wordBreak: 'break-word',
     },
   },
   content: {
-    maxWidth: 'none',
+    maxWidth: '100%',
     minWidth: 0,
     overflow: 'visible',
-    width: 'auto',
+    width: '50%',
   },
   contentText: {
     display: 'block',
-    maxWidth: 'none',
-    overflowWrap: 'normal',
-    whiteSpace: 'pre',
-    width: 'max-content',
-    wordBreak: 'normal',
+    maxWidth: '100%',
+    overflowWrap: 'anywhere',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
   },
   lineContent: {
     overflow: 'visible',
@@ -335,18 +334,18 @@ const mobileReviewDiffViewerStyles = {
   ...reviewDiffViewerStyles,
   diffContainer: {
     ...reviewDiffViewerStyles.diffContainer,
-    minWidth: '620px',
   },
   content: {
     ...reviewDiffViewerStyles.content,
+    width: '100%',
   },
   contentText: {
     ...reviewDiffViewerStyles.contentText,
   },
   wordDiff: {
-    overflowWrap: 'normal',
-    whiteSpace: 'pre',
-    wordBreak: 'normal',
+    overflowWrap: 'anywhere',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
   },
 } satisfies NonNullable<ReactDiffViewerProps['styles']>;
 

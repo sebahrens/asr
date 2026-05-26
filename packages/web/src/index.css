@@ -2228,16 +2228,16 @@ main {
 }
 
 .review-diff-viewer [class*="diff-container"] {
-  max-width: none;
-  min-width: 760px !important;
-  table-layout: auto;
-  width: max-content !important;
+  max-width: 100%;
+  min-width: 0 !important;
+  table-layout: fixed;
+  width: 100% !important;
 }
 
 .review-diff-viewer table {
-  min-width: 760px;
-  table-layout: auto;
-  width: max-content;
+  min-width: 0;
+  table-layout: fixed;
+  width: 100%;
 }
 
 .review-diff-viewer thead,
@@ -2248,45 +2248,46 @@ main {
 }
 
 .review-diff-viewer td {
-  max-width: none;
+  max-width: 50%;
+  min-width: 0;
 }
 
 .review-diff-viewer pre {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.78rem;
   line-height: 1.5;
-  max-width: none;
+  max-width: 100%;
   min-width: 0;
-  overflow-wrap: normal;
-  white-space: pre;
-  word-break: normal;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .review-diff-viewer td[class*="content"] {
   display: table-cell !important;
-  max-width: none;
+  max-width: 50%;
   min-width: 0;
   overflow: visible !important;
   vertical-align: top;
-  white-space: pre !important;
+  white-space: pre-wrap !important;
 }
 
 .review-diff-viewer [class*="content-text"] {
   display: block;
-  max-width: none;
+  max-width: 100%;
   min-width: 0;
   overflow: visible !important;
-  overflow-wrap: normal !important;
-  white-space: pre !important;
-  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
 }
 
 .review-diff-viewer [class*="word-diff"],
 .review-diff-viewer ins,
 .review-diff-viewer del {
-  overflow-wrap: normal !important;
-  white-space: pre !important;
-  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
 }
 
 .review-diff-viewer-mobile table,
@@ -2301,33 +2302,33 @@ main {
 }
 
 .review-diff-viewer-mobile td[class*="content"] {
-  max-width: none;
+  max-width: 100%;
   width: auto !important;
 }
 
 .review-diff-viewer-mobile [class*="diff-container"],
 .review-diff-viewer-mobile table {
-  min-width: 620px !important;
-  width: max-content !important;
+  min-width: 0 !important;
+  width: 100% !important;
 }
 
 .review-diff-viewer-mobile pre {
   display: block;
-  max-width: none !important;
+  max-width: 100% !important;
   min-width: 0 !important;
-  overflow-wrap: normal !important;
-  white-space: pre !important;
-  width: max-content !important;
-  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+  white-space: pre-wrap !important;
+  width: auto !important;
+  word-break: break-word !important;
 }
 
 .review-diff-viewer-mobile [class*="content"],
 .review-diff-viewer-mobile [class*="content-text"] {
-  max-width: none;
+  max-width: 100%;
   min-width: 0;
-  overflow-wrap: normal !important;
-  white-space: pre !important;
-  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
 }
 
 .decision-panel {
