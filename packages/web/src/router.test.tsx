@@ -262,6 +262,21 @@ describe('router', () => {
     expect(container.querySelector('.spinner')).not.toBeInTheDocument();
   });
 
+  it('shows a retryable registry error when browse skill loading fails', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ error: 'upstream failed' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+
+    renderRoute('/');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/registry api is unreachable/i);
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+    expect(screen.getByText(/registry unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/connected to registry/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no skills found/i)).not.toBeInTheDocument();
+  });
+
   it('renders skill detail on direct non-root navigation', async () => {
     renderRoute('/skills/asr/security-review');
 
