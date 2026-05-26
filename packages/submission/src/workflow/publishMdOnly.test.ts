@@ -1,5 +1,6 @@
 import type { ForgejoClient, SkillManifest, Submission } from '@asr/core';
 import Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../db/migrations/index.js';
 import {
@@ -7,6 +8,7 @@ import {
   insertSubmission,
   rowToSubmission,
 } from '../db/repositories/submissions.js';
+import { packSkillZip } from '../zip/pack.js';
 import { publishMdOnly } from './publishMdOnly.js';
 
 describe('publishMdOnly', () => {
@@ -36,11 +38,20 @@ describe('publishMdOnly', () => {
       },
     };
 
+    const files = [
+      { path: 'SKILL.md', content: Buffer.from('# Demo\n') },
+      { path: 'manifest.yaml', content: Buffer.from('name: demo-skill\n') },
+    ];
+
+    const expectedZip = await packSkillZip(files);
+    const expectedZipSha = createHash('sha256').update(expectedZip).digest('hex');
+    const expectedContentHash = `sha256:${expectedZipSha}`;
+
     const submission: Submission = {
       id: 'submission-md-only-1',
       manifest,
       classification: 'md-only',
-      contentHash: 'sha256:abc',
+      contentHash: expectedContentHash,
       submittedAt: '2026-05-26T00:00:00.000Z',
       submittedBy: 'alice',
       status: { phase: 'pushing-to-forgejo' },
@@ -60,11 +71,6 @@ describe('publishMdOnly', () => {
     const packageUrlFromMock =
       'https://forgejo.example/api/packages/alice/generic/demo-skill/1.0.0/skill.zip';
     const forgejo = new FakeForgejoClient(packageUrlFromMock);
-
-    const files = [
-      { path: 'SKILL.md', content: Buffer.from('# Demo\n') },
-      { path: 'manifest.yaml', content: Buffer.from('name: demo-skill\n') },
-    ];
 
     const result = await publishMdOnly(
       { db, forgejo: forgejo as unknown as ForgejoClient },
@@ -88,6 +94,10 @@ describe('publishMdOnly', () => {
       version: '1.0.0',
     });
     expect(forgejo.publishCalls[0].zipBuffer.length).toBeGreaterThan(0);
+    const uploadedSha = createHash('sha256')
+      .update(forgejo.publishCalls[0].zipBuffer)
+      .digest('hex');
+    expect(`sha256:${uploadedSha}`).toBe(submission.contentHash);
     expect(forgejo.deleteCalls).toEqual(['submit/x']);
 
     const row = getSubmissionById(db, submission.id);
