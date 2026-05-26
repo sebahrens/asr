@@ -1,4 +1,4 @@
-import { parseSkillManifest, type Submission, type SubmissionStatus } from '@asr/core';
+import { parseSkillManifest, type ForgejoClient, type Submission, type SubmissionStatus } from '@asr/core';
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { createHash } from 'node:crypto';
@@ -13,6 +13,8 @@ import {
   rowToSubmission,
   type SubmissionInsertRow,
 } from '../db/repositories/submissions.js';
+import { forgejoFromEnv } from '../forgejo/index.js';
+import { publishMdOnly } from '../workflow/publishMdOnly.js';
 import { classifySkill } from '../zip/classify.js';
 import { extractSafe } from '../zip/extract.js';
 import { apiError } from './errors.js';
@@ -28,6 +30,7 @@ export interface SubmissionRouteOptions {
   lookup?: SubmissionLookup;
   now?: () => Date;
   generateId?: () => string;
+  forgejo?: ForgejoClient;
 }
 
 interface UploadedFile {
@@ -140,6 +143,32 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
         submittedBy,
         status,
       };
+
+      const db = options.db;
+      if (classification === 'md-only' && db) {
+        try {
+          const fileEntries = await Promise.all(
+            files.map(async (relPath) => ({
+              path: relPath,
+              content: await readFile(join(extractedDir, relPath)),
+            })),
+          );
+          const forgejo = options.forgejo ?? forgejoFromEnv();
+          const result = await publishMdOnly(
+            { db, forgejo },
+            { submission, files: fileEntries, lockVersion: 0 },
+          );
+          submission.status = {
+            phase: 'published',
+            publishedAt: now().toISOString(),
+            mergeCommit: result.mergeCommit,
+          };
+        } catch (error) {
+          return apiError(c, 500, 'internal_error', {
+            message: error instanceof Error ? error.message : 'md-only publish failed',
+          });
+        }
+      }
 
       return c.json(
         {
