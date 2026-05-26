@@ -180,6 +180,12 @@ describe('router', () => {
 
     expect(await screen.findByRole('heading', { name: /secure-code-review/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /approve/i })).toBeEnabled();
+    const skillDiff = screen.getByRole('region', { name: /SKILL\.md line-level diff/i });
+    expect(skillDiff).toBeInTheDocument();
+    expect(within(skillDiff).getByText(/Previous/i)).toBeInTheDocument();
+    expect(within(skillDiff).getByText(/Submitted/i)).toBeInTheDocument();
+    expect(within(skillDiff).getAllByText(/Review dependency changes before release/i).length).toBeGreaterThan(0);
+    expect(within(skillDiff).getAllByText(/document compliance evidence/i).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('tab', { name: /dependencies/i }));
     expect(screen.getByRole('columnheader', { name: /before/i })).toBeInTheDocument();
