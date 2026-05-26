@@ -16,11 +16,20 @@ docker compose -f deploy/docker/docker-compose.yml up -d   # Forgejo + API
 pnpm --filter @asr/web dev &                                # Web on http://localhost:5173
 ```
 
+If the Docker daemon or socket is unavailable, use the checked-in mock API
+instead of stopping the visual review:
+
+```bash
+pnpm dev:api &                                               # Mock API on http://localhost:3001
+pnpm --filter @asr/web dev &                                # Web on http://localhost:5173
+```
+
 Wait until:
 - `curl -fsS http://localhost:3001/api/health` returns `{"status":"ok"}`
 - `curl -fsS http://localhost:5173/` returns the Vite index HTML
 
-If either fails, file a P0 bead for the dev stack and stop.
+If both the Docker stack and the mock API fallback fail, file a P0 bead for the
+dev stack and stop.
 
 ### 2. Drive the UI via Playwright MCP
 
@@ -116,8 +125,8 @@ Priority guidelines:
 ### 5. Tear down and summarise
 
 ```bash
-docker compose -f deploy/docker/docker-compose.yml down
-# kill the vite dev server you backgrounded earlier
+docker compose -f deploy/docker/docker-compose.yml down  # only if Docker was used
+# kill the vite dev server and mock API server you backgrounded earlier
 ```
 
 Print a summary:
@@ -130,7 +139,7 @@ Print a summary:
 
 - The web UI is the **source of truth for what users see** — compare every screenshot against the spec in `ARCHITECTURE.md`, `DESIGN.md`, and `specs/api.md`/`specs/cli-integration.md`.
 - The API contract lives in `specs/api.md` — if the UI calls a missing/changed endpoint, file the bead against the **web** package and note the API mismatch.
-- If `pnpm dev` or docker compose itself fails, file a bead for the dev stack and stop — there is nothing to inspect.
+- If `pnpm dev`, docker compose, and the mock API fallback all fail, file a bead for the dev stack and stop — there is nothing to inspect.
 - Focus on visual + UX defects, not code-level root causes — the build agent handles fixes.
 - Never reference GitHub — if the UI shows a GitHub link or icon, that is a defect: it must be Forgejo.
 

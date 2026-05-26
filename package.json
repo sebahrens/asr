@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "dev": "turbo dev",
+    "dev:api": "node deploy/docker/dev-api.mjs",
     "build": "turbo build",
     "test": "pnpm --filter @asr/core test",
     "test:e2e": "node ./scripts/e2e-docker.mjs",

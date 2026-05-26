@@ -62,6 +62,14 @@ docker compose -f deploy/docker/docker-compose.yml up -d   # Forgejo + API
 pnpm dev                                                    # workspace dev
 ```
 
+If Docker is unavailable and you only need the mock API for web UI development
+or visual review, run:
+
+```bash
+pnpm dev:api
+pnpm --filter @asr/web dev
+```
+
 Service URLs in dev:
 - Forgejo  → http://localhost:3000
 - API      → http://localhost:3001  (`AUTH_MODE=mock`)
