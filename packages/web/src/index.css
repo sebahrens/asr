@@ -2278,9 +2278,9 @@ main {
   line-height: 1.5;
   max-width: 100%;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   white-space: pre-wrap;
-  word-break: break-word;
+  word-break: normal;
 }
 
 .review-diff-viewer td[class*="content"] {
@@ -2297,9 +2297,9 @@ main {
   max-width: 100%;
   min-width: 0;
   overflow: visible !important;
-  overflow-wrap: anywhere !important;
+  overflow-wrap: break-word !important;
   white-space: pre-wrap !important;
-  word-break: break-word !important;
+  word-break: normal !important;
 }
 
 .review-diff-viewer [class*="line-content"] {
@@ -2312,9 +2312,9 @@ main {
 .review-diff-viewer [class*="word-diff"],
 .review-diff-viewer ins,
 .review-diff-viewer del {
-  overflow-wrap: anywhere !important;
+  overflow-wrap: break-word !important;
   white-space: pre-wrap !important;
-  word-break: break-word !important;
+  word-break: normal !important;
 }
 
 .review-diff-viewer-mobile table,
@@ -2324,8 +2324,11 @@ main {
 }
 
 .review-diff-viewer-mobile [class*="marker"] {
-  min-width: 24px !important;
-  width: 24px !important;
+  min-width: 16px !important;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+  text-align: center !important;
+  width: 16px !important;
 }
 
 .review-diff-viewer-mobile td[class*="content"] {
@@ -2343,21 +2346,22 @@ main {
 
 .review-diff-viewer-mobile pre {
   display: block;
+  font-size: 0.72rem;
   max-width: 100% !important;
   min-width: 0 !important;
-  overflow-wrap: anywhere !important;
+  overflow-wrap: break-word !important;
   white-space: pre-wrap !important;
   width: 100% !important;
-  word-break: break-word !important;
+  word-break: normal !important;
 }
 
 .review-diff-viewer-mobile [class*="content"],
 .review-diff-viewer-mobile [class*="content-text"] {
   max-width: 100%;
   min-width: 0;
-  overflow-wrap: anywhere !important;
+  overflow-wrap: break-word !important;
   white-space: pre-wrap !important;
-  word-break: break-word !important;
+  word-break: normal !important;
 }
 
 .decision-panel {

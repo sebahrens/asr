@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mobileReviewDiffViewerStyles } from './App';
 import { routes } from './router';
 
 const skillDetail = {
@@ -247,6 +248,17 @@ describe('router', () => {
     expect(diffRegion).toHaveAttribute('tabindex', '0');
     expect(diffRegion.querySelector('table')).toBeInTheDocument();
     expect(diffRegion).toHaveTextContent(/dependency changes/i);
+
+    expect(mobileReviewDiffViewerStyles.contentText).toMatchObject({
+      overflowWrap: 'break-word',
+      whiteSpace: 'pre-wrap',
+      wordBreak: 'normal',
+    });
+    expect(mobileReviewDiffViewerStyles.wordDiff).toMatchObject({
+      overflowWrap: 'break-word',
+      whiteSpace: 'pre-wrap',
+      wordBreak: 'normal',
+    });
   });
 
   it('keeps the existing browse page on the index route', async () => {

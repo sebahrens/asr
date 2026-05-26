@@ -303,7 +303,7 @@ const scanSeverityFilters: { id: ScanSeverityFilter; label: string }[] = [
   { id: 'low', label: 'Low' },
 ];
 
-const reviewDiffViewerStyles = {
+export const reviewDiffViewerStyles = {
   diffContainer: {
     maxWidth: '100%',
     minWidth: 0,
@@ -311,9 +311,9 @@ const reviewDiffViewerStyles = {
     width: '100%',
     pre: {
       maxWidth: '100%',
-      overflowWrap: 'anywhere',
+      overflowWrap: 'break-word',
       whiteSpace: 'pre-wrap',
-      wordBreak: 'break-word',
+      wordBreak: 'normal',
     },
   },
   content: {
@@ -325,16 +325,16 @@ const reviewDiffViewerStyles = {
   contentText: {
     display: 'block',
     maxWidth: '100%',
-    overflowWrap: 'anywhere',
+    overflowWrap: 'break-word',
     whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
+    wordBreak: 'normal',
   },
   lineContent: {
     overflow: 'visible',
   },
 } satisfies NonNullable<ReactDiffViewerProps['styles']>;
 
-const mobileReviewDiffViewerStyles = {
+export const mobileReviewDiffViewerStyles = {
   ...reviewDiffViewerStyles,
   diffContainer: {
     ...reviewDiffViewerStyles.diffContainer,
@@ -351,9 +351,9 @@ const mobileReviewDiffViewerStyles = {
     whiteSpace: 'pre-wrap',
   },
   wordDiff: {
-    overflowWrap: 'anywhere',
+    overflowWrap: 'break-word',
     whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
+    wordBreak: 'normal',
   },
 } satisfies NonNullable<ReactDiffViewerProps['styles']>;
 
