@@ -1216,10 +1216,12 @@ main {
   border-radius: 8px;
   cursor: pointer;
   padding: 18px;
+  position: relative;
   text-align: center;
 }
 
-.archive-dropzone:hover {
+.archive-dropzone:hover,
+.archive-dropzone:focus-within {
   background: var(--bg-hover);
   border-color: var(--accent);
 }
@@ -1230,8 +1232,12 @@ main {
 }
 
 .archive-dropzone input {
-  margin: 0 auto;
-  max-width: 100%;
+  cursor: pointer;
+  height: 100%;
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+  width: 100%;
 }
 
 .manifest-grid,

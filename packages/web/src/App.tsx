@@ -2177,8 +2177,11 @@ function PublishSkill() {
       return;
     }
 
-    if (!validateUploadStep() || !skillArchive || !manifestIsValid || !questionnaireIsValid) {
-      if (!manifestIsValid) {
+    const uploadStepIsValid = validateUploadStep();
+    if (!uploadStepIsValid || !skillArchive || !manifestIsValid || !questionnaireIsValid) {
+      if (!uploadStepIsValid || !skillArchive) {
+        setCurrentStep('upload');
+      } else if (!manifestIsValid) {
         setCurrentStep('manifest');
       } else if (!questionnaireIsValid) {
         setCurrentStep('questionnaire');

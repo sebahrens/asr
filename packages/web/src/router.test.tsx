@@ -306,6 +306,38 @@ Use this skill when testing upload validation.`,
     expect(screen.getByRole('heading', { name: /upload archive/i })).toBeInTheDocument();
   });
 
+  it('keeps oversized archive validation after submit validation runs', async () => {
+    const { container } = renderRoute('/publish');
+
+    fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'asr' } });
+    fireEvent.change(screen.getByLabelText(/skill.md/i), {
+      target: {
+        value: `---
+name: valid-skill
+version: 1.0.0
+author: Platform Team
+description: Valid skill.
+---
+
+Use this skill when testing upload validation.`,
+      },
+    });
+    fireEvent.change(screen.getByLabelText(/skill archive/i), {
+      target: {
+        files: [new File([new Uint8Array(51 * 1024 * 1024)], 'oversized.zip', { type: 'application/zip' })],
+      },
+    });
+
+    expect(await screen.findByText(/archive must be 50 mb or smaller/i)).toBeInTheDocument();
+
+    const form = container.querySelector('form');
+    expect(form).not.toBeNull();
+    fireEvent.submit(form as HTMLFormElement);
+
+    expect(screen.getByText(/archive must be 50 mb or smaller/i)).toBeInTheDocument();
+    expect(screen.queryByText(/upload a skill archive/i)).not.toBeInTheDocument();
+  });
+
   it('keeps later publish steps locked until each previous step is completed', async () => {
     renderRoute('/publish');
 
