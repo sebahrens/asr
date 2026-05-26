@@ -4,6 +4,7 @@ import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued';
 import type { ReactDiffViewerProps } from 'react-diff-viewer-continued';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useLocation } from 'react-router-dom';
 import { parseSkillMd, type SkillDetail, type SkillSummary, type VersionDiff } from '@asr/core';
 
 type BrowseKindFilter = 'all' | SkillSummary['kind'];
@@ -3371,7 +3372,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
 }
 
 function AppRoutes() {
-  const { pathname } = window.location;
+  const { pathname } = useLocation();
   const routeParts = pathname.split('/').filter(Boolean).map(decodeRoutePart);
 
   if (pathname === '/' || pathname === '/skills') {
