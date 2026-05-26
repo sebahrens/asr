@@ -7,16 +7,25 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ulid } from 'ulid';
 import type { AuthVariables } from '../auth/types.js';
-import { insertSubmission, type SubmissionInsertRow } from '../db/repositories/submissions.js';
+import {
+  getSubmissionById,
+  insertSubmission,
+  rowToSubmission,
+  type SubmissionInsertRow,
+} from '../db/repositories/submissions.js';
 import { classifySkill } from '../zip/classify.js';
 import { extractSafe } from '../zip/extract.js';
 import { apiError } from './errors.js';
 
 export type SubmissionPersist = (row: SubmissionInsertRow) => void | Promise<void>;
+export type SubmissionLookup = (
+  id: string,
+) => Submission | undefined | Promise<Submission | undefined>;
 
 export interface SubmissionRouteOptions {
   db?: Database.Database;
   persist?: SubmissionPersist;
+  lookup?: SubmissionLookup;
   now?: () => Date;
   generateId?: () => string;
 }
@@ -32,6 +41,23 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
   const generateId = options.generateId ?? (() => ulid());
   const persist: SubmissionPersist | undefined =
     options.persist ?? (options.db ? (row) => insertSubmission(options.db!, row) : undefined);
+  const lookup: SubmissionLookup | undefined =
+    options.lookup ??
+    (options.db
+      ? (id) => {
+          const row = getSubmissionById(options.db!, id);
+          return row ? rowToSubmission(row) : undefined;
+        }
+      : undefined);
+
+  routes.get('/:id', async (c) => {
+    const id = c.req.param('id');
+    const submission = lookup ? await lookup(id) : undefined;
+    if (!submission) {
+      return apiError(c, 404, 'submission_not_found');
+    }
+    return c.json(submission);
+  });
 
   routes.post('/', async (c, next) => {
     if (!isMultipartContentType(c.req.header('content-type'))) {

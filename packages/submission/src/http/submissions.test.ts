@@ -1,9 +1,14 @@
+import type { SkillManifest, Submission, SubmissionStatus } from '@asr/core';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import yazl from 'yazl';
 import type { AuthVariables, Identity } from '../auth/types.js';
 import type { SubmissionInsertRow } from '../db/repositories/submissions.js';
-import { createSubmissionRoutes, type SubmissionPersist } from './submissions.js';
+import {
+  createSubmissionRoutes,
+  type SubmissionLookup,
+  type SubmissionPersist,
+} from './submissions.js';
 
 describe('POST /api/v1/submissions (zip upload)', () => {
   it('accepts an md-only zip and returns 201 with a ULID id and uploaded status', async () => {
@@ -105,17 +110,99 @@ describe('POST /api/v1/submissions (zip upload)', () => {
     expect(persisted).toHaveLength(0);
   });
 
-  function makeApp(options: { persist: SubmissionPersist; identity?: Identity }) {
+  function makeApp(options: {
+    persist: SubmissionPersist;
+    lookup?: SubmissionLookup;
+    identity?: Identity;
+  }) {
     const app = new Hono<{ Variables: AuthVariables }>();
     const identity = options.identity ?? { sub: 'submitter-1', roles: ['Submitter'] };
     app.use('*', async (c, next) => {
       c.set('identity', identity);
       await next();
     });
-    app.route('/api/v1/submissions', createSubmissionRoutes({ persist: options.persist }));
+    app.route(
+      '/api/v1/submissions',
+      createSubmissionRoutes({ persist: options.persist, lookup: options.lookup }),
+    );
     return app;
   }
 });
+
+describe('GET /api/v1/submissions/:id', () => {
+  it('returns 200 with the submission after a successful POST', async () => {
+    const store = new Map<string, Submission>();
+    const persist: SubmissionPersist = (row) => {
+      store.set(row.id, insertRowToSubmission(row));
+    };
+    const lookup: SubmissionLookup = (id) => store.get(id);
+
+    const app = new Hono<{ Variables: AuthVariables }>();
+    app.use('*', async (c, next) => {
+      c.set('identity', { sub: 'submitter-1', roles: ['Submitter'] });
+      await next();
+    });
+    app.route('/api/v1/submissions', createSubmissionRoutes({ persist, lookup }));
+
+    const zipBytes = await buildZip([
+      {
+        path: 'SKILL.md',
+        contents: skillMdFixture({ name: 'demo-skill', version: '1.0.0', author: 'alice' }),
+      },
+    ]);
+    const formData = new FormData();
+    formData.set(
+      'file',
+      new Blob([new Uint8Array(zipBytes)], { type: 'application/zip' }),
+      'skill.zip',
+    );
+
+    const postRes = await app.request('/api/v1/submissions', { method: 'POST', body: formData });
+    expect(postRes.status).toBe(201);
+    const created = (await postRes.json()) as { id: string };
+
+    const getRes = await app.request(`/api/v1/submissions/${created.id}`);
+    expect(getRes.status).toBe(200);
+    const data = (await getRes.json()) as Submission;
+    expect(data.id).toBe(created.id);
+    expect(data.status).toEqual({ phase: 'uploaded' });
+    expect(data.classification).toBe('md-only');
+    expect(data.manifest.name).toBe('demo-skill');
+    expect(data.manifest.version).toBe('1.0.0');
+    expect(data.contentHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  it('returns 404 submission_not_found for an unknown id', async () => {
+    const lookup: SubmissionLookup = () => undefined;
+    const app = new Hono<{ Variables: AuthVariables }>();
+    app.use('*', async (c, next) => {
+      c.set('identity', { sub: 'submitter-1', roles: ['Submitter'] });
+      await next();
+    });
+    app.route('/api/v1/submissions', createSubmissionRoutes({ persist: () => {}, lookup }));
+
+    const res = await app.request('/api/v1/submissions/does-not-exist');
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('submission_not_found');
+  });
+});
+
+function insertRowToSubmission(row: SubmissionInsertRow): Submission {
+  const manifest = JSON.parse(row.manifestJson) as SkillManifest;
+  const status = JSON.parse(row.statusJson) as SubmissionStatus;
+  return {
+    id: row.id,
+    manifest,
+    classification: row.classification,
+    contentHash: row.contentHash,
+    submittedAt: row.submittedAt,
+    submittedBy: row.submittedBy,
+    ...(row.branchName != null ? { branchName: row.branchName } : {}),
+    ...(row.prNumber != null ? { prNumber: row.prNumber } : {}),
+    status,
+  };
+}
 
 function skillMdFixture(input: { name: string; version: string; author: string }): string {
   return `---
