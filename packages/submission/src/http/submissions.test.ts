@@ -44,7 +44,7 @@ describe('POST /api/v1/submissions (zip upload)', () => {
     expect(data.status).toEqual({ phase: 'uploaded' });
     expect(data.manifest.name).toBe('demo-skill');
     expect(data.manifest.version).toBe('1.0.0');
-    expect(data.contentHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(data.contentHash).toMatch(/^[a-f0-9]{64}$/);
     expect(new Date(data.createdAt).toString()).not.toBe('Invalid Date');
 
     expect(persisted).toHaveLength(1);
@@ -169,7 +169,7 @@ describe('GET /api/v1/submissions/:id', () => {
     expect(data.classification).toBe('md-only');
     expect(data.manifest.name).toBe('demo-skill');
     expect(data.manifest.version).toBe('1.0.0');
-    expect(data.contentHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(data.contentHash).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('returns 404 submission_not_found for an unknown id', async () => {

@@ -1,7 +1,12 @@
-import { parseSkillManifest, type ForgejoClient, type Submission, type SubmissionStatus } from '@asr/core';
+import {
+  canonicalHash,
+  parseSkillManifest,
+  type ForgejoClient,
+  type Submission,
+  type SubmissionStatus,
+} from '@asr/core';
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
-import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,6 +18,7 @@ import {
   rowToSubmission,
   type SubmissionInsertRow,
 } from '../db/repositories/submissions.js';
+import { findSubmissionIdByContentHash, getBlockedHash } from '../db/repositories/versions.js';
 import { forgejoFromEnv } from '../forgejo/index.js';
 import { publishMdOnly } from '../workflow/publishMdOnly.js';
 import { classifySkill } from '../zip/classify.js';
@@ -115,7 +121,30 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
         });
       }
 
-      const contentHash = await computeContentHash(extractedDir, files);
+      const fileEntries = await Promise.all(
+        files.map(async (relPath) => ({
+          path: relPath,
+          content: await readFile(join(extractedDir, relPath)),
+        })),
+      );
+      const contentHash = canonicalHash(fileEntries);
+
+      const db = options.db;
+      if (db) {
+        const blocked = getBlockedHash(db, contentHash);
+        if (blocked) {
+          return apiError(c, 409, 'content_blocked', {
+            details: { source: blocked.source, reason: blocked.reason },
+          });
+        }
+        const existingSubmissionId = findSubmissionIdByContentHash(db, contentHash);
+        if (existingSubmissionId) {
+          return apiError(c, 409, 'content_blocked', {
+            details: { reason: 'duplicate_content', existingSubmissionId },
+          });
+        }
+      }
+
       const id = generateId();
       const createdAt = now().toISOString();
       const status: SubmissionStatus = { phase: 'uploaded' };
@@ -144,15 +173,8 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
         status,
       };
 
-      const db = options.db;
       if (classification === 'md-only' && db) {
         try {
-          const fileEntries = await Promise.all(
-            files.map(async (relPath) => ({
-              path: relPath,
-              content: await readFile(join(extractedDir, relPath)),
-            })),
-          );
           const forgejo = options.forgejo ?? forgejoFromEnv();
           const result = await publishMdOnly(
             { db, forgejo },
@@ -203,15 +225,3 @@ function isUploadedFile(value: unknown): value is UploadedFile {
   return typeof candidate.arrayBuffer === 'function' && typeof candidate.size === 'number';
 }
 
-async function computeContentHash(rootDir: string, files: string[]): Promise<string> {
-  const hash = createHash('sha256');
-  const sorted = [...files].sort();
-  const separator = Buffer.from([0]);
-  for (const relPath of sorted) {
-    hash.update(relPath);
-    hash.update(separator);
-    const fileBytes = await readFile(join(rootDir, relPath));
-    hash.update(fileBytes);
-  }
-  return `sha256:${hash.digest('hex')}`;
-}
