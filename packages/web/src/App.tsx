@@ -996,7 +996,11 @@ function ReviewDiffPanel({ files }: { files: ReviewDiffFile[] }) {
             </div>
             <span>+{file.additions} / -{file.removals}</span>
           </header>
-          <div className="review-diff-viewer" role="region" aria-label={`${file.file} line-level diff`}>
+          <div
+            className={`review-diff-viewer${isNarrowDiff ? ' review-diff-viewer-mobile' : ''}`}
+            role="region"
+            aria-label={`${file.file} line-level diff`}
+          >
             <ReactDiffViewer
               oldValue={file.oldValue}
               newValue={file.newValue}

@@ -2191,6 +2191,21 @@ main {
   line-height: 1.5;
 }
 
+.review-diff-viewer-mobile table,
+.review-diff-viewer-mobile td,
+.review-diff-viewer-mobile pre {
+  min-width: 0;
+}
+
+.review-diff-viewer-mobile [class*="content"],
+.review-diff-viewer-mobile [class*="content-text"] {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .decision-panel {
   background: var(--bg-card);
   border: 1px solid var(--border-light);

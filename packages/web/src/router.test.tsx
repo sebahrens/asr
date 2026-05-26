@@ -134,6 +134,19 @@ function renderRoute(initialEntry: string) {
   );
 }
 
+function stubMatchMedia(matches: boolean) {
+  vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+    matches,
+    media: '(max-width: 640px)',
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
+}
+
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (input) => {
     const url = String(input);
@@ -147,16 +160,7 @@ beforeEach(() => {
     });
   }));
 
-  vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
-    matches: false,
-    media: '',
-    onchange: null,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  }));
+  stubMatchMedia(false);
 });
 
 afterEach(() => {
@@ -209,6 +213,17 @@ describe('router', () => {
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByText(/v1\.4\.0/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/high risk/i)).toBeInTheDocument();
+  });
+
+  it('uses the wrapped mobile diff layout for narrow review detail screens', async () => {
+    stubMatchMedia(true);
+    renderRoute('/review/sub-1039');
+
+    expect(await screen.findByRole('heading', { name: /release-notes/i })).toBeInTheDocument();
+    const diffRegion = screen.getByRole('region', { name: /SKILL\.md line-level diff/i });
+    expect(diffRegion).toHaveClass('review-diff-viewer-mobile');
+    expect(diffRegion.querySelector('table')).toBeInTheDocument();
+    expect(diffRegion).toHaveTextContent(/dependency changes/i);
   });
 
   it('keeps the existing browse page on the index route', async () => {
