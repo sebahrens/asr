@@ -300,16 +300,28 @@ const reviewDiffViewerStyles = {
     minWidth: 0,
     tableLayout: 'fixed',
     width: '100%',
+    pre: {
+      lineBreak: 'anywhere',
+      maxWidth: '100%',
+      overflowWrap: 'anywhere',
+      whiteSpace: 'pre-wrap',
+      width: 'auto',
+      wordBreak: 'break-word',
+    },
   },
   content: {
     maxWidth: '100%',
     minWidth: 0,
     overflow: 'visible',
+    width: 'auto',
   },
   contentText: {
+    display: 'block',
     lineBreak: 'anywhere',
+    maxWidth: '100%',
     overflowWrap: 'anywhere',
     whiteSpace: 'pre-wrap',
+    width: 'auto',
     wordBreak: 'break-word',
   },
   lineContent: {
@@ -321,24 +333,12 @@ const mobileReviewDiffViewerStyles = {
   ...reviewDiffViewerStyles,
   diffContainer: {
     ...reviewDiffViewerStyles.diffContainer,
-    pre: {
-      lineBreak: 'anywhere',
-      maxWidth: '100%',
-      overflowWrap: 'anywhere',
-      whiteSpace: 'pre-wrap',
-      width: 'auto',
-      wordBreak: 'break-word',
-    },
   },
   content: {
     ...reviewDiffViewerStyles.content,
-    width: 'auto',
   },
   contentText: {
     ...reviewDiffViewerStyles.contentText,
-    display: 'block',
-    maxWidth: '100%',
-    width: 'auto',
   },
   wordDiff: {
     lineBreak: 'anywhere',
@@ -1085,7 +1085,8 @@ function ReviewDiffPanel({ files }: { files: ReviewDiffFile[] }) {
           <div
             className={`review-diff-viewer${isNarrowDiff ? ' review-diff-viewer-mobile' : ''}`}
             role="region"
-            aria-label={`${file.file} line-level diff`}
+            aria-label={`${file.file} line-level diff, scrollable code region`}
+            tabIndex={0}
           >
             <ReactDiffViewer
               oldValue={file.oldValue}

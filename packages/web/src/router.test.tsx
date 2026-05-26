@@ -222,6 +222,7 @@ describe('router', () => {
     expect(await screen.findByRole('heading', { name: /release-notes/i })).toBeInTheDocument();
     const diffRegion = screen.getByRole('region', { name: /SKILL\.md line-level diff/i });
     expect(diffRegion).toHaveClass('review-diff-viewer-mobile');
+    expect(diffRegion).toHaveAttribute('tabindex', '0');
     expect(diffRegion.querySelector('table')).toBeInTheDocument();
     expect(diffRegion).toHaveTextContent(/dependency changes/i);
   });

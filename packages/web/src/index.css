@@ -2184,6 +2184,18 @@ main {
   -webkit-overflow-scrolling: touch;
 }
 
+.review-diff-viewer:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.review-diff-viewer [class*="diff-container"] {
+  max-width: 100%;
+  min-width: 100% !important;
+  table-layout: fixed;
+  width: 100% !important;
+}
+
 .review-diff-viewer table {
   table-layout: fixed;
   min-width: 100%;
@@ -2198,6 +2210,22 @@ main {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.78rem;
   line-height: 1.5;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.review-diff-viewer [class*="content"] {
+  min-width: 0;
+}
+
+.review-diff-viewer [class*="content-text"] {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .review-diff-viewer-mobile table,
