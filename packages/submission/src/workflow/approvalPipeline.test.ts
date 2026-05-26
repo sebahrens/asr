@@ -118,6 +118,25 @@ describe('approvalPipeline', () => {
       expect.objectContaining({ id: 'review', params: hitlNodes.review }),
     ]));
   });
+
+  it('routes md-only submissions through an idempotent auto-approve node into the shared publish node', () => {
+    const blueprint = approvalPipeline.toBlueprint();
+
+    const autoApprove = blueprint.nodes.find((node) => node.id === 'auto-approve');
+    expect(autoApprove).toBeDefined();
+    expect(autoApprove?.params?.idempotent).toBe(true);
+
+    const pushOutgoing = blueprint.edges.filter((edge) => edge.source === 'push-to-forgejo');
+    expect(pushOutgoing).toHaveLength(2);
+    expect(pushOutgoing).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'push-to-forgejo', target: 'auto-approve', action: 'md-only' }),
+      expect.objectContaining({ source: 'push-to-forgejo', target: 'questionnaire', action: 'code-containing' }),
+    ]));
+
+    const autoApproveOutgoing = blueprint.edges.filter((edge) => edge.source === 'auto-approve');
+    expect(autoApproveOutgoing).toHaveLength(1);
+    expect(autoApproveOutgoing[0]).toEqual(expect.objectContaining({ source: 'auto-approve', target: 'publish' }));
+  });
 });
 
 class FakeForgejoClient {
