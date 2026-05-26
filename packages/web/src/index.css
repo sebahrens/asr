@@ -2278,9 +2278,9 @@ main {
   line-height: 1.5;
   max-width: 100%;
   min-width: 0;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
-  word-break: normal;
+  word-break: break-word;
 }
 
 .review-diff-viewer td[class*="content"] {
@@ -2297,9 +2297,9 @@ main {
   max-width: 100%;
   min-width: 0;
   overflow: visible !important;
-  overflow-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
   white-space: pre-wrap !important;
-  word-break: normal !important;
+  word-break: break-word !important;
 }
 
 .review-diff-viewer [class*="line-content"] {
@@ -2312,9 +2312,9 @@ main {
 .review-diff-viewer [class*="word-diff"],
 .review-diff-viewer ins,
 .review-diff-viewer del {
-  overflow-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
   white-space: pre-wrap !important;
-  word-break: normal !important;
+  word-break: break-word !important;
 }
 
 .review-diff-viewer-mobile table,
@@ -2349,19 +2349,19 @@ main {
   font-size: 0.72rem;
   max-width: 100% !important;
   min-width: 0 !important;
-  overflow-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
   white-space: pre-wrap !important;
   width: 100% !important;
-  word-break: normal !important;
+  word-break: break-word !important;
 }
 
 .review-diff-viewer-mobile [class*="content"],
 .review-diff-viewer-mobile [class*="content-text"] {
   max-width: 100%;
   min-width: 0;
-  overflow-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
   white-space: pre-wrap !important;
-  word-break: normal !important;
+  word-break: break-word !important;
 }
 
 .decision-panel {
@@ -2647,9 +2647,28 @@ main {
   }
 
   .review-diff-viewer pre {
-    overflow-wrap: break-word;
-    white-space: pre;
-    word-break: normal;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .review-diff-viewer-mobile [class*="diff-container"],
+  .review-diff-viewer-mobile table {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    width: 100% !important;
+  }
+
+  .review-diff-viewer-mobile pre,
+  .review-diff-viewer-mobile [class*="content"],
+  .review-diff-viewer-mobile [class*="content-text"],
+  .review-diff-viewer-mobile [class*="word-diff"],
+  .review-diff-viewer-mobile ins,
+  .review-diff-viewer-mobile del {
+    overflow-wrap: anywhere !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
   }
 
   .wizard-progress,

@@ -311,9 +311,9 @@ export const reviewDiffViewerStyles = {
     width: '100%',
     pre: {
       maxWidth: '100%',
-      overflowWrap: 'break-word',
+      overflowWrap: 'anywhere',
       whiteSpace: 'pre-wrap',
-      wordBreak: 'normal',
+      wordBreak: 'break-word',
     },
   },
   content: {
@@ -325,9 +325,9 @@ export const reviewDiffViewerStyles = {
   contentText: {
     display: 'block',
     maxWidth: '100%',
-    overflowWrap: 'break-word',
+    overflowWrap: 'anywhere',
     whiteSpace: 'pre-wrap',
-    wordBreak: 'normal',
+    wordBreak: 'break-word',
   },
   lineContent: {
     overflow: 'visible',
@@ -351,9 +351,9 @@ export const mobileReviewDiffViewerStyles = {
     whiteSpace: 'pre-wrap',
   },
   wordDiff: {
-    overflowWrap: 'break-word',
+    overflowWrap: 'anywhere',
     whiteSpace: 'pre-wrap',
-    wordBreak: 'normal',
+    wordBreak: 'break-word',
   },
 } satisfies NonNullable<ReactDiffViewerProps['styles']>;
 

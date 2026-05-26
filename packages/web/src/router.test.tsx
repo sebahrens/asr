@@ -250,14 +250,14 @@ describe('router', () => {
     expect(diffRegion).toHaveTextContent(/dependency changes/i);
 
     expect(mobileReviewDiffViewerStyles.contentText).toMatchObject({
-      overflowWrap: 'break-word',
+      overflowWrap: 'anywhere',
       whiteSpace: 'pre-wrap',
-      wordBreak: 'normal',
+      wordBreak: 'break-word',
     });
     expect(mobileReviewDiffViewerStyles.wordDiff).toMatchObject({
-      overflowWrap: 'break-word',
+      overflowWrap: 'anywhere',
       whiteSpace: 'pre-wrap',
-      wordBreak: 'normal',
+      wordBreak: 'break-word',
     });
   });
 
