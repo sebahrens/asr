@@ -305,6 +305,50 @@ Use this skill when testing upload validation.`,
     expect(screen.getByRole('heading', { name: /upload archive/i })).toBeInTheDocument();
   });
 
+  it('keeps later publish steps locked until each previous step is completed', async () => {
+    renderRoute('/publish');
+
+    fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'asr' } });
+    fireEvent.change(screen.getByLabelText(/skill.md/i), {
+      target: {
+        value: `---
+name: valid-skill
+version: 1.0.0
+author: Platform Team
+description: Valid skill.
+---
+
+Use this skill when testing step navigation.`,
+      },
+    });
+    fireEvent.change(screen.getByLabelText(/skill archive/i), {
+      target: {
+        files: [createZipFile(['valid-skill/manifest.yaml', 'valid-skill/SKILL.md'])],
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
+    });
+
+    expect(screen.getByRole('button', { name: /manifest/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /questionnaire/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    expect(screen.getByRole('heading', { name: /review manifest/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /manifest/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /questionnaire/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    expect(screen.getByRole('heading', { name: /questionnaire/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /questionnaire/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
+  });
+
   it('rejects archive uploads that omit manifest.yaml from the root directory', async () => {
     renderRoute('/publish');
 

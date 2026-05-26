@@ -2054,6 +2054,7 @@ function PublishSkill() {
   const [skillMd, setSkillMd] = useState('');
   const [skillArchive, setSkillArchive] = useState<File | null>(null);
   const [currentStep, setCurrentStep] = useState<PublishWizardStep>('upload');
+  const [highestUnlockedStep, setHighestUnlockedStep] = useState<PublishWizardStep>('upload');
   const [manifestDraft, setManifestDraft] = useState<PublishManifestDraft>(emptyManifestDraft);
   const [questionnaire, setQuestionnaire] = useState<QuestionnaireDraft>(emptyQuestionnaireDraft);
   const [errors, setErrors] = useState<PublishFormErrors>({});
@@ -2074,6 +2075,18 @@ function PublishSkill() {
     .split(',')
     .map((tag) => tag.trim())
     .filter(Boolean);
+  const highestUnlockedStepIndex = publishWizardSteps.findIndex((item) => item.id === highestUnlockedStep);
+
+  function getWizardStepIndex(step: PublishWizardStep) {
+    return publishWizardSteps.findIndex((item) => item.id === step);
+  }
+
+  function unlockStep(step: PublishWizardStep) {
+    const stepIndex = getWizardStepIndex(step);
+    if (stepIndex > highestUnlockedStepIndex) {
+      setHighestUnlockedStep(step);
+    }
+  }
 
   function validateUploadStep() {
     const nextErrors: PublishFormErrors = {};
@@ -2099,33 +2112,16 @@ function PublishSkill() {
   }
 
   function goToStep(step: PublishWizardStep) {
-    const targetIndex = publishWizardSteps.findIndex((item) => item.id === step);
-    const currentIndex = publishWizardSteps.findIndex((item) => item.id === currentStep);
-
-    if (targetIndex <= currentIndex) {
+    if (canOpenStep(step)) {
       setCurrentStep(step);
-      return;
     }
-
-    if (!validateUploadStep()) {
-      setCurrentStep('upload');
-      return;
-    }
-
-    if (targetIndex > 1 && !manifestIsValid) {
-      setCurrentStep('manifest');
-      return;
-    }
-
-    if (targetIndex > 2 && !questionnaireIsValid) {
-      setCurrentStep('questionnaire');
-      return;
-    }
-
-    setCurrentStep(step);
   }
 
   function canOpenStep(step: PublishWizardStep) {
+    if (getWizardStepIndex(step) > highestUnlockedStepIndex) {
+      return false;
+    }
+
     switch (step) {
       case 'upload':
         return true;
@@ -2145,7 +2141,26 @@ function PublishSkill() {
     }
 
     setManifestDraft(createManifestDraft(skillMd));
+    unlockStep('manifest');
     setCurrentStep('manifest');
+  }
+
+  function continueFromManifest() {
+    if (!manifestIsValid) {
+      return;
+    }
+
+    unlockStep('questionnaire');
+    setCurrentStep('questionnaire');
+  }
+
+  function continueFromQuestionnaire() {
+    if (!questionnaireIsValid) {
+      return;
+    }
+
+    unlockStep('review');
+    setCurrentStep('review');
   }
 
   async function submitSkill(event: FormEvent<HTMLFormElement>) {
@@ -2501,7 +2516,7 @@ function PublishSkill() {
                 <button
                   className="submit-btn"
                   type="button"
-                  onClick={() => setCurrentStep('questionnaire')}
+                  onClick={continueFromManifest}
                   disabled={!manifestIsValid}
                 >
                   Continue
@@ -2511,7 +2526,7 @@ function PublishSkill() {
                 <button
                   className="submit-btn"
                   type="button"
-                  onClick={() => setCurrentStep('review')}
+                  onClick={continueFromQuestionnaire}
                   disabled={!questionnaireIsValid}
                 >
                   Continue
