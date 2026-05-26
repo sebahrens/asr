@@ -87,12 +87,62 @@ describe('registryRoutes', () => {
     await expect(res.json()).resolves.toEqual({ error: 'submission_not_found' });
   });
 
+  it('redirects version downloads to the Forgejo generic package URL', async () => {
+    const app = makeApp();
+    insertPublishedSubmission(db!, {
+      id: 'submission-x',
+      name: 'x',
+      version: '1.0.0',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+    });
+
+    const res = await app.request('/api/v1/skills/acme/x/v/1.0.0/download', { redirect: 'manual' });
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      'https://forgejo.example.test/api/packages/acme/generic/x/1.0.0/skill.zip',
+    );
+    expect(res.headers.get('X-ASR-Yanked')).toBeNull();
+  });
+
+  it('marks yanked version download redirects', async () => {
+    const app = makeApp();
+    insertPublishedSubmission(db!, {
+      id: 'submission-x',
+      name: 'x',
+      version: '1.0.0',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+      yankedAt: '2026-05-25T10:05:00.000Z',
+      yankReason: 'security incident',
+    });
+
+    const res = await app.request('/api/v1/skills/acme/x/v/1.0.0/download', { redirect: 'manual' });
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('X-ASR-Yanked')).toBe('true');
+  });
+
+  it('returns the registry not-found envelope for a missing download version', async () => {
+    const app = makeApp();
+    insertPublishedSubmission(db!, {
+      id: 'submission-x',
+      name: 'x',
+      version: '1.0.0',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+    });
+
+    const res = await app.request('/api/v1/skills/acme/x/v/2.0.0/download');
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: 'submission_not_found' });
+  });
+
   function makeApp(): Hono {
     db = new Database(':memory:');
     runMigrations(db);
 
     const app = new Hono();
-    app.route('/api/v1/skills', createRegistryRoutes({ db }));
+    app.route('/api/v1/skills', createRegistryRoutes({ db, forgejoUrl: 'https://forgejo.example.test/api/v1' }));
     return app;
   }
 });
@@ -104,6 +154,8 @@ interface PublishedSubmissionFixture {
   tags?: string[];
   kind?: SkillKind;
   publishedAt: string;
+  yankedAt?: string;
+  yankReason?: string;
 }
 
 function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubmissionFixture): void {
@@ -128,6 +180,8 @@ function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubm
       publishedAt: fixture.publishedAt,
       mergeCommit: `merge-${fixture.id}`,
       skillMd: `# ${fixture.name}`,
+      ...(fixture.yankedAt ? { yankedAt: fixture.yankedAt } : {}),
+      ...(fixture.yankReason ? { yankReason: fixture.yankReason } : {}),
     }),
   });
 }

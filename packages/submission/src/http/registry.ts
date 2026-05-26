@@ -217,6 +217,7 @@ const registryDiffs: VersionDiff[] = [
 
 export interface RegistryRouteOptions {
   db?: Database.Database;
+  forgejoUrl?: string;
 }
 
 const defaultRegistryDb = createDefaultRegistryDb();
@@ -224,6 +225,7 @@ const defaultRegistryDb = createDefaultRegistryDb();
 export function createRegistryRoutes(options: RegistryRouteOptions = {}) {
   const routes = new Hono();
   const db = options.db ?? defaultRegistryDb;
+  const forgejoUrl = options.forgejoUrl ?? process.env.FORGEJO_URL ?? 'http://forgejo:3000';
 
   routes.get('/', (c) => {
     const limit = parseLimit(c.req.query('limit'));
@@ -251,6 +253,23 @@ export function createRegistryRoutes(options: RegistryRouteOptions = {}) {
 
     c.header('Cache-Control', 'public, max-age=60');
     return c.json(skill);
+  });
+
+  routes.get('/:owner/:name/v/:version/download', (c) => {
+    const owner = c.req.param('owner');
+    const name = c.req.param('name');
+    const version = c.req.param('version');
+    const skill = getPublishedSkill(db, owner, name);
+    const publishedVersion = skill?.versions.find((candidate) => candidate.version === version);
+    if (!publishedVersion) {
+      return apiError(c, 404, 'submission_not_found');
+    }
+
+    if (publishedVersion.yanked) {
+      c.header('X-ASR-Yanked', 'true');
+    }
+
+    return c.redirect(forgejoPackageUrl(forgejoUrl, owner, name, version), 302);
   });
 
   routes.get('/:owner/:name/versions/:version/diff', (c) => {
@@ -303,6 +322,11 @@ function decodeCursor(value: string | undefined): number | undefined {
 
 function encodeCursor(offset: number): string {
   return Buffer.from(JSON.stringify({ offset }), 'utf8').toString('base64');
+}
+
+function forgejoPackageUrl(forgejoUrl: string, owner: string, name: string, version: string): string {
+  const base = forgejoUrl.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '');
+  return `${base}/api/packages/${owner}/generic/${name}/${version}/skill.zip`;
 }
 
 function createDefaultRegistryDb(): Database.Database {

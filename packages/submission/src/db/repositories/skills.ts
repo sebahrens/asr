@@ -37,6 +37,8 @@ interface PublishedStatus {
   approvedBy?: string;
   riskAssessment?: SkillVersion['riskAssessment'];
   skillMd?: string;
+  yankedAt?: string;
+  yankReason?: string;
 }
 
 interface PublishedSkillGroup {
@@ -142,6 +144,8 @@ function sortVersions(versions: PublishedSkillVersion[]): PublishedSkillVersion[
 }
 
 function toSkillVersion(version: PublishedSkillVersion): SkillVersion {
+  const yanked = Boolean(version.status.yankedAt);
+
   return {
     owner: version.manifest.author,
     name: version.manifest.name,
@@ -152,7 +156,9 @@ function toSkillVersion(version: PublishedSkillVersion): SkillVersion {
     approvedBy: version.status.approvedBy ?? null,
     prNumber: version.row.pr_number ?? 0,
     mergeCommit: version.status.mergeCommit ?? '',
-    yanked: false,
+    yanked,
+    ...(version.status.yankedAt ? { yankedAt: version.status.yankedAt } : {}),
+    ...(version.status.yankReason ? { yankReason: version.status.yankReason } : {}),
     riskAssessment: version.status.riskAssessment ?? 'low',
   };
 }
