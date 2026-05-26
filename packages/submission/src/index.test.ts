@@ -34,6 +34,12 @@ describe('app', () => {
     await expect(res.json()).resolves.toEqual({ status: 'ok' });
   });
 
+  it('does not expose the obsolete healthz liveness route', async () => {
+    const res = await app.request('/healthz');
+
+    expect(res.status).toBe(404);
+  });
+
   it('allows the local Vite app to call the API during mock-auth development', async () => {
     const res = await app.request('/api/v1/skills', {
       method: 'OPTIONS',
