@@ -254,6 +254,11 @@ describe('router', () => {
       whiteSpace: 'pre-wrap',
       wordBreak: 'break-word',
     });
+    expect(mobileReviewDiffViewerStyles.content).toMatchObject({
+      maxWidth: '100%',
+      minWidth: 0,
+      width: '100%',
+    });
     expect(mobileReviewDiffViewerStyles.wordDiff).toMatchObject({
       overflowWrap: 'anywhere',
       whiteSpace: 'pre-wrap',
