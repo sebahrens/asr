@@ -95,8 +95,8 @@ describe('mcpHandler', () => {
   });
 });
 
-function initializeMcpSession(app: ReturnType<typeof createApp>): Promise<Response> {
-  return app.request('/mcp', {
+async function initializeMcpSession(app: ReturnType<typeof createApp>): Promise<Response> {
+  return await app.request('/mcp', {
     method: 'POST',
     headers: {
       accept: 'application/json, text/event-stream',

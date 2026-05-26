@@ -6,6 +6,14 @@ import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMigrations } from './index.js';
 
+interface PragmaColumn {
+  name: string;
+}
+
+interface PragmaIndex {
+  name: string;
+}
+
 describe('migration0001Submissions', () => {
   let db: Database.Database | undefined;
   let dbPath: string | undefined;
@@ -34,9 +42,9 @@ describe('migration0001Submissions', () => {
 
     runMigrations(database);
 
-    const columns = database
-      .pragma('table_info(submissions)')
-      .map((column) => column.name);
+    const columns = (database.pragma('table_info(submissions)') as PragmaColumn[]).map(
+      (column) => column.name,
+    );
 
     expect(columns).toEqual([
       'id',
@@ -52,9 +60,9 @@ describe('migration0001Submissions', () => {
       'lock_version',
     ]);
 
-    const indexes = database
-      .pragma('index_list(submissions)')
-      .map((index) => index.name);
+    const indexes = (database.pragma('index_list(submissions)') as PragmaIndex[]).map(
+      (index) => index.name,
+    );
 
     expect(indexes).toEqual(
       expect.arrayContaining([

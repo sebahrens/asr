@@ -14,7 +14,7 @@ const defaultMockSub = 'dev-compliance';
 const defaultMockRoles: SessionRole[] = ['Compliance'];
 
 function readMockRoles(): SessionRole[] {
-  const mockRoles = import.meta.env.VITE_MOCK_ROLES;
+  const mockRoles = import.meta.env.VITE_MOCK_ROLES as string | undefined;
 
   if (!mockRoles) {
     return defaultMockRoles;
