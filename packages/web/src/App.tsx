@@ -452,7 +452,7 @@ function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mobile-nav-header">
-              <img src="/logo.svg" alt="Skill Registry" />
+              <img src="/logo.svg" alt="asr" />
               <button
                 type="button"
                 className="mobile-nav-close"
@@ -2698,7 +2698,7 @@ function BrowseRegistry() {
       <header>
         <div className="container app-topbar">
           <div className="logo">
-            <img src="/logo.svg" alt="Skill Registry" />
+            <img src="/logo.svg" alt="asr" />
           </div>
 
           <PrimaryNav current="browse" />
@@ -2725,12 +2725,10 @@ function BrowseRegistry() {
       <main>
         <div className="container">
           <div className="hero">
-            <h1>
-              Agent <span className="highlight">Skill</span> Registry
-            </h1>
+            <h1>asr</h1>
             <p>
               Browse, search and install skills for AI coding agents.
-              Works with Office Companion, Codex, Cursor and more.
+              Works with Claude Code, Copilot, and other AI agents.
             </p>
             <div className="stats">
               <div className="stat">
