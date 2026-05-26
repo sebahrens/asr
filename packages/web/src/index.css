@@ -2248,6 +2248,12 @@ main {
   width: 100% !important;
 }
 
+.review-diff-viewer > div,
+.review-diff-viewer > div > div {
+  max-width: 100%;
+  min-width: 0;
+}
+
 .review-diff-viewer table {
   min-width: 0;
   table-layout: fixed;
@@ -2272,9 +2278,9 @@ main {
   line-height: 1.5;
   max-width: 100%;
   min-width: 0;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
-  word-break: normal;
+  word-break: break-word;
 }
 
 .review-diff-viewer td[class*="content"] {
@@ -2291,17 +2297,17 @@ main {
   max-width: 100%;
   min-width: 0;
   overflow: visible !important;
-  overflow-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
   white-space: pre-wrap !important;
-  word-break: normal !important;
+  word-break: break-word !important;
 }
 
 .review-diff-viewer [class*="word-diff"],
 .review-diff-viewer ins,
 .review-diff-viewer del {
-  overflow-wrap: normal !important;
+  overflow-wrap: anywhere !important;
   white-space: pre-wrap !important;
-  word-break: normal !important;
+  word-break: break-word !important;
 }
 
 .review-diff-viewer-mobile table,
@@ -2330,19 +2336,19 @@ main {
   display: block;
   max-width: 100% !important;
   min-width: 0 !important;
-  overflow-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
   white-space: pre-wrap !important;
   width: auto !important;
-  word-break: normal !important;
+  word-break: break-word !important;
 }
 
 .review-diff-viewer-mobile [class*="content"],
 .review-diff-viewer-mobile [class*="content-text"] {
   max-width: 100%;
   min-width: 0;
-  overflow-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
   white-space: pre-wrap !important;
-  word-break: normal !important;
+  word-break: break-word !important;
 }
 
 .decision-panel {
