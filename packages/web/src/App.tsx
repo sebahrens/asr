@@ -1921,7 +1921,7 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
                 disabled={!canDecide || Boolean(decision)}
               />
             </label>
-            {canDecide && !decision && rejectDisabled ? (
+            {canDecide && !decision && pendingConfirmation === 'rejected' && rejectDisabled ? (
               <p className="decision-help">A rejection reason is required before rejecting.</p>
             ) : null}
             {ownSubmission ? (
