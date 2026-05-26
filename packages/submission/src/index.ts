@@ -8,6 +8,7 @@ import type { AuthVariables } from './auth/types.js';
 import { getEnv } from './env.js';
 import { healthRoutes } from './http/health.js';
 import { createRegistryRoutes, type RegistryRouteOptions } from './http/registry.js';
+import { createSubmissionRoutes, type SubmissionRouteOptions } from './http/submissions.js';
 import { createWorkflowRoutes, type WorkflowRouteOptions } from './http/workflow.js';
 import { mcpHandler } from './mcp/server.js';
 
@@ -17,6 +18,7 @@ const env = getEnv();
 
 export interface CreateAppOptions {
   registry?: RegistryRouteOptions;
+  submissions?: SubmissionRouteOptions;
   workflow?: WorkflowRouteOptions;
 }
 
@@ -29,6 +31,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.route('/api/v1/skills', createRegistryRoutes(options.registry));
   app.all('/mcp', mcpHandler);
   app.use('*', authMiddleware({ authMode: env.AUTH_MODE }));
+  app.route('/api/v1/submissions', createSubmissionRoutes(options.submissions));
   app.route('/api/v1/submissions', createWorkflowRoutes(options.workflow));
   app.route('/submissions', createWorkflowRoutes(options.workflow));
 
