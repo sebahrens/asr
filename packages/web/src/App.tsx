@@ -1856,7 +1856,11 @@ function ReviewDetailPage({ submissionId }: { submissionId: string }) {
               ))}
             </div>
 
-            <section className="review-detail-panel" role="tabpanel" aria-label={reviewDetailTabs.find((tab) => tab.id === activeTab)?.label}>
+            <section
+              className={`review-detail-panel${activeTab === 'diff' ? ' review-detail-panel-diff' : ''}`}
+              role="tabpanel"
+              aria-label={reviewDetailTabs.find((tab) => tab.id === activeTab)?.label}
+            >
               {activeTab === 'diff' && (
                 <ReviewDiffPanel files={detail.diff} />
               )}

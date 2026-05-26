@@ -1971,6 +1971,10 @@ main {
   overflow: hidden;
 }
 
+.review-detail-panel-diff {
+  overflow: visible;
+}
+
 .evidence-list {
   display: grid;
 }
