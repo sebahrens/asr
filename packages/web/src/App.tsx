@@ -1,6 +1,6 @@
 import { createContext, useState, useEffect, useCallback, useContext, useRef } from 'react';
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
-import ReactDiffViewer from 'react-diff-viewer-continued';
+import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued';
 import type { ReactDiffViewerProps } from 'react-diff-viewer-continued';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -307,9 +307,9 @@ const reviewDiffViewerStyles = {
     width: '100%',
     pre: {
       maxWidth: '100%',
-      overflowWrap: 'anywhere',
+      overflowWrap: 'break-word',
       whiteSpace: 'pre-wrap',
-      wordBreak: 'break-word',
+      wordBreak: 'normal',
     },
   },
   content: {
@@ -321,9 +321,9 @@ const reviewDiffViewerStyles = {
   contentText: {
     display: 'block',
     maxWidth: '100%',
-    overflowWrap: 'anywhere',
+    overflowWrap: 'break-word',
     whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
+    wordBreak: 'normal',
   },
   lineContent: {
     overflow: 'visible',
@@ -343,9 +343,9 @@ const mobileReviewDiffViewerStyles = {
     ...reviewDiffViewerStyles.contentText,
   },
   wordDiff: {
-    overflowWrap: 'anywhere',
+    overflowWrap: 'normal',
     whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
+    wordBreak: 'normal',
   },
 } satisfies NonNullable<ReactDiffViewerProps['styles']>;
 
@@ -1095,6 +1095,7 @@ function ReviewDiffPanel({ files }: { files: ReviewDiffFile[] }) {
               newValue={file.newValue}
               splitView={!isNarrowDiff}
               showDiffOnly={false}
+              compareMethod={DiffMethod.WORDS}
               hideLineNumbers={isNarrowDiff}
               leftTitle="Previous"
               rightTitle="Submitted"

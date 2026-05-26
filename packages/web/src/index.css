@@ -2258,9 +2258,9 @@ main {
   line-height: 1.5;
   max-width: 100%;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   white-space: pre-wrap;
-  word-break: break-word;
+  word-break: normal;
 }
 
 .review-diff-viewer td[class*="content"] {
@@ -2277,17 +2277,17 @@ main {
   max-width: 100%;
   min-width: 0;
   overflow: visible !important;
-  overflow-wrap: anywhere !important;
+  overflow-wrap: break-word !important;
   white-space: pre-wrap !important;
-  word-break: break-word !important;
+  word-break: normal !important;
 }
 
 .review-diff-viewer [class*="word-diff"],
 .review-diff-viewer ins,
 .review-diff-viewer del {
-  overflow-wrap: anywhere !important;
+  overflow-wrap: normal !important;
   white-space: pre-wrap !important;
-  word-break: break-word !important;
+  word-break: normal !important;
 }
 
 .review-diff-viewer-mobile table,
@@ -2316,19 +2316,19 @@ main {
   display: block;
   max-width: 100% !important;
   min-width: 0 !important;
-  overflow-wrap: anywhere !important;
+  overflow-wrap: break-word !important;
   white-space: pre-wrap !important;
   width: auto !important;
-  word-break: break-word !important;
+  word-break: normal !important;
 }
 
 .review-diff-viewer-mobile [class*="content"],
 .review-diff-viewer-mobile [class*="content-text"] {
   max-width: 100%;
   min-width: 0;
-  overflow-wrap: anywhere !important;
+  overflow-wrap: break-word !important;
   white-space: pre-wrap !important;
-  word-break: break-word !important;
+  word-break: normal !important;
 }
 
 .decision-panel {
@@ -2388,6 +2388,16 @@ main {
   gap: 10px;
   grid-template-columns: 1fr 1fr;
   margin-top: 18px;
+}
+
+@media (max-width: 1350px) {
+  .review-detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .decision-panel {
+    position: static;
+  }
 }
 
 /* Responsive */
@@ -2599,9 +2609,9 @@ main {
   }
 
   .review-diff-viewer pre {
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
     white-space: pre-wrap;
-    word-break: break-word;
+    word-break: normal;
   }
 
   .wizard-progress,
