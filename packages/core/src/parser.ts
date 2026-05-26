@@ -1,9 +1,11 @@
 import matter from 'gray-matter';
-import type { SkillMeta } from './types.js';
+import { ZodError } from 'zod';
+import { skillManifestSchema } from './manifest-schema.js';
+import type { SkillManifest, SkillMeta } from './types.js';
 
 export function parseSkillMd(content: string): SkillMeta & { body: string } {
   const { data, content: body } = matter(content);
-  
+
   return {
     name: data.name || 'unnamed',
     description: data.description || '',
@@ -12,6 +14,31 @@ export function parseSkillMd(content: string): SkillMeta & { body: string } {
     version: data.version,
     body: body.trim(),
   };
+}
+
+export function parseSkillManifest(content: string): { manifest: SkillManifest; body: string } {
+  const { data, content: body } = matter(content);
+
+  if (Object.keys(data).length === 0) {
+    throw new Error('SKILL.md is missing YAML frontmatter');
+  }
+
+  try {
+    return {
+      manifest: skillManifestSchema.parse(data),
+      body: body.trim(),
+    };
+  } catch (error) {
+    if (error instanceof ZodError) {
+      throw new Error(
+        error.issues
+          .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+          .join('; ')
+      );
+    }
+
+    throw error;
+  }
 }
 
 export function generateAgentsMd(skills: SkillMeta[]): string {
