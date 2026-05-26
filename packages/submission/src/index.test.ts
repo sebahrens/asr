@@ -7,7 +7,7 @@ import {
   runApprovalPipeline,
   type ApprovalPipelineContext,
   type ApprovalPipelineDependencies,
-} from './workflow/pipeline.js';
+} from './workflow/approvalPipeline.js';
 
 let app: typeof App;
 let createApp: typeof CreateApp;

@@ -7,9 +7,26 @@ import {
   runApprovalPipeline,
   type ApprovalPipelineContext,
   type ApprovalPipelineDependencies,
-} from './pipeline.js';
+} from './approvalPipeline.js';
 
 describe('approvalPipeline', () => {
+  it('exposes the classify/push-to-forgejo/publish skeleton with idempotent compute nodes', () => {
+    const blueprint = approvalPipeline.toBlueprint();
+    expect(blueprint.id).toBe('skill-approval');
+
+    const nodeIds = blueprint.nodes.map((node) => node.id);
+    expect(nodeIds).toEqual(expect.arrayContaining(['classify', 'push-to-forgejo', 'publish']));
+
+    for (const id of ['classify', 'push-to-forgejo', 'publish'] as const) {
+      const node = blueprint.nodes.find((candidate) => candidate.id === id);
+      expect(node?.params?.idempotent).toBe(true);
+    }
+
+    expect(blueprint.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'classify', target: 'push-to-forgejo' }),
+    ]));
+  });
+
   it('drives a code-containing submission through HITL, scan, review, and publish', async () => {
     const forgejo = new FakeForgejoClient();
     const audit: Array<{ action: AuditAction; detail: Record<string, unknown> }> = [];

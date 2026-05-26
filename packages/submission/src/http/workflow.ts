@@ -9,7 +9,7 @@ import {
   type ApprovalPipelineContext,
   type ApprovalPipelineDependencies,
   type HitlSignal,
-} from '../workflow/pipeline.js';
+} from '../workflow/approvalPipeline.js';
 
 type WorkflowNodeId = 'questionnaire' | 'confirmation' | 'review';
 
