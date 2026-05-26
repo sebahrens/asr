@@ -1,7 +1,9 @@
 import type { ForgejoClient, Submission } from '@asr/core';
 import type { Database } from '../db/index.js';
+import { getSkillVersion, insertSkillVersion } from '../db/repositories/skillVersions.js';
 import { updateSubmissionStatus } from '../db/repositories/submissions.js';
 import { packSkillZip } from '../zip/pack.js';
+import { buildPublishRecord, serializePublishRecord } from './publishRecord.js';
 
 export interface PublishMdOnlyDeps {
   db: Database;
@@ -27,10 +29,23 @@ export async function publishMdOnly(
   const { submission, files, lockVersion } = input;
   const { manifest } = submission;
 
+  const publishedAt = new Date().toISOString();
+  const publishRecord = buildPublishRecord({
+    contentHash: submission.contentHash,
+    scanReportId: null,
+    approver: 'system',
+    runId: submission.id,
+    publishedAt,
+  });
+  const filesWithRecord = [
+    ...files,
+    { path: '.publish-record.json', content: serializePublishRecord(publishRecord) },
+  ];
+
   const { branch, prNumber } = await forgejo.openSubmissionPR({
     submissionId: submission.id,
     manifest,
-    files,
+    files: filesWithRecord,
     autoApprove: true,
   });
 
@@ -46,11 +61,29 @@ export async function publishMdOnly(
 
   await forgejo.deleteBranch(branch);
 
+  if (!getSkillVersion(db, manifest.name, manifest.version)) {
+    insertSkillVersion(db, {
+      skill_name: manifest.name,
+      version: manifest.version,
+      content_hash: submission.contentHash,
+      submission_id: submission.id,
+      published_at: publishedAt,
+      published_by: submission.submittedBy,
+      approved_by: null,
+      pr_number: prNumber,
+      merge_commit: sha,
+      scan_report_id: null,
+      yanked_at: null,
+      yanked_by: null,
+      yank_reason: null,
+    });
+  }
+
   updateSubmissionStatus(db, submission.id, lockVersion, {
     statusPhase: 'published',
     statusJson: JSON.stringify({
       phase: 'published',
-      publishedAt: new Date().toISOString(),
+      publishedAt,
       mergeCommit: sha,
     }),
   });

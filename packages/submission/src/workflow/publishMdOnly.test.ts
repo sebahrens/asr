@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../db/migrations/index.js';
+import { getSkillVersion } from '../db/repositories/skillVersions.js';
 import {
   getSubmissionById,
   insertSubmission,
@@ -84,7 +85,20 @@ describe('publishMdOnly', () => {
       submissionId: submission.id,
       autoApprove: true,
     });
-    expect(forgejo.openCalls[0].files).toEqual(files);
+    const capturedFiles = forgejo.openCalls[0].files;
+    expect(capturedFiles.slice(0, files.length)).toEqual(files);
+
+    const recordFile = capturedFiles.find((f) => f.path.endsWith('.publish-record.json'));
+    expect(recordFile).toBeDefined();
+    const parsedRecord = JSON.parse(recordFile!.content.toString('utf8'));
+    expect(parsedRecord).toMatchObject({
+      schema: 1,
+      contentHash: submission.contentHash,
+      scanReportId: null,
+      approver: 'system',
+      runId: submission.id,
+    });
+    expect(typeof parsedRecord.publishedAt).toBe('string');
 
     expect(forgejo.mergeCalls).toEqual([1]);
     expect(forgejo.publishCalls).toHaveLength(1);
@@ -109,6 +123,89 @@ describe('publishMdOnly', () => {
       phase: 'published',
       mergeCommit: 'abc',
     });
+
+    const versionRow = getSkillVersion(db, manifest.name, manifest.version);
+    expect(versionRow).toBeDefined();
+    expect(versionRow).toMatchObject({
+      skill_name: manifest.name,
+      version: manifest.version,
+      content_hash: submission.contentHash,
+      submission_id: submission.id,
+      published_by: submission.submittedBy,
+      approved_by: null,
+      pr_number: 1,
+      merge_commit: 'abc',
+      scan_report_id: null,
+      yanked_at: null,
+      yanked_by: null,
+      yank_reason: null,
+    });
+  });
+
+  it('is idempotent on the skill_versions row when re-run after merge', async () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    const manifest: SkillManifest = {
+      name: 'demo-skill',
+      version: '1.0.0',
+      author: 'alice',
+      description: 'Demo md-only skill',
+      tags: ['demo'],
+      kind: 'skill',
+      permissions: {
+        network: false,
+        filesystem: 'read-own',
+        subprocess: false,
+        environment: [],
+      },
+    };
+
+    const files = [{ path: 'SKILL.md', content: Buffer.from('# Demo\n') }];
+
+    const expectedZip = await packSkillZip(files);
+    const expectedZipSha = createHash('sha256').update(expectedZip).digest('hex');
+    const expectedContentHash = `sha256:${expectedZipSha}`;
+
+    const submission: Submission = {
+      id: 'submission-md-only-idem',
+      manifest,
+      classification: 'md-only',
+      contentHash: expectedContentHash,
+      submittedAt: '2026-05-26T00:00:00.000Z',
+      submittedBy: 'alice',
+      status: { phase: 'pushing-to-forgejo' },
+    };
+
+    insertSubmission(db, {
+      id: submission.id,
+      manifestJson: JSON.stringify(submission.manifest),
+      classification: submission.classification,
+      contentHash: submission.contentHash,
+      submittedAt: submission.submittedAt,
+      submittedBy: submission.submittedBy,
+      statusPhase: submission.status.phase,
+      statusJson: JSON.stringify(submission.status),
+    });
+
+    const forgejo = new FakeForgejoClient('https://forgejo.example/pkg');
+    await publishMdOnly(
+      { db, forgejo: forgejo as unknown as ForgejoClient },
+      { submission, files, lockVersion: 0 },
+    );
+
+    const firstRow = getSkillVersion(db, manifest.name, manifest.version);
+    expect(firstRow?.merge_commit).toBe('abc');
+
+    // Crash-resume: re-run with the new lockVersion; second invocation must
+    // not throw on the duplicate skill_versions PRIMARY KEY.
+    await publishMdOnly(
+      { db, forgejo: forgejo as unknown as ForgejoClient },
+      { submission, files, lockVersion: 1 },
+    );
+
+    const secondRow = getSkillVersion(db, manifest.name, manifest.version);
+    expect(secondRow).toEqual(firstRow);
   });
 });
 

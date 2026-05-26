@@ -62,6 +62,7 @@ describe('POST /api/v1/submissions (md-only auto-publish)', () => {
       autoApprove: true,
     });
     expect(forgejo.openCalls[0].files.map((file) => file.path).sort()).toEqual([
+      '.publish-record.json',
       'README.md',
       'SKILL.md',
     ]);
