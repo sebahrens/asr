@@ -317,6 +317,36 @@ const reviewDiffViewerStyles = {
   },
 } satisfies NonNullable<ReactDiffViewerProps['styles']>;
 
+const mobileReviewDiffViewerStyles = {
+  ...reviewDiffViewerStyles,
+  diffContainer: {
+    ...reviewDiffViewerStyles.diffContainer,
+    pre: {
+      lineBreak: 'anywhere',
+      maxWidth: '100%',
+      overflowWrap: 'anywhere',
+      whiteSpace: 'pre-wrap',
+      width: 'auto',
+      wordBreak: 'break-word',
+    },
+  },
+  content: {
+    ...reviewDiffViewerStyles.content,
+    width: 'auto',
+  },
+  contentText: {
+    ...reviewDiffViewerStyles.contentText,
+    display: 'block',
+    maxWidth: '100%',
+    width: 'auto',
+  },
+  wordDiff: {
+    lineBreak: 'anywhere',
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word',
+  },
+} satisfies NonNullable<ReactDiffViewerProps['styles']>;
+
 function decodeRoutePart(value: string): string {
   try {
     return decodeURIComponent(value);
@@ -1009,7 +1039,7 @@ function ReviewDiffPanel({ files }: { files: ReviewDiffFile[] }) {
               hideLineNumbers={isNarrowDiff}
               leftTitle="Previous"
               rightTitle="Submitted"
-              styles={reviewDiffViewerStyles}
+              styles={isNarrowDiff ? mobileReviewDiffViewerStyles : reviewDiffViewerStyles}
               useDarkTheme={false}
             />
           </div>

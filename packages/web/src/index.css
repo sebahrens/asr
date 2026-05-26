@@ -2197,6 +2197,15 @@ main {
   min-width: 0;
 }
 
+.review-diff-viewer-mobile pre {
+  line-break: anywhere !important;
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+  white-space: pre-wrap !important;
+  width: auto !important;
+  word-break: break-word !important;
+}
+
 .review-diff-viewer-mobile [class*="content"],
 .review-diff-viewer-mobile [class*="content-text"] {
   max-width: 100%;
