@@ -1,4 +1,4 @@
-import type { SkillClassification } from '@asr/core';
+import type { SkillClassification, SkillManifest, Submission, SubmissionStatus } from '@asr/core';
 import type Database from 'better-sqlite3';
 
 export interface SubmissionInsertRow {
@@ -17,6 +17,20 @@ export interface SubmissionInsertRow {
 export interface SubmissionStatusUpdate {
   statusPhase: string;
   statusJson: string;
+}
+
+export interface SubmissionRow {
+  id: string;
+  manifest_json: string;
+  classification: SkillClassification;
+  content_hash: string;
+  submitted_at: string;
+  submitted_by: string;
+  branch_name: string | null;
+  pr_number: number | null;
+  status_phase: string;
+  status_json: string;
+  lock_version: number;
 }
 
 export function insertSubmission(db: Database.Database, row: SubmissionInsertRow): void {
@@ -51,6 +65,51 @@ export function insertSubmission(db: Database.Database, row: SubmissionInsertRow
     branchName: row.branchName ?? null,
     prNumber: row.prNumber ?? null,
   });
+}
+
+export function getSubmissionById(
+  db: Database.Database,
+  id: string,
+): SubmissionRow | undefined {
+  const row = db
+    .prepare(
+      `
+        SELECT
+          id,
+          manifest_json,
+          classification,
+          content_hash,
+          submitted_at,
+          submitted_by,
+          branch_name,
+          pr_number,
+          status_phase,
+          status_json,
+          lock_version
+        FROM submissions
+        WHERE id = ?
+      `,
+    )
+    .get(id) as SubmissionRow | undefined;
+
+  return row;
+}
+
+export function rowToSubmission(row: SubmissionRow): Submission {
+  const manifest = JSON.parse(row.manifest_json) as SkillManifest;
+  const status = JSON.parse(row.status_json) as SubmissionStatus;
+
+  return {
+    id: row.id,
+    manifest,
+    classification: row.classification,
+    contentHash: row.content_hash,
+    submittedAt: row.submitted_at,
+    submittedBy: row.submitted_by,
+    ...(row.branch_name !== null ? { branchName: row.branch_name } : {}),
+    ...(row.pr_number !== null ? { prNumber: row.pr_number } : {}),
+    status,
+  };
 }
 
 export function updateSubmissionStatus(
