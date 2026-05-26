@@ -113,9 +113,66 @@ describe('approvalPipeline', () => {
   it('carries the expected HITL metadata on wait nodes', () => {
     const graph = approvalPipeline.toBlueprint();
     expect(graph.nodes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'questionnaire', params: hitlNodes.questionnaire }),
-      expect.objectContaining({ id: 'confirmation', params: hitlNodes.confirmation }),
-      expect.objectContaining({ id: 'review', params: hitlNodes.review }),
+      expect.objectContaining({
+        id: 'questionnaire',
+        params: { type: 'questionnaire', timeout: '7d' },
+      }),
+      expect.objectContaining({
+        id: 'confirmation',
+        params: { type: 'scan-results', timeout: '14d', allowedActors: 'submitter' },
+      }),
+      expect.objectContaining({
+        id: 'review',
+        params: {
+          type: 'compliance-approval',
+          timeout: '30d',
+          requiredRole: 'Compliance',
+          forbiddenActors: 'submitter',
+        },
+      }),
+    ]));
+  });
+
+  it('carries spec timeouts and SoD actor selectors on code-path HITL nodes', () => {
+    expect(hitlNodes.questionnaire.timeout).toBe('7d');
+    expect(hitlNodes.confirmation.timeout).toBe('14d');
+    expect(hitlNodes.review.timeout).toBe('30d');
+    expect(hitlNodes.review.requiredRole).toBe('Compliance');
+
+    const ctxStub = {
+      get<T = unknown>(key: string): T {
+        if (key === 'submission') {
+          return { submittedBy: 'u1' } as unknown as T;
+        }
+        throw new Error(`unexpected key ${key}`);
+      },
+    };
+    expect(hitlNodes.confirmation.allowedActors(ctxStub)).toEqual(['u1']);
+    expect(hitlNodes.review.forbiddenActors(ctxStub)).toEqual(['u1']);
+  });
+
+  it('wires code-path edges and a rejected node short-circuit from scan', () => {
+    const blueprint = approvalPipeline.toBlueprint();
+    const nodeIds = blueprint.nodes.map((node) => node.id);
+    expect(nodeIds).toEqual(expect.arrayContaining([
+      'questionnaire',
+      'scan',
+      'confirmation',
+      'review',
+      'rejected',
+    ]));
+
+    const scanNodeBlueprint = blueprint.nodes.find((node) => node.id === 'scan');
+    expect(scanNodeBlueprint?.params?.idempotent).toBe(true);
+    const rejectedBlueprint = blueprint.nodes.find((node) => node.id === 'rejected');
+    expect(rejectedBlueprint?.params?.idempotent).toBe(true);
+
+    expect(blueprint.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'questionnaire', target: 'scan' }),
+      expect.objectContaining({ source: 'scan', target: 'confirmation', action: 'continue' }),
+      expect.objectContaining({ source: 'scan', target: 'rejected', action: 'block' }),
+      expect.objectContaining({ source: 'confirmation', target: 'review' }),
+      expect.objectContaining({ source: 'review', target: 'publish' }),
     ]));
   });
 

@@ -50,7 +50,15 @@ export interface ApprovalPipelineDependencies {
 
 type PipelineNodeContext = NodeContext<ApprovalPipelineContext, ApprovalPipelineDependencies>;
 
-export const hitlNodes = {
+export interface HitlActorContext {
+  get<T = unknown>(key: string): T;
+}
+
+const submitterActors = (ctx: HitlActorContext): string[] => [
+  ctx.get<Submission>('submission').submittedBy,
+];
+
+const hitlNodeParams = {
   questionnaire: {
     type: 'questionnaire',
     timeout: '7d',
@@ -68,6 +76,24 @@ export const hitlNodes = {
   },
 } as const;
 
+export const hitlNodes = {
+  questionnaire: {
+    type: 'questionnaire' as const,
+    timeout: '7d' as const,
+  },
+  confirmation: {
+    type: 'scan-results' as const,
+    timeout: '14d' as const,
+    allowedActors: submitterActors,
+  },
+  review: {
+    type: 'compliance-approval' as const,
+    timeout: '30d' as const,
+    requiredRole: 'Compliance' as const,
+    forbiddenActors: submitterActors,
+  },
+};
+
 export const approvalPipeline = createFlow<ApprovalPipelineContext, ApprovalPipelineDependencies>(
   'skill-approval',
 )
@@ -78,18 +104,18 @@ export const approvalPipeline = createFlow<ApprovalPipelineContext, ApprovalPipe
     params: { idempotent: true },
   })
   .wait('questionnaire', {
-    params: hitlNodes.questionnaire,
+    params: hitlNodeParams.questionnaire,
     config: { timeout: 7 * dayMs },
   })
   .node('scan', scanNode, {
     params: { idempotent: true },
   })
   .wait('confirmation', {
-    params: hitlNodes.confirmation,
+    params: hitlNodeParams.confirmation,
     config: { timeout: 14 * dayMs },
   })
   .wait('review', {
-    params: hitlNodes.review,
+    params: hitlNodeParams.review,
     config: { timeout: 30 * dayMs },
   })
   .node('auto-approve', autoApproveNode, {
