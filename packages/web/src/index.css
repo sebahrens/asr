@@ -2222,8 +2222,15 @@ main {
   word-break: break-word;
 }
 
-.review-diff-viewer td[class*="content"],
-.review-diff-viewer [class*="content"],
+.review-diff-viewer td[class*="content"] {
+  display: table-cell !important;
+  max-width: 0;
+  min-width: 0;
+  overflow: visible !important;
+  vertical-align: top;
+  white-space: normal !important;
+}
+
 .review-diff-viewer [class*="content-text"] {
   display: block;
   line-break: anywhere !important;
