@@ -102,6 +102,37 @@ describe('app', () => {
     });
   });
 
+  it('seeds the mock-development API with pending review submissions for the dashboard', async () => {
+    vi.stubEnv('MOCK_USER_SUB', 'reviewer-1');
+    vi.stubEnv('MOCK_USER_ROLES', 'Compliance');
+
+    const res = await app.request('/api/v1/submissions?status=pending');
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      submissions: [
+        {
+          id: 'sub-1042',
+          skillName: 'secure-code-review',
+          owner: 'platform',
+          version: '1.4.0',
+          status: 'pending review',
+          risk: 'high',
+          findings: 3,
+        },
+        {
+          id: 'sub-1039',
+          skillName: 'release-notes',
+          owner: 'docs',
+          version: '0.8.2',
+          status: 'pending review',
+          risk: 'medium',
+          findings: 1,
+        },
+      ],
+    });
+  });
+
   it('creates a dev submission from skill markdown and queues it for review', async () => {
     const store = new TestWorkflowStore();
     const submissionApp = createApp({ workflow: { store, now: fixedNow } });

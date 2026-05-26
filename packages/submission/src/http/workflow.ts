@@ -49,6 +49,7 @@ class MemoryWorkflowSubmissionStore implements WorkflowSubmissionStore {
 }
 
 const defaultStore = new MemoryWorkflowSubmissionStore();
+seedDefaultStore(defaultStore);
 
 export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
   const routes = new Hono<{ Variables: AuthVariables }>();
@@ -352,6 +353,168 @@ function defaultDependencies(): ApprovalPipelineDependencies {
       }) as never;
     },
     audit() {},
+  };
+}
+
+function seedDefaultStore(store: MemoryWorkflowSubmissionStore): void {
+  if (process.env.NODE_ENV !== 'development' || process.env.AUTH_MODE !== 'mock') {
+    return;
+  }
+
+  if (store.list().length) {
+    return;
+  }
+
+  for (const record of createDevelopmentReviewQueue()) {
+    void store.save(record);
+  }
+}
+
+function createDevelopmentReviewQueue(): WorkflowSubmissionRecord[] {
+  return [
+    createDevelopmentReviewRecord({
+      id: 'sub-1042',
+      owner: 'platform',
+      skillName: 'secure-code-review',
+      version: '1.4.0',
+      submittedBy: 'maria.chen',
+      submittedAt: '2026-05-24T08:35:00.000Z',
+      riskAssessment: 'high',
+      findings: [
+        {
+          tool: 'gitleaks',
+          ruleId: 'possible-secret',
+          severity: 'high',
+          file: 'scripts/review.ts',
+          line: 18,
+          message: 'Potential token-like value requires manual review.',
+        },
+        {
+          tool: 'opengrep',
+          ruleId: 'shell-command',
+          severity: 'medium',
+          file: 'scripts/review.ts',
+          line: 42,
+          message: 'Shell execution path needs policy confirmation.',
+        },
+        {
+          tool: 'trivy',
+          ruleId: 'dependency-cve',
+          severity: 'medium',
+          file: 'package.json',
+          line: 12,
+          message: 'Dependency version has a review-required advisory.',
+        },
+      ],
+    }),
+    createDevelopmentReviewRecord({
+      id: 'sub-1039',
+      owner: 'docs',
+      skillName: 'release-notes',
+      version: '0.8.2',
+      submittedBy: 'eli.warner',
+      submittedAt: '2026-05-23T17:10:00.000Z',
+      riskAssessment: 'medium',
+      findings: [
+        {
+          tool: 'opengrep',
+          ruleId: 'network-reference',
+          severity: 'medium',
+          file: 'SKILL.md',
+          line: 27,
+          message: 'External release-note source requires reviewer approval.',
+        },
+      ],
+    }),
+  ];
+}
+
+function createDevelopmentReviewRecord(input: {
+  id: string;
+  owner: string;
+  skillName: string;
+  version: string;
+  submittedBy: string;
+  submittedAt: string;
+  riskAssessment: VersionDiff['riskAssessment'];
+  findings: ScanReport['findings'];
+}): WorkflowSubmissionRecord {
+  const contentHash = `sha256:dev-${input.id}`;
+  const manifest: SkillManifest = {
+    name: input.skillName,
+    version: input.version,
+    author: input.owner,
+    description: `Development fixture for reviewing ${input.skillName}.`,
+    tags: ['dev', 'review'],
+    kind: 'skill',
+    permissions: {
+      network: false,
+      filesystem: 'read-own',
+      subprocess: false,
+      environment: [],
+    },
+  };
+  const submission: Submission = {
+    id: input.id,
+    manifest,
+    classification: 'code-containing',
+    contentHash,
+    submittedAt: input.submittedAt,
+    submittedBy: input.submittedBy,
+    status: { phase: 'compliance-review' },
+  };
+
+  return {
+    id: input.id,
+    submittedBy: input.submittedBy,
+    serializedContext: '{}',
+    context: {
+      submissionId: input.id,
+      submission,
+      manifest,
+      files: [{ path: 'SKILL.md', contentBase64: Buffer.from(`# ${input.skillName}`).toString('base64') }],
+      contentHash,
+      extractedDir: `/tmp/${input.id}`,
+      zipBufferBase64: Buffer.from('dev archive').toString('base64'),
+      status: 'compliance-review',
+      scanReport: {
+        submissionId: input.id,
+        scanId: `scan-${input.id}`,
+        contentHash,
+        scannerImage: 'registry.local/asr/scanner:dev',
+        startedAt: input.submittedAt,
+        completedAt: input.submittedAt,
+        durationMs: 1000,
+        verdict: 'review_required',
+        findings: input.findings,
+        toolResults: {
+          gitleaks: { exitCode: 0, findingCount: input.findings.filter((finding) => finding.tool === 'gitleaks').length },
+          trivy: { exitCode: 0, findingCount: input.findings.filter((finding) => finding.tool === 'trivy').length },
+          foxguard: { exitCode: 0, findingCount: input.findings.filter((finding) => finding.tool === 'foxguard').length },
+          opengrep: { exitCode: 0, findingCount: input.findings.filter((finding) => finding.tool === 'opengrep').length },
+          veracode: { exitCode: 0, findingCount: input.findings.filter((finding) => finding.tool === 'veracode').length, skipped: true },
+        },
+      },
+      versionDiff: {
+        skillName: input.skillName,
+        fromVersion: '0.0.0',
+        toVersion: input.version,
+        fromContentHash: null,
+        toContentHash: contentHash,
+        filesAdded: ['SKILL.md'],
+        filesRemoved: [],
+        filesModified: [],
+        dependenciesAdded: {},
+        dependenciesRemoved: {},
+        dependenciesChanged: {},
+        permissionsBefore: null,
+        permissionsAfter: manifest.permissions,
+        permissionsExpanded: false,
+        manifestKindChanged: false,
+        riskAssessment: input.riskAssessment,
+        computedAt: input.submittedAt,
+      },
+    },
   };
 }
 
