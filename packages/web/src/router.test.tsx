@@ -59,6 +59,28 @@ tags: [security, review]
   ],
 };
 
+const workflowSkill = {
+  owner: 'asr',
+  name: 'release-notes',
+  latestVersion: '1.4.0',
+  description: 'Generate release notes from approved changes.',
+  tags: ['release', 'writing'],
+  kind: 'workflow',
+  publishedAt: '2026-05-25T13:00:00.000Z',
+  downloadCount: 7,
+  riskAssessmentLatest: 'high',
+  manifestLatest: {
+    name: 'release-notes',
+    version: '1.4.0',
+    author: 'Platform Team',
+    description: 'Generate release notes from approved changes.',
+    tags: ['release', 'writing'],
+    kind: 'workflow',
+  },
+  skillMd: '# Release Notes\n',
+  versions: [],
+};
+
 function createZipFile(filePaths: string[]): File {
   const encoder = new TextEncoder();
   const localRecords: Uint8Array[] = [];
@@ -152,7 +174,7 @@ beforeEach(() => {
     const url = String(input);
     const body = url.endsWith('/api/v1/skills/asr/security-review')
       ? skillDetail
-      : { items: [skillDetail] };
+      : { items: [skillDetail, workflowSkill] };
 
     return new Response(JSON.stringify(body), {
       status: 200,
@@ -239,6 +261,26 @@ describe('router', () => {
     const card = await screen.findByRole('link', { name: /open asr\/security-review details/i });
     expect(within(card).getByText('skill')).toBeInTheDocument();
     expect(within(card).getByText(/low risk/i)).toBeInTheDocument();
+  });
+
+  it('filters browse cards by kind and risk chips', async () => {
+    renderRoute('/');
+
+    expect(await screen.findByRole('link', { name: /open asr\/security-review details/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /open asr\/release-notes details/i })).toBeInTheDocument();
+
+    const kindFilters = screen.getByRole('group', { name: /filter skills by kind/i });
+    fireEvent.click(within(kindFilters).getByRole('button', { name: /^workflow$/i }));
+    expect(screen.queryByRole('link', { name: /open asr\/security-review details/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /open asr\/release-notes details/i })).toBeInTheDocument();
+
+    const riskFilters = screen.getByRole('group', { name: /filter skills by risk/i });
+    fireEvent.click(within(riskFilters).getByRole('button', { name: /^low risk$/i }));
+    expect(screen.queryByRole('link', { name: /open asr\/release-notes details/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/no skills found/i)).toBeInTheDocument();
+
+    fireEvent.click(within(riskFilters).getByRole('button', { name: /^all$/i }));
+    expect(screen.getByRole('link', { name: /open asr\/release-notes details/i })).toBeInTheDocument();
   });
 
   it('opens primary navigation from the mobile drawer control', async () => {

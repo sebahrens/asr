@@ -326,11 +326,25 @@ main {
   color: #f5a623;
 }
 
+.browse-filter-panel {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 20px;
+}
+
 .tag-filter-bar {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 18px 0 20px;
+  align-items: center;
+}
+
+.filter-label {
+  min-width: 38px;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .filter-chip {

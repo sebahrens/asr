@@ -6,6 +6,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { parseSkillMd, type SkillDetail, type SkillSummary, type VersionDiff } from '@asr/core';
 
+type BrowseKindFilter = 'all' | SkillSummary['kind'];
+type BrowseRiskFilter = 'all' | SkillSummary['riskAssessmentLatest'];
+
 function stripFrontmatter(content: string): string {
   return content.replace(/^---\n[\s\S]*?\n---\n*/, '');
 }
@@ -2601,6 +2604,8 @@ function BrowseRegistry() {
   const [registryError, setRegistryError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [activeKind, setActiveKind] = useState<BrowseKindFilter>('all');
+  const [activeRisk, setActiveRisk] = useState<BrowseRiskFilter>('all');
   const latestFetchId = useRef(0);
 
   const fetchSkills = useCallback(async (query: string) => {
@@ -2646,9 +2651,16 @@ function BrowseRegistry() {
   }, [search, fetchSkills]);
 
   const availableTags = Array.from(new Set(skills.flatMap((skill) => skill.tags))).sort((a, b) => a.localeCompare(b));
-  const filteredSkills = activeTag
-    ? skills.filter((skill) => skill.tags.includes(activeTag))
-    : skills;
+  const availableKinds = Array.from(new Set(skills.map((skill) => skill.kind))).sort((a, b) => a.localeCompare(b));
+  const availableRisks = Array.from(new Set(skills.map((skill) => skill.riskAssessmentLatest))).sort((a, b) => {
+    const order: Record<SkillSummary['riskAssessmentLatest'], number> = { low: 0, medium: 1, high: 2 };
+    return order[a] - order[b];
+  });
+  const filteredSkills = skills.filter((skill) => (
+    (activeTag === null || skill.tags.includes(activeTag))
+    && (activeKind === 'all' || skill.kind === activeKind)
+    && (activeRisk === 'all' || skill.riskAssessmentLatest === activeRisk)
+  ));
   const totalStars = filteredSkills.reduce((a, s) => a + s.stars, 0);
 
   function applyTagFilter(tag: string) {
@@ -2734,27 +2746,80 @@ function BrowseRegistry() {
             </span>
           </div>
 
-          {(availableTags.length > 0 || activeTag !== null) && !registryError && (
-            <div className="tag-filter-bar" role="group" aria-label="Filter skills by tag">
-              <button
-                className={`filter-chip${activeTag === null ? ' filter-chip-active' : ''}`}
-                type="button"
-                aria-pressed={activeTag === null}
-                onClick={() => setActiveTag(null)}
-              >
-                All
-              </button>
-              {availableTags.map((tag) => (
-                <button
-                  key={tag}
-                  className={`filter-chip${activeTag === tag ? ' filter-chip-active' : ''}`}
-                  type="button"
-                  aria-pressed={activeTag === tag}
-                  onClick={() => applyTagFilter(tag)}
-                >
-                  {tag}
-                </button>
-              ))}
+          {(availableTags.length > 0 || availableKinds.length > 0 || availableRisks.length > 0 || activeTag !== null || activeKind !== 'all' || activeRisk !== 'all') && !registryError && (
+            <div className="browse-filter-panel" aria-label="Browse skill filters">
+              {(availableTags.length > 0 || activeTag !== null) && (
+                <div className="tag-filter-bar" role="group" aria-label="Filter skills by tag">
+                  <span className="filter-label">Tag</span>
+                  <button
+                    className={`filter-chip${activeTag === null ? ' filter-chip-active' : ''}`}
+                    type="button"
+                    aria-pressed={activeTag === null}
+                    onClick={() => setActiveTag(null)}
+                  >
+                    All
+                  </button>
+                  {availableTags.map((tag) => (
+                    <button
+                      key={tag}
+                      className={`filter-chip${activeTag === tag ? ' filter-chip-active' : ''}`}
+                      type="button"
+                      aria-pressed={activeTag === tag}
+                      onClick={() => applyTagFilter(tag)}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {(availableKinds.length > 0 || activeKind !== 'all') && (
+                <div className="tag-filter-bar" role="group" aria-label="Filter skills by kind">
+                  <span className="filter-label">Kind</span>
+                  <button
+                    className={`filter-chip${activeKind === 'all' ? ' filter-chip-active' : ''}`}
+                    type="button"
+                    aria-pressed={activeKind === 'all'}
+                    onClick={() => setActiveKind('all')}
+                  >
+                    All
+                  </button>
+                  {availableKinds.map((kind) => (
+                    <button
+                      key={kind}
+                      className={`filter-chip${activeKind === kind ? ' filter-chip-active' : ''}`}
+                      type="button"
+                      aria-pressed={activeKind === kind}
+                      onClick={() => setActiveKind((currentKind) => currentKind === kind ? 'all' : kind)}
+                    >
+                      {kind}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {(availableRisks.length > 0 || activeRisk !== 'all') && (
+                <div className="tag-filter-bar" role="group" aria-label="Filter skills by risk">
+                  <span className="filter-label">Risk</span>
+                  <button
+                    className={`filter-chip${activeRisk === 'all' ? ' filter-chip-active' : ''}`}
+                    type="button"
+                    aria-pressed={activeRisk === 'all'}
+                    onClick={() => setActiveRisk('all')}
+                  >
+                    All
+                  </button>
+                  {availableRisks.map((risk) => (
+                    <button
+                      key={risk}
+                      className={`filter-chip${activeRisk === risk ? ' filter-chip-active' : ''}`}
+                      type="button"
+                      aria-pressed={activeRisk === risk}
+                      onClick={() => setActiveRisk((currentRisk) => currentRisk === risk ? 'all' : risk)}
+                    >
+                      {risk} risk
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
