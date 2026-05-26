@@ -1849,6 +1849,11 @@ main {
 .review-diff-list {
   display: grid;
   gap: 0;
+  min-width: 0;
+}
+
+.review-diff-file {
+  min-width: 0;
 }
 
 .review-diff-file + .review-diff-file {
@@ -1888,13 +1893,21 @@ main {
 }
 
 .review-diff-viewer {
+  box-sizing: border-box;
   max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .review-diff-viewer table {
   table-layout: fixed;
   min-width: 760px;
+  width: max(100%, 760px);
 }
 
 .review-diff-viewer td {
@@ -2023,19 +2036,16 @@ main {
   }
 
   .review-diff-viewer table {
-    min-width: 0;
-    width: 100%;
+    min-width: 620px;
+    width: 620px;
   }
 
   .review-diff-viewer td {
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    min-width: 0;
   }
 
   .review-diff-viewer pre {
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-    word-break: break-word;
+    white-space: pre;
   }
 
   .wizard-progress,
