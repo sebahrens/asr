@@ -232,6 +232,19 @@ describe('router', () => {
     expect(await screen.findByRole('heading', { name: /agent skill registry/i })).toBeInTheDocument();
   });
 
+  it('opens primary navigation from the mobile drawer control', async () => {
+    renderRoute('/');
+
+    expect(await screen.findByRole('heading', { name: /agent skill registry/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /open primary navigation/i }));
+
+    const mobileNav = screen.getByRole('complementary', { name: /mobile primary navigation/i });
+    expect(mobileNav).toBeInTheDocument();
+    expect(within(mobileNav).getByRole('link', { name: /browse/i })).toHaveAttribute('aria-current', 'page');
+    expect(within(mobileNav).getByRole('link', { name: /publish/i })).toBeInTheDocument();
+    expect(within(mobileNav).getByRole('link', { name: /review/i })).toBeInTheDocument();
+  });
+
   it('renders browse loading as content skeletons instead of a spinner', () => {
     const { container } = renderRoute('/');
 

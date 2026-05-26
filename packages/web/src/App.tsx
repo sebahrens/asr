@@ -404,15 +404,71 @@ function isOwnSubmission(submission: ReviewSubmission, session: Session): boolea
 
 function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
   const session = useSession();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [current]);
 
   return (
-    <nav className="primary-nav" aria-label="Primary navigation">
-      <a href="/" aria-current={current === 'browse' ? 'page' : undefined}>Browse</a>
-      <a href="/publish" aria-current={current === 'publish' ? 'page' : undefined}>Publish</a>
-      {session.canReview ? (
-        <a href="/review" aria-current={current === 'review' ? 'page' : undefined}>Review</a>
+    <>
+      <nav className="primary-nav" aria-label="Primary navigation">
+        <a href="/" aria-current={current === 'browse' ? 'page' : undefined}>Browse</a>
+        <a href="/publish" aria-current={current === 'publish' ? 'page' : undefined}>Publish</a>
+        {session.canReview ? (
+          <a href="/review" aria-current={current === 'review' ? 'page' : undefined}>Review</a>
+        ) : null}
+      </nav>
+
+      <button
+        type="button"
+        className="mobile-nav-toggle"
+        aria-label={mobileOpen ? 'Close primary navigation' : 'Open primary navigation'}
+        aria-expanded={mobileOpen}
+        aria-controls="mobile-primary-nav"
+        onClick={() => setMobileOpen((open) => !open)}
+      >
+        <span aria-hidden="true" />
+        <span aria-hidden="true" />
+        <span aria-hidden="true" />
+      </button>
+
+      {mobileOpen ? (
+        <div className="mobile-nav-backdrop" onClick={() => setMobileOpen(false)}>
+          <aside
+            id="mobile-primary-nav"
+            className="mobile-nav-panel"
+            aria-label="Mobile primary navigation"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mobile-nav-header">
+              <img src="/logo.svg" alt="Skill Registry" />
+              <button
+                type="button"
+                className="mobile-nav-close"
+                aria-label="Close primary navigation"
+                onClick={() => setMobileOpen(false)}
+              >
+                <span aria-hidden="true" />
+                <span aria-hidden="true" />
+              </button>
+            </div>
+            <nav className="mobile-nav-links" aria-label="Mobile navigation links">
+              <a href="/" aria-current={current === 'browse' ? 'page' : undefined}>Browse</a>
+              <a href="/publish" aria-current={current === 'publish' ? 'page' : undefined}>Publish</a>
+              {session.canReview ? (
+                <a href="/review" aria-current={current === 'review' ? 'page' : undefined}>Review</a>
+              ) : null}
+            </nav>
+            <div className="mobile-session-summary" aria-label={`Development mock auth session for ${session.sub} with ${session.role} role`}>
+              <span>Dev mock auth</span>
+              <strong>{session.sub}</strong>
+              <small>{session.role}</small>
+            </div>
+          </aside>
+        </div>
       ) : null}
-    </nav>
+    </>
   );
 }
 
