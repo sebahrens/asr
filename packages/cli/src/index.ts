@@ -14,6 +14,7 @@ import { registerInfo } from './commands/info.js';
 import { registerVersions } from './commands/versions.js';
 import { getConfig, setConfig, getTargetDir } from './config.js';
 import { recordInstall, removeFromLock, getAllInstalled } from './lockfile.js';
+import { installSkill } from './install.js';
 
 interface RegistrySkill {
   id?: string;
@@ -257,6 +258,34 @@ async function installFromGitHub(
     await recordInstall(target, global, skillName, `${repo}/${skillsPath}/${skillName}`);
   }
 }
+
+program
+  .command('install <slug>')
+  .description('Install a skill from the registry (owner/name[@version])')
+  .option('-g, --global', 'Install globally (~/.claude or ~/.codex)')
+  .option('--agent <name>', 'Target agent (claude|codex|both)')
+  .option('-t, --token <token>', 'Registry bearer token override')
+  .action(async (slug: string, options: { global?: boolean; agent?: string; token?: string }) => {
+    const spinner = ora('Installing skill...').start();
+    try {
+      const result = await installSkill(slug, {
+        global: options.global,
+        agent: options.agent as 'claude' | 'codex' | 'both' | undefined,
+        token: options.token,
+      });
+      const targets = result.locations.map((l) => pc.dim(l.dir)).join(', ');
+      spinner.succeed(
+        `Installed ${pc.green(`${result.owner}/${result.name}@${result.version}`)} → ${targets}`,
+      );
+      if (result.yanked) {
+        console.log(pc.yellow(`⚠ Installed version is yanked.`));
+      }
+    } catch (err) {
+      spinner.fail('Installation failed');
+      console.error(pc.red(err instanceof Error ? err.message : String(err)));
+      process.exit(1);
+    }
+  });
 
 program
   .command('add <source>')
