@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SkillDetail, SkillSummary } from '@asr/core';
+import type { InstalledSkill, SkillDetail, SkillSummary } from '@asr/core';
 
 vi.mock('./config.js', () => ({
   getConfig: vi.fn(() => ({ defaultTarget: 'project' as const })),
@@ -9,6 +9,10 @@ vi.mock('./config.js', () => ({
 vi.mock('./registry-client.js', () => ({
   searchSkills: vi.fn(),
   getSkillDetail: vi.fn(),
+}));
+
+vi.mock('./lockfile.js', () => ({
+  getAllInstalled: vi.fn(),
 }));
 
 vi.mock('ora', () => ({
@@ -22,12 +26,15 @@ vi.mock('ora', () => ({
 }));
 
 import { getSkillDetail, searchSkills } from './registry-client.js';
+import { getAllInstalled } from './lockfile.js';
 import { registerSearch } from './commands/search.js';
 import { registerInfo } from './commands/info.js';
 import { registerVersions } from './commands/versions.js';
+import { registerList } from './commands/list.js';
 
 const searchMock = vi.mocked(searchSkills);
 const getSkillDetailMock = vi.mocked(getSkillDetail);
+const getAllInstalledMock = vi.mocked(getAllInstalled);
 
 function testProgram(): Command {
   const program = new Command();
@@ -280,5 +287,88 @@ describe('versions command', () => {
     expect(firstLine).toContain('1.2.0');
     const lastLine = lines[lines.length - 1];
     expect(lastLine).toContain('1.0.0');
+  });
+});
+
+function listProgram(): Command {
+  const program = new Command();
+  program.name('asr');
+  program.exitOverride();
+  registerList(program);
+  return program;
+}
+
+describe('list command', () => {
+  let log: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    getAllInstalledMock.mockReset();
+  });
+
+  afterEach(() => {
+    log.mockRestore();
+  });
+
+  it('prints project and global installed skills with versions and scope tags', async () => {
+    const projectEntries: Record<string, InstalledSkill> = {
+      'project-skill': {
+        name: 'project-skill',
+        source: 'registry:acme/project-skill',
+        version: '1.0.0',
+        installedAt: '2026-05-22T10:00:00Z',
+        updatedAt: '2026-05-22T10:00:00Z',
+      },
+    };
+    const globalEntries: Record<string, InstalledSkill> = {
+      'global-skill': {
+        name: 'global-skill',
+        source: 'registry:beta/global-skill',
+        version: '2.3.1',
+        installedAt: '2026-05-23T10:00:00Z',
+        updatedAt: '2026-05-23T10:00:00Z',
+        sourceUrl: 'https://reg.example/skills/beta/global-skill',
+      },
+    };
+
+    getAllInstalledMock.mockImplementation(async (_target, global) =>
+      global ? globalEntries : projectEntries,
+    );
+
+    const program = listProgram();
+    await program.parseAsync(['node', 'asr', 'list']);
+
+    const lines = log.mock.calls.map((args: unknown[]) => String(args[0]));
+    const printed = lines.join('\n');
+
+    expect(printed).toContain('project-skill');
+    expect(printed).toContain('v1.0.0');
+    expect(printed).toContain('[project]');
+    expect(printed).toContain('registry:acme/project-skill');
+
+    expect(printed).toContain('global-skill');
+    expect(printed).toContain('v2.3.1');
+    expect(printed).toContain('[global]');
+    expect(printed).toContain('https://reg.example/skills/beta/global-skill');
+
+    const projectLine = lines.find((l: string) => l.includes('project-skill'));
+    expect(projectLine).toBeDefined();
+    expect(projectLine).toContain('[project]');
+    expect(projectLine).not.toContain('[global]');
+
+    const globalLine = lines.find((l: string) => l.includes('global-skill'));
+    expect(globalLine).toBeDefined();
+    expect(globalLine).toContain('[global]');
+    expect(globalLine).not.toContain('[project]');
+  });
+
+  it('prints "No skills installed." when both scopes are empty', async () => {
+    getAllInstalledMock.mockResolvedValue({});
+
+    const program = listProgram();
+    await program.parseAsync(['node', 'asr', 'list']);
+
+    const printed = log.mock.calls.map((args: unknown[]) => String(args[0])).join('\n');
+    expect(printed).toContain('No skills installed.');
   });
 });

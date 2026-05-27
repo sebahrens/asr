@@ -15,8 +15,9 @@ import { registerVersions } from './commands/versions.js';
 import { registerPublish } from './commands/publish.js';
 import { registerStatus, registerSubmissions } from './commands/submissions.js';
 import { registerToken } from './commands/token.js';
+import { registerList } from './commands/list.js';
 import { getConfig, setConfig, getTargetDir } from './config.js';
-import { recordInstall, getAllInstalled } from './lockfile.js';
+import { recordInstall } from './lockfile.js';
 import { installSkill, removeSkill, updateSkill } from './install.js';
 
 interface RegistrySkill {
@@ -89,6 +90,7 @@ registerPublish(program);
 registerStatus(program);
 registerSubmissions(program);
 registerToken(program);
+registerList(program);
 
 program
   .command('browse')
@@ -123,58 +125,6 @@ program
       }
     } catch (err) {
       spinner.fail('Failed to fetch registry');
-      console.error(pc.red(String(err)));
-      process.exit(1);
-    }
-  });
-
-program
-  .command('list [repo]')
-  .description('List skills in a GitHub repo, or list installed skills')
-  .option('-t, --token <token>', 'GitHub token')
-  .option('-p, --path <path>', 'Skills directory path', 'skills')
-  .option('--agent <name>', 'Target agent (cursor/claude/project)', 'project')
-  .option('-g, --global', 'Use global skills')
-  .action(async (repo, options) => {
-    const target = options.agent as 'cursor' | 'claude' | 'project';
-
-    if (!repo) {
-      const installed = await getAllInstalled(target, options.global);
-      const names = Object.keys(installed);
-      
-      if (names.length === 0) {
-        console.log(pc.yellow('No skills installed.'));
-        return;
-      }
-
-      console.log(pc.bold(`\nInstalled skills:\n`));
-      for (const name of names) {
-        const info = installed[name];
-        const version = info.version ? pc.dim(`v${info.version}`) : '';
-        const source = pc.dim(`← ${info.source}`);
-        console.log(`  ${pc.green(name)} ${version} ${source}`);
-      }
-      return;
-    }
-
-    const spinner = ora('Fetching skills...').start();
-    try {
-      const config = getConfig();
-      const skills = await listSkillsInRepo(repo, options.token || config.githubToken, options.path);
-      spinner.stop();
-
-      if (skills.length === 0) {
-        console.log(pc.yellow('No skills found in this repo.'));
-        return;
-      }
-
-      console.log(pc.bold(`\nSkills in ${pc.cyan(repo)}:\n`));
-      for (const skill of skills) {
-        console.log(`  - ${pc.green(skill)}`);
-      }
-      console.log(pc.dim(`\nUse ${pc.cyan(`asr add ${repo}/<skill>`)} to install`));
-    } catch (err) {
-      spinner.fail('Failed to list skills');
       console.error(pc.red(String(err)));
       process.exit(1);
     }
