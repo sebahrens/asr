@@ -8,6 +8,7 @@ import { buildPublishRecord, serializePublishRecord } from './publishRecord.js';
 export interface PublishMdOnlyDeps {
   db: Database;
   forgejo: ForgejoClient;
+  triggerMarketplaceSync?: (skillName: string) => Promise<void>;
 }
 
 export interface PublishMdOnlyInput {
@@ -87,6 +88,15 @@ export async function publishMdOnly(
       mergeCommit: sha,
     }),
   });
+
+  if (deps.triggerMarketplaceSync) {
+    try {
+      await deps.triggerMarketplaceSync(manifest.name);
+    } catch {
+      // runMarketplaceSync already emits marketplace_sync.failed and pages;
+      // a sync failure must not roll back the publish (specs/cli-integration.md#sync-job).
+    }
+  }
 
   return { mergeCommit: sha, packageUrl };
 }

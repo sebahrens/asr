@@ -1,7 +1,7 @@
 import type { ForgejoClient, SkillManifest, Submission } from '@asr/core';
 import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runMigrations } from '../db/migrations/index.js';
 import { getSkillVersion } from '../db/repositories/skillVersions.js';
 import {
@@ -206,6 +206,134 @@ describe('publishMdOnly', () => {
 
     const secondRow = getSkillVersion(db, manifest.name, manifest.version);
     expect(secondRow).toEqual(firstRow);
+  });
+
+  it('invokes triggerMarketplaceSync exactly once with the published skill name after publish', async () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    const manifest: SkillManifest = {
+      name: 'sync-skill',
+      version: '1.0.0',
+      author: 'alice',
+      description: 'Triggers marketplace sync',
+      tags: ['demo'],
+      kind: 'skill',
+      permissions: {
+        network: false,
+        filesystem: 'none',
+        subprocess: false,
+        environment: [],
+      },
+    };
+
+    const files = [{ path: 'SKILL.md', content: Buffer.from('# Sync\n') }];
+
+    const expectedZip = await packSkillZip(files);
+    const expectedContentHash = `sha256:${createHash('sha256').update(expectedZip).digest('hex')}`;
+
+    const submission: Submission = {
+      id: 'submission-sync-trigger',
+      manifest,
+      classification: 'md-only',
+      contentHash: expectedContentHash,
+      submittedAt: '2026-05-26T00:00:00.000Z',
+      submittedBy: 'alice',
+      status: { phase: 'pushing-to-forgejo' },
+    };
+
+    insertSubmission(db, {
+      id: submission.id,
+      manifestJson: JSON.stringify(submission.manifest),
+      classification: submission.classification,
+      contentHash: submission.contentHash,
+      submittedAt: submission.submittedAt,
+      submittedBy: submission.submittedBy,
+      statusPhase: submission.status.phase,
+      statusJson: JSON.stringify(submission.status),
+    });
+
+    const forgejo = new FakeForgejoClient('https://forgejo.example/pkg');
+    const triggerMarketplaceSync = vi.fn().mockResolvedValue(undefined);
+
+    await publishMdOnly(
+      {
+        db,
+        forgejo: forgejo as unknown as ForgejoClient,
+        triggerMarketplaceSync,
+      },
+      { submission, files, lockVersion: 0 },
+    );
+
+    expect(triggerMarketplaceSync).toHaveBeenCalledTimes(1);
+    expect(triggerMarketplaceSync).toHaveBeenCalledWith(manifest.name);
+
+    const row = getSubmissionById(db, submission.id);
+    expect(row?.status_phase).toBe('published');
+  });
+
+  it('swallows triggerMarketplaceSync errors so a sync failure does not roll back the publish', async () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    const manifest: SkillManifest = {
+      name: 'sync-fail-skill',
+      version: '1.0.0',
+      author: 'alice',
+      description: 'Sync failure tolerant',
+      tags: ['demo'],
+      kind: 'skill',
+      permissions: {
+        network: false,
+        filesystem: 'none',
+        subprocess: false,
+        environment: [],
+      },
+    };
+
+    const files = [{ path: 'SKILL.md', content: Buffer.from('# Sync\n') }];
+
+    const expectedZip = await packSkillZip(files);
+    const expectedContentHash = `sha256:${createHash('sha256').update(expectedZip).digest('hex')}`;
+
+    const submission: Submission = {
+      id: 'submission-sync-fail',
+      manifest,
+      classification: 'md-only',
+      contentHash: expectedContentHash,
+      submittedAt: '2026-05-26T00:00:00.000Z',
+      submittedBy: 'alice',
+      status: { phase: 'pushing-to-forgejo' },
+    };
+
+    insertSubmission(db, {
+      id: submission.id,
+      manifestJson: JSON.stringify(submission.manifest),
+      classification: submission.classification,
+      contentHash: submission.contentHash,
+      submittedAt: submission.submittedAt,
+      submittedBy: submission.submittedBy,
+      statusPhase: submission.status.phase,
+      statusJson: JSON.stringify(submission.status),
+    });
+
+    const forgejo = new FakeForgejoClient('https://forgejo.example/pkg');
+    const triggerMarketplaceSync = vi.fn().mockRejectedValue(new Error('forgejo unavailable'));
+
+    const result = await publishMdOnly(
+      {
+        db,
+        forgejo: forgejo as unknown as ForgejoClient,
+        triggerMarketplaceSync,
+      },
+      { submission, files, lockVersion: 0 },
+    );
+
+    expect(result.mergeCommit).toBe('abc');
+    expect(triggerMarketplaceSync).toHaveBeenCalledTimes(1);
+
+    const row = getSubmissionById(db, submission.id);
+    expect(row?.status_phase).toBe('published');
   });
 });
 

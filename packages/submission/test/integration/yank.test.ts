@@ -1,7 +1,7 @@
 import type { ForgejoClient } from '@asr/core';
 import Database from 'better-sqlite3';
 import { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthVariables, Identity } from '../../src/auth/types.js';
 import { runMigrations } from '../../src/db/migrations/index.js';
 import {
@@ -179,12 +179,57 @@ describe('POST /api/v1/skills/:owner/:name/versions/:version/yank', () => {
     expect(res.status).toBe(400);
     expect(forgejo!.commits).toHaveLength(0);
   });
+
+  it('invokes triggerMarketplaceSync exactly once with the yanked skill name', async () => {
+    const triggerMarketplaceSync = vi.fn().mockResolvedValue(undefined);
+    const app = makeApp(db!, forgejo!, { sub: 'carol', roles: ['Compliance'] }, {
+      triggerMarketplaceSync,
+    });
+
+    const res = await app.request(
+      `/api/v1/skills/${OWNER}/${SKILL}/versions/${VERSION}/yank`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'leak', severity: 'high' }),
+      },
+    );
+
+    expect(res.status).toBe(201);
+    expect(triggerMarketplaceSync).toHaveBeenCalledTimes(1);
+    expect(triggerMarketplaceSync).toHaveBeenCalledWith(SKILL);
+  });
+
+  it('swallows triggerMarketplaceSync errors so a sync failure does not roll back the yank', async () => {
+    const triggerMarketplaceSync = vi
+      .fn()
+      .mockRejectedValue(new Error('marketplace forgejo unavailable'));
+    const app = makeApp(db!, forgejo!, { sub: 'carol', roles: ['Compliance'] }, {
+      triggerMarketplaceSync,
+    });
+
+    const res = await app.request(
+      `/api/v1/skills/${OWNER}/${SKILL}/versions/${VERSION}/yank`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'leak', severity: 'high' }),
+      },
+    );
+
+    expect(res.status).toBe(201);
+    expect(triggerMarketplaceSync).toHaveBeenCalledTimes(1);
+
+    const version = getSkillVersion(db!, SKILL, VERSION);
+    expect(version?.yanked_at).not.toBeNull();
+  });
 });
 
 function makeApp(
   db: Database.Database,
   forgejo: FakeForgejoClient,
   identity: Identity,
+  extra: { triggerMarketplaceSync?: (skillName: string) => Promise<void> } = {},
 ) {
   const app = new Hono<{ Variables: AuthVariables }>();
   app.use('*', async (c, next) => {
@@ -193,7 +238,11 @@ function makeApp(
   });
   app.route(
     '/api/v1/skills',
-    createYankRoutes({ db, forgejo: forgejo as unknown as ForgejoClient }),
+    createYankRoutes({
+      db,
+      forgejo: forgejo as unknown as ForgejoClient,
+      triggerMarketplaceSync: extra.triggerMarketplaceSync,
+    }),
   );
   return app;
 }

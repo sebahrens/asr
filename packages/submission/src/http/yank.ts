@@ -15,6 +15,7 @@ export interface YankRouteOptions {
   db?: Database.Database;
   forgejo?: ForgejoClient;
   now?: () => Date;
+  triggerMarketplaceSync?: (skillName: string) => Promise<void>;
 }
 
 const SEVERITIES = ['low', 'high', 'critical'] as const;
@@ -102,6 +103,15 @@ export function createYankRoutes(options: YankRouteOptions = {}) {
       message: `yank ${name}@${version}`,
       idempotencyKey: `yank-${name}-${version}`,
     });
+
+    if (options.triggerMarketplaceSync) {
+      try {
+        await options.triggerMarketplaceSync(name);
+      } catch {
+        // runMarketplaceSync already emits marketplace_sync.failed and pages;
+        // a sync failure must not roll back the yank (specs/cli-integration.md#sync-job).
+      }
+    }
 
     return c.json({ yanked: true, blocked_hash: row.content_hash }, 201);
   });

@@ -57,6 +57,7 @@ export interface SubmissionRouteOptions {
   generateId?: () => string;
   forgejo?: ForgejoClient;
   getPriorFiles?: GetPriorFiles;
+  triggerMarketplaceSync?: (skillName: string) => Promise<void>;
 }
 
 interface UploadedFile {
@@ -265,7 +266,7 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
         try {
           const forgejo = options.forgejo ?? forgejoFromEnv();
           const result = await publishMdOnly(
-            { db, forgejo },
+            { db, forgejo, triggerMarketplaceSync: options.triggerMarketplaceSync },
             { submission, files: fileEntries, lockVersion: 0 },
           );
           submission.status = {
