@@ -9,7 +9,7 @@ import {
   storeTokens,
   type StoredTokens,
 } from '../auth/token-store.js';
-import { ApiError, apiFetch, postSubmission } from '../api.js';
+import { ApiError, apiFetch, mintDerivedToken, postSubmission } from '../api.js';
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -217,6 +217,82 @@ describe('postSubmission', () => {
       const e = err as ApiError;
       expect(e.status).toBe(409);
       expect(e.body.error).toBe('version_already_exists');
+    }
+  });
+});
+
+describe('mintDerivedToken', () => {
+  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const originalAsrUrl = process.env.ASR_URL;
+  let configHome: string;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_700_000_000_000);
+    configHome = await mkdtemp(join(tmpdir(), 'asr-api-'));
+    process.env.XDG_CONFIG_HOME = configHome;
+    __setKeytarImporterForTest(async () => {
+      throw new Error('keytar unavailable');
+    });
+  });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    await rm(configHome, { recursive: true, force: true });
+
+    if (originalXdgConfigHome === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+    }
+
+    if (originalAsrUrl === undefined) {
+      delete process.env.ASR_URL;
+    } else {
+      process.env.ASR_URL = originalAsrUrl;
+    }
+  });
+
+  it('returns body.token and sends Authorization when auth is enabled', async () => {
+    process.env.ASR_URL = 'https://api.example.com';
+    const stored: StoredTokens = {
+      accessToken: accessTokenString({ preferred_username: 'u@example.com' }),
+      refreshToken: 'refresh-1',
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      account: 'u@example.com',
+    };
+    await storeTokens(stored);
+
+    const expiresAt = new Date(Date.now() + 300_000).toISOString();
+    const fetchMock = vi.fn<FetchLike>(async () =>
+      jsonResponse({ token: 'short.lived', expiresAt }, { status: 200 })
+    );
+
+    const token = await mintDerivedToken({ fetch: fetchMock });
+
+    expect(token).toBe('short.lived');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe('https://api.example.com/api/v1/auth/derived-token');
+    expect(init?.method).toBe('POST');
+    const headers = init?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Bearer ${stored.accessToken}`);
+  });
+
+  it('surfaces a 401 response as ApiError exposing body.error', async () => {
+    process.env.ASR_URL = 'http://localhost:3001';
+    const fetchMock = vi.fn<FetchLike>(async () =>
+      jsonResponse({ error: 'unauthorized' }, { status: 401 })
+    );
+
+    try {
+      await mintDerivedToken({ fetch: fetchMock });
+      expect.fail('expected ApiError');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      const e = err as ApiError;
+      expect(e.status).toBe(401);
+      expect(e.body.error).toBe('unauthorized');
     }
   });
 });

@@ -107,3 +107,24 @@ export async function postSubmission(
     baseUrl: opts.baseUrl,
   });
 }
+
+export interface MintDerivedTokenResponse {
+  token: string;
+  expiresAt: string;
+}
+
+export interface MintDerivedTokenOptions {
+  fetch?: FetchLike;
+  baseUrl?: string;
+}
+
+export async function mintDerivedToken(
+  opts: MintDerivedTokenOptions = {}
+): Promise<string> {
+  const body = await apiFetch<MintDerivedTokenResponse>('/api/v1/auth/derived-token', {
+    method: 'POST',
+    fetch: opts.fetch,
+    baseUrl: opts.baseUrl,
+  });
+  return body.token;
+}
