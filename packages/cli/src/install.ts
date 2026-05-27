@@ -1,10 +1,15 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { agentSkillDir, detectAgents, type AgentTarget } from './agents.js';
 import { downloadAndVerify } from './download.js';
 import { extractZip } from './extract.js';
-import { getAllInstalled, recordInstall } from './lockfile.js';
+import {
+  getAllInstalled,
+  getInstalledSkill,
+  recordInstall,
+  removeFromLock,
+} from './lockfile.js';
 import { getSkillDetail, resolveDownload } from './registry-client.js';
 
 export interface InstallSkillOptions {
@@ -188,4 +193,55 @@ export async function updateSkill(
   }
 
   return results;
+}
+
+export interface RemoveSkillOptions {
+  global?: boolean;
+  agent?: 'claude' | 'codex' | 'both';
+}
+
+export interface RemovedLocation {
+  agent: AgentTarget;
+  dir: string;
+  existed: boolean;
+}
+
+export interface RemoveSkillResult {
+  owner: string;
+  name: string;
+  locations: RemovedLocation[];
+  lockEntryRemoved: boolean;
+}
+
+export async function removeSkill(
+  slug: string,
+  opts: RemoveSkillOptions = {},
+): Promise<RemoveSkillResult> {
+  const { owner, name } = parseSlug(slug);
+  const global = opts.global ?? false;
+  const agents = detectAgents({ explicit: opts.agent });
+
+  const locations: RemovedLocation[] = [];
+  for (const agent of agents) {
+    const dir = agentSkillDir(agent, name, { global });
+    let existed = false;
+    try {
+      await stat(dir);
+      existed = true;
+    } catch {
+      existed = false;
+    }
+    if (existed) {
+      await rm(dir, { recursive: true, force: true });
+    }
+    locations.push({ agent, dir, existed });
+  }
+
+  const entry = await getInstalledSkill('project', global, name);
+  const lockEntryRemoved = entry !== undefined;
+  if (lockEntryRemoved) {
+    await removeFromLock('project', global, name);
+  }
+
+  return { owner, name, locations, lockEntryRemoved };
 }

@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import pc from 'picocolors';
 import ora from 'ora';
-import { mkdir, writeFile, readdir, rm, readFile, stat } from 'fs/promises';
+import { mkdir, writeFile, readdir, readFile, stat } from 'fs/promises';
 import { join, dirname } from 'path';
 import { createInterface } from 'readline';
 import {
@@ -16,8 +16,8 @@ import { registerPublish } from './commands/publish.js';
 import { registerStatus, registerSubmissions } from './commands/submissions.js';
 import { registerToken } from './commands/token.js';
 import { getConfig, setConfig, getTargetDir } from './config.js';
-import { recordInstall, removeFromLock, getAllInstalled } from './lockfile.js';
-import { installSkill, updateSkill } from './install.js';
+import { recordInstall, getAllInstalled } from './lockfile.js';
+import { installSkill, removeSkill, updateSkill } from './install.js';
 
 interface RegistrySkill {
   id?: string;
@@ -432,21 +432,35 @@ program
   });
 
 program
-  .command('remove <name>')
-  .description('Remove an installed skill')
-  .option('--agent <name>', 'Target agent (cursor/claude/project)', 'project')
-  .option('-g, --global', 'Remove from global installation')
-  .action(async (name, options) => {
-    const spinner = ora(`Removing ${name}...`).start();
+  .command('remove <slug>')
+  .description('Remove an installed skill (owner/name)')
+  .option('-g, --global', 'Remove from global installation (~/.claude or ~/.codex)')
+  .option('--agent <name>', 'Target agent (claude|codex|both)')
+  .action(async (slug: string, options: { global?: boolean; agent?: string }) => {
+    const spinner = ora(`Removing ${slug}...`).start();
     try {
-      const target = options.agent as 'cursor' | 'claude' | 'project';
-      const targetDir = getTargetDir(target, name, options.global);
-      await rm(targetDir, { recursive: true, force: true });
-      await removeFromLock(target, options.global, name);
-      spinner.succeed(`Removed ${pc.green(name)}`);
+      const result = await removeSkill(slug, {
+        global: options.global,
+        agent: options.agent as 'claude' | 'codex' | 'both' | undefined,
+      });
+
+      const cleanedDirs = result.locations.filter((l) => l.existed);
+      if (cleanedDirs.length === 0 && !result.lockEntryRemoved) {
+        spinner.warn(`${result.owner}/${result.name} was not installed`);
+        return;
+      }
+
+      const scopes =
+        cleanedDirs.length > 0
+          ? cleanedDirs.map((l) => pc.dim(l.dir)).join(', ')
+          : pc.dim('lockfile entry only');
+      const lockNote = result.lockEntryRemoved ? pc.dim(' [lockfile entry removed]') : '';
+      spinner.succeed(
+        `Removed ${pc.green(`${result.owner}/${result.name}`)} from ${scopes}${lockNote}`,
+      );
     } catch (err) {
       spinner.fail('Removal failed');
-      console.error(pc.red(String(err)));
+      console.error(pc.red(err instanceof Error ? err.message : String(err)));
       process.exit(1);
     }
   });

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,7 +21,7 @@ vi.mock('./extract.js', () => ({
   extractZip: (...args: unknown[]) => extractZip(...args),
 }));
 
-const { installSkill, updateSkill } = await import('./install.js');
+const { installSkill, removeSkill, updateSkill } = await import('./install.js');
 
 const DOWNLOAD_URL =
   'https://forgejo.internal/api/packages/acme/generic/demo/1.2.3/skill.zip';
@@ -419,5 +419,135 @@ describe('updateSkill', () => {
     await updateSkill('acme/demo', { token: 't0k' });
 
     expect(getSkillDetail).toHaveBeenCalledWith('acme', 'demo', { token: 't0k' });
+  });
+});
+
+describe('removeSkill', () => {
+  let tempDir: string;
+  let cwdSpy: ReturnType<typeof vi.spyOn>;
+
+  async function seedLockfile(skills: Record<string, { source: string; version?: string }>) {
+    const agentDir = join(tempDir, '.agent');
+    await mkdir(agentDir, { recursive: true });
+    const now = '2026-05-23T10:00:00Z';
+    const lock = {
+      version: 1,
+      skills: Object.fromEntries(
+        Object.entries(skills).map(([name, info]) => [
+          name,
+          {
+            name,
+            source: info.source,
+            version: info.version,
+            installedAt: now,
+            updatedAt: now,
+          },
+        ]),
+      ),
+    };
+    await writeFile(join(agentDir, 'asr.lock.json'), JSON.stringify(lock, null, 2));
+  }
+
+  async function seedSkillDir(agent: 'claude' | 'codex', name: string) {
+    const dir = join(tempDir, `.${agent}`, 'skills', name);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'SKILL.md'), '# test\n');
+  }
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'asr-remove-'));
+    await mkdir(join(tempDir, '.claude'), { recursive: true });
+    cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
+  });
+
+  afterEach(async () => {
+    cwdSpy.mockRestore();
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('deletes the .claude/skills/<name> dir and removes the lockfile entry', async () => {
+    await seedSkillDir('claude', 'demo');
+    await seedLockfile({ demo: { source: 'registry:acme/demo', version: '1.2.3' } });
+
+    const result = await removeSkill('acme/demo');
+
+    expect(result.owner).toBe('acme');
+    expect(result.name).toBe('demo');
+    expect(result.lockEntryRemoved).toBe(true);
+    expect(result.locations).toEqual([
+      { agent: 'claude', dir: join(tempDir, '.claude', 'skills', 'demo'), existed: true },
+    ]);
+
+    await expect(stat(join(tempDir, '.claude', 'skills', 'demo'))).rejects.toThrow();
+
+    const lock = JSON.parse(
+      await readFile(join(tempDir, '.agent', 'asr.lock.json'), 'utf-8'),
+    );
+    expect(lock.skills['demo']).toBeUndefined();
+  });
+
+  it('reports existed=false for every agent when nothing was installed and no lockfile entry exists', async () => {
+    const result = await removeSkill('acme/demo');
+
+    expect(result.lockEntryRemoved).toBe(false);
+    expect(result.locations.every((l) => l.existed === false)).toBe(true);
+  });
+
+  it('removes from both .claude and .codex when both are present and agent=both', async () => {
+    await mkdir(join(tempDir, '.codex'), { recursive: true });
+    await seedSkillDir('claude', 'demo');
+    await seedSkillDir('codex', 'demo');
+    await seedLockfile({ demo: { source: 'registry:acme/demo', version: '1.2.3' } });
+
+    const result = await removeSkill('acme/demo', { agent: 'both' });
+
+    expect(result.locations.map((l) => l.agent)).toEqual(['claude', 'codex']);
+    expect(result.locations.every((l) => l.existed)).toBe(true);
+    expect(result.lockEntryRemoved).toBe(true);
+
+    await expect(stat(join(tempDir, '.claude', 'skills', 'demo'))).rejects.toThrow();
+    await expect(stat(join(tempDir, '.codex', 'skills', 'demo'))).rejects.toThrow();
+  });
+
+  it('targets only the explicit --agent when set to codex', async () => {
+    await mkdir(join(tempDir, '.codex'), { recursive: true });
+    await seedSkillDir('claude', 'demo');
+    await seedSkillDir('codex', 'demo');
+
+    const result = await removeSkill('acme/demo', { agent: 'codex' });
+
+    expect(result.locations).toEqual([
+      { agent: 'codex', dir: join(tempDir, '.codex', 'skills', 'demo'), existed: true },
+    ]);
+
+    await expect(stat(join(tempDir, '.codex', 'skills', 'demo'))).rejects.toThrow();
+    await expect(stat(join(tempDir, '.claude', 'skills', 'demo'))).resolves.toBeDefined();
+  });
+
+  it('rejects invalid slugs without touching the filesystem', async () => {
+    await seedSkillDir('claude', 'demo');
+    await seedLockfile({ demo: { source: 'registry:acme/demo', version: '1.2.3' } });
+
+    await expect(removeSkill('no-slash')).rejects.toThrow(/Invalid slug/);
+
+    await expect(stat(join(tempDir, '.claude', 'skills', 'demo'))).resolves.toBeDefined();
+    const lock = JSON.parse(
+      await readFile(join(tempDir, '.agent', 'asr.lock.json'), 'utf-8'),
+    );
+    expect(lock.skills['demo']).toBeDefined();
+  });
+
+  it('removes the lockfile entry even when the agent dir was already gone', async () => {
+    await seedLockfile({ demo: { source: 'registry:acme/demo', version: '1.2.3' } });
+
+    const result = await removeSkill('acme/demo');
+
+    expect(result.locations.every((l) => l.existed === false)).toBe(true);
+    expect(result.lockEntryRemoved).toBe(true);
+
+    const lock = JSON.parse(
+      await readFile(join(tempDir, '.agent', 'asr.lock.json'), 'utf-8'),
+    );
+    expect(lock.skills['demo']).toBeUndefined();
   });
 });
