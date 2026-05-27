@@ -91,6 +91,31 @@ afterEach(() => {
 });
 
 describe('ReviewDetail', () => {
+  it('renders a review-queue-oriented not-found state when the submission API returns 404', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      return new Response(JSON.stringify({ error: 'not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderRoute('does-not-exist');
+
+    const heading = await screen.findByRole('heading', {
+      name: /unable to load this submission|submission not found/i,
+    });
+    expect(heading).toBeInTheDocument();
+
+    // Eyebrow must be review-oriented, not the generic "Skill lookup"
+    expect(screen.getByText(/submission lookup/i)).toBeInTheDocument();
+    expect(screen.queryByText(/skill lookup/i)).not.toBeInTheDocument();
+
+    // Primary recovery action sends the reviewer back to the queue, not to skill browse
+    const backLink = screen.getByRole('link', { name: /back to review queue/i });
+    expect(backLink).toHaveAttribute('href', '/review');
+    expect(screen.queryByRole('link', { name: /browse skills/i })).not.toBeInTheDocument();
+  });
+
   it('renders the submission header version, Diff tab modified file path, and Scan tab high finding message', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input);

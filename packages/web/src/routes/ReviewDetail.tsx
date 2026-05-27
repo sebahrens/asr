@@ -1,7 +1,7 @@
 import type { ScanReport, Submission, VersionDiff } from '@asr/core';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { DecisionPanel } from './DecisionPanel';
 
 type TabId = 'diff' | 'scan';
@@ -46,9 +46,10 @@ export function ReviewDetail() {
 
   if (submissionQuery.isError || diffQuery.isError || scanQuery.isError) {
     return (
-      <main className="review-detail review-detail-error">
-        <p role="alert">Unable to load this submission.</p>
-      </main>
+      <ReviewLookupState
+        title="Unable to load this submission"
+        message={`We could not load review evidence for ${id || 'this submission'}. Return to the approval queue and choose another item, or retry.`}
+      />
     );
   }
 
@@ -58,9 +59,10 @@ export function ReviewDetail() {
 
   if (!submission || !diff || !scan) {
     return (
-      <main className="review-detail review-detail-empty">
-        <p role="status">Submission not found.</p>
-      </main>
+      <ReviewLookupState
+        title="Submission not found"
+        message={`No review submission exists for ${id || 'this id'}. Return to the approval queue and choose another item.`}
+      />
     );
   }
 
@@ -121,6 +123,33 @@ export function ReviewDetail() {
       <aside className="review-detail-decision-slot" aria-label="Decision panel">
         <DecisionPanel submission={submission} risk={diff.riskAssessment} />
       </aside>
+    </main>
+  );
+}
+
+function ReviewLookupState({ title, message }: { title: string; message: string }) {
+  return (
+    <main className="not-found-main">
+      <section
+        className="not-found-state"
+        role="alert"
+        aria-live="assertive"
+        aria-labelledby="review-lookup-title"
+      >
+        <p className="eyebrow">Submission lookup</p>
+        <h1 id="review-lookup-title">{title}</h1>
+        <p>{message}</p>
+        <div className="not-found-actions">
+          <Link className="primary-link" to="/review">Back to review queue</Link>
+          <button
+            className="secondary-btn"
+            type="button"
+            onClick={() => window.location.reload()}
+          >
+            Retry
+          </button>
+        </div>
+      </section>
     </main>
   );
 }
