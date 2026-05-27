@@ -1,12 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import type { Submission } from '@asr/core';
 
-interface PendingSubmissionsResponse {
-  submissions?: Submission[];
+export interface PendingSubmissionRow {
+  id: string;
+  skillName: string;
+  version: string;
 }
 
-async function fetchPendingSubmissions(): Promise<Submission[]> {
+interface PendingSubmissionsResponse {
+  submissions?: PendingSubmissionRow[];
+}
+
+async function fetchPendingSubmissions(): Promise<PendingSubmissionRow[]> {
   const res = await fetch('/api/v1/submissions?status=pending');
   if (!res.ok) {
     throw new Error(`Pending submissions request failed with ${res.status}`);
@@ -60,10 +65,10 @@ export function ReviewQueue() {
               <tr key={submission.id}>
                 <th scope="row">
                   <Link to={`/review/${submission.id}`}>
-                    {submission.manifest.name}
+                    {submission.skillName}
                   </Link>
                 </th>
-                <td>{submission.manifest.version}</td>
+                <td>{submission.version}</td>
               </tr>
             ))}
           </tbody>

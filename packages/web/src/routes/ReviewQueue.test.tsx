@@ -2,34 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Submission } from '@asr/core';
-import { ReviewQueue } from './ReviewQueue';
+import { ReviewQueue, type PendingSubmissionRow } from './ReviewQueue';
 
-function makeSubmission(overrides: Partial<Submission> & { id: string; name: string; version: string }): Submission {
-  const { id, name, version, ...rest } = overrides;
-  return {
-    id,
-    classification: 'md-only',
-    contentHash: `sha256:${id}`,
-    submittedAt: '2026-05-26T08:30:00.000Z',
-    submittedBy: 'submitter',
-    status: { phase: 'compliance-review' },
-    manifest: {
-      name,
-      version,
-      author: 'Platform Team',
-      description: `Manifest for ${name}.`,
-      tags: ['security'],
-      kind: 'skill',
-      permissions: {
-        network: false,
-        filesystem: 'read-own',
-        subprocess: false,
-        environment: [],
-      },
-    },
-    ...rest,
-  };
+function makeSubmission(overrides: { id: string; skillName: string; version: string }): PendingSubmissionRow {
+  return { ...overrides };
 }
 
 function renderQueue() {
@@ -53,9 +29,9 @@ afterEach(() => {
 
 describe('ReviewQueue', () => {
   it('renders one row per pending submission with name, version, and detail link', async () => {
-    const submissions: Submission[] = [
-      makeSubmission({ id: 'sub-A', name: 'secure-code-review', version: '1.4.0' }),
-      makeSubmission({ id: 'sub-B', name: 'release-notes', version: '0.8.2' }),
+    const submissions: PendingSubmissionRow[] = [
+      makeSubmission({ id: 'sub-A', skillName: 'secure-code-review', version: '1.4.0' }),
+      makeSubmission({ id: 'sub-B', skillName: 'release-notes', version: '0.8.2' }),
     ];
 
     vi.stubGlobal('fetch', vi.fn(async () => new Response(
