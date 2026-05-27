@@ -13,6 +13,7 @@ import { registerSearch } from './commands/search.js';
 import { registerInfo } from './commands/info.js';
 import { registerVersions } from './commands/versions.js';
 import { registerPublish } from './commands/publish.js';
+import { registerStatus, registerSubmissions } from './commands/submissions.js';
 import { getConfig, setConfig, getTargetDir } from './config.js';
 import { recordInstall, removeFromLock, getAllInstalled } from './lockfile.js';
 import { installSkill } from './install.js';
@@ -98,6 +99,8 @@ registerSearch(program);
 registerInfo(program);
 registerVersions(program);
 registerPublish(program);
+registerStatus(program);
+registerSubmissions(program);
 
 program
   .command('browse')
