@@ -28,6 +28,10 @@ interface ForgejoPullResponse {
   mergeable?: boolean | null;
 }
 
+interface ForgejoGitTagResponse {
+  sha: string;
+}
+
 export class ForgejoClient {
   private readonly cfg: ForgejoConfig;
   private readonly upload: Octokit;
@@ -207,6 +211,40 @@ export class ForgejoClient {
         throw err;
       }
     }
+  }
+
+  async createAnchorTag(input: {
+    tag: string;
+    message: string;
+    targetSha: string;
+    signature?: string;
+  }): Promise<{ tagName: string; commitSha: string }> {
+    const { owner, repo } = this.cfg;
+    const message = input.signature ? `${input.message}\n\n${input.signature}` : input.message;
+
+    const { data } = await this.upload.request('POST /repos/{owner}/{repo}/git/tags', {
+      owner,
+      repo,
+      tag: input.tag,
+      message,
+      object: input.targetSha,
+      type: 'commit',
+      tagger: {
+        name: 'asr-audit-anchor',
+        email: process.env.AUDIT_ANCHOR_EMAIL ?? 'audit@asr.local',
+        date: new Date().toISOString(),
+      },
+    });
+    const tagObject = data as ForgejoGitTagResponse;
+
+    await this.upload.request('POST /repos/{owner}/{repo}/git/refs', {
+      owner,
+      repo,
+      ref: `refs/tags/${input.tag}`,
+      sha: tagObject.sha,
+    });
+
+    return { tagName: input.tag, commitSha: input.targetSha };
   }
 
   async publishArtifact(input: {

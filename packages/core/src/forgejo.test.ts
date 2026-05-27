@@ -380,6 +380,75 @@ describe('ForgejoClient', () => {
     );
   });
 
+  it('creates an annotated tag and its ref via the upload client', async () => {
+    const client = new ForgejoClient(cfg);
+    const uploadRequest = vi
+      .spyOn(internals(client).upload, 'request')
+      .mockResolvedValueOnce({ data: { sha: 'tag-object-sha' } } as never)
+      .mockResolvedValueOnce({ data: {} } as never);
+
+    await expect(
+      client.createAnchorTag({
+        tag: 'audit-anchor-20260101T000000Z',
+        message: 'lastHash=ab eventCount=3',
+        targetSha: 'abc',
+      }),
+    ).resolves.toEqual({
+      tagName: 'audit-anchor-20260101T000000Z',
+      commitSha: 'abc',
+    });
+
+    expect(uploadRequest).toHaveBeenCalledTimes(2);
+    const [firstCall, secondCall] = uploadRequest.mock.calls;
+    expect(firstCall[0]).toBe('POST /repos/{owner}/{repo}/git/tags');
+    expect(firstCall[1]).toMatchObject({
+      owner: 'asr',
+      repo: 'skills',
+      tag: 'audit-anchor-20260101T000000Z',
+      message: 'lastHash=ab eventCount=3',
+      object: 'abc',
+      type: 'commit',
+    });
+    const taggerArg = (firstCall[1] as { tagger: { name: string; email: string; date: string } })
+      .tagger;
+    expect(taggerArg.name).toBe('asr-audit-anchor');
+    expect(taggerArg.email).toBe('audit@asr.local');
+    expect(typeof taggerArg.date).toBe('string');
+    expect(secondCall[0]).toBe('POST /repos/{owner}/{repo}/git/refs');
+    expect(secondCall[1]).toEqual({
+      owner: 'asr',
+      repo: 'skills',
+      ref: 'refs/tags/audit-anchor-20260101T000000Z',
+      sha: 'tag-object-sha',
+    });
+  });
+
+  it('embeds the GPG signature into the tag message body when provided', async () => {
+    const client = new ForgejoClient(cfg);
+    const uploadRequest = vi
+      .spyOn(internals(client).upload, 'request')
+      .mockResolvedValueOnce({ data: { sha: 'signed-tag-sha' } } as never)
+      .mockResolvedValueOnce({ data: {} } as never);
+
+    const signature = '-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----';
+    await expect(
+      client.createAnchorTag({
+        tag: 'audit-anchor-20260101T000100Z',
+        message: 'lastHash=cd eventCount=4',
+        targetSha: 'def',
+        signature,
+      }),
+    ).resolves.toEqual({
+      tagName: 'audit-anchor-20260101T000100Z',
+      commitSha: 'def',
+    });
+
+    const [firstCall] = uploadRequest.mock.calls;
+    expect((firstCall[1] as { message: string }).message).toBe(
+      `lastHash=cd eventCount=4\n\n${signature}`,
+    );
+  });
+
   it('returns the artifact url when the package already exists', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 409 }));
     vi.stubGlobal('fetch', fetch);
