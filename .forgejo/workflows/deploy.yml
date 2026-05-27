@@ -1,0 +1,22 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure login (CLI)
+        env:
+          AZURE_CREDENTIALS_JSON: ${{ secrets.AZURE_CREDENTIALS_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          echo "$AZURE_CREDENTIALS_JSON" > /tmp/sp.json
+          az login --service-principal \
+            --username "$(jq -r .clientId /tmp/sp.json)" \
+            --password "$(jq -r .clientSecret /tmp/sp.json)" \
+            --tenant   "$(jq -r .tenantId   /tmp/sp.json)"
+          shred -u /tmp/sp.json
