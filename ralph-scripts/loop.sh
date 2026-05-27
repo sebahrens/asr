@@ -432,16 +432,37 @@ while true; do
             echo "  ⚠ E2E test FAILED (exit=$E2E_EXIT)"
             tail -10 "$E2E_LOG" | sed 's/^/    /'
             if [ "$HAS_BEADS" = true ]; then
-                EXISTING_E2E=$(cd "$PROJECT_DIR" && bd list --status=open 2>/dev/null | grep -c "E2E:" || echo "0")
-                if [ "${EXISTING_E2E}" -lt 5 ]; then
-                    E2E_TAIL=$(tail -3 "$E2E_LOG")
-                    cd "$PROJECT_DIR" && bd create \
-                        --title="E2E: pnpm test:e2e failed in iteration $ITERATION" \
-                        --type=bug \
-                        --priority=1 \
-                        --labels="e2e,docker" \
-                        --description="Exit $E2E_EXIT. Tail:\n$E2E_TAIL" 2>/dev/null || true
-                    echo "  Filed bead for E2E failure"
+                # Stable-defect dedup: every iteration's E2E failure points at the
+                # same wording-independent bead, identified by label
+                # `defect:e2e-failure`. Mirrors the visual-loop dedup pattern (see
+                # PROMPT_visual_review.md §4). `tier:task` is set so the build
+                # phase actually picks this bead up to fix instead of just
+                # accumulating noise.
+                E2E_TAIL=$(tail -25 "$E2E_LOG")
+                EXISTING_ID=$(cd "$PROJECT_DIR" && bd list --status=open --label defect:e2e-failure --limit 0 2>/dev/null \
+                    | grep -oE 'asr-[a-z0-9]+' | head -1)
+                if [ -z "$EXISTING_ID" ]; then
+                    CLOSED_ID=$(cd "$PROJECT_DIR" && bd list --status=closed --label defect:e2e-failure --limit 0 2>/dev/null \
+                        | grep -oE 'asr-[a-z0-9]+' | head -1)
+                    if [ -n "$CLOSED_ID" ]; then
+                        cd "$PROJECT_DIR" && bd reopen "$CLOSED_ID" 2>/dev/null || true
+                        cd "$PROJECT_DIR" && bd note "$CLOSED_ID" "Recurred in iteration $ITERATION. Exit $E2E_EXIT. Tail:
+$E2E_TAIL" 2>/dev/null || true
+                        echo "  Reopened bead $CLOSED_ID with new iteration context"
+                    else
+                        cd "$PROJECT_DIR" && bd create \
+                            --title="E2E: pnpm test:e2e failing (defect:e2e-failure)" \
+                            --type=bug \
+                            --priority=1 \
+                            --labels="e2e,docker,tier:task,defect:e2e-failure" \
+                            --description="Exit $E2E_EXIT. Tail:
+$E2E_TAIL" 2>/dev/null || true
+                        echo "  Filed canonical bead for E2E failure"
+                    fi
+                else
+                    cd "$PROJECT_DIR" && bd note "$EXISTING_ID" "Recurred in iteration $ITERATION. Exit $E2E_EXIT. Tail:
+$E2E_TAIL" 2>/dev/null || true
+                    echo "  Appended iteration $ITERATION context to existing bead $EXISTING_ID"
                 fi
             fi
         else

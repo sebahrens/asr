@@ -156,6 +156,7 @@ console.log(`Starting dev stack via "${composeCmd}" in ${composeCwd}...`);
 run(`${composeCmd} down -v`);
 run(`${composeCmd} up -d --build`);
 
+let failureReason = null;
 try {
   await waitHealth();
   await assertRegistryBrowse();
@@ -163,11 +164,19 @@ try {
   await assertApprovalQueue();
   console.log('E2E smoke check passed: /health, registry browse, submission create, and approval queue are OK');
 } catch (err) {
+  failureReason = err.message;
   console.error('E2E smoke check FAILED:', err.message);
   console.error('--- recent api logs ---');
   try { run(`${composeCmd} logs --tail=50 api`); } catch {}
-  process.exitCode = 1;
 } finally {
   console.log('Stopping dev stack...');
   try { run(`${composeCmd} down -v`); } catch {}
+  if (failureReason) {
+    // Print the failure reason as the LAST line so a small `tail -N` window in
+    // an outer harness (e.g. ralph-scripts/loop.sh) captures actionable signal
+    // instead of the docker compose down output, which would otherwise push the
+    // real cause out of the tail window.
+    console.error(`=== E2E FAILED: ${failureReason} ===`);
+    process.exitCode = 1;
+  }
 }
