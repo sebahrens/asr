@@ -20,6 +20,10 @@ import {
 } from '../db/repositories/submissions.js';
 import { findSubmissionIdByContentHash, getBlockedHash } from '../db/repositories/versions.js';
 import { forgejoFromEnv } from '../forgejo/index.js';
+import {
+  acquirePendingVersion,
+  releasePendingVersion,
+} from '../workflow/pendingVersionLock.js';
 import { publishMdOnly } from '../workflow/publishMdOnly.js';
 import { classifySkill } from '../zip/classify.js';
 import { extractSafe } from '../zip/extract.js';
@@ -44,12 +48,18 @@ interface UploadedFile {
   size: number;
 }
 
+class PendingVersionContentionError extends Error {
+  constructor() {
+    super('pending version contention');
+    this.name = 'PendingVersionContentionError';
+  }
+}
+
 export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
   const routes = new Hono<{ Variables: AuthVariables }>();
   const now = options.now ?? (() => new Date());
   const generateId = options.generateId ?? (() => ulid());
-  const persist: SubmissionPersist | undefined =
-    options.persist ?? (options.db ? (row) => insertSubmission(options.db!, row) : undefined);
+  const persist: SubmissionPersist | undefined = options.persist;
   const lookup: SubmissionLookup | undefined =
     options.lookup ??
     (options.db
@@ -150,17 +160,35 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
       const status: SubmissionStatus = { phase: 'uploaded' };
       const submittedBy = c.get('identity')?.sub ?? process.env.MOCK_USER_SUB ?? '';
 
-      if (persist) {
-        await persist({
-          id,
-          manifestJson: JSON.stringify(manifest),
-          classification,
-          contentHash,
-          submittedAt: createdAt,
-          submittedBy,
-          statusPhase: status.phase,
-          statusJson: JSON.stringify(status),
-        });
+      const insertRow: SubmissionInsertRow = {
+        id,
+        manifestJson: JSON.stringify(manifest),
+        classification,
+        contentHash,
+        submittedAt: createdAt,
+        submittedBy,
+        statusPhase: status.phase,
+        statusJson: JSON.stringify(status),
+      };
+
+      if (db) {
+        try {
+          db.transaction(() => {
+            insertSubmission(db, insertRow);
+            if (!acquirePendingVersion(db, manifest.name, manifest.version, id)) {
+              throw new PendingVersionContentionError();
+            }
+          })();
+        } catch (error) {
+          if (error instanceof PendingVersionContentionError) {
+            return apiError(c, 409, 'version_in_progress', {
+              details: { name: manifest.name, version: manifest.version },
+            });
+          }
+          throw error;
+        }
+      } else if (persist) {
+        await persist(insertRow);
       }
 
       const submission: Submission = {
@@ -186,6 +214,7 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
             mergeCommit: result.mergeCommit,
           };
         } catch (error) {
+          releasePendingVersion(db, manifest.name, manifest.version);
           return apiError(c, 500, 'internal_error', {
             message: error instanceof Error ? error.message : 'md-only publish failed',
           });
