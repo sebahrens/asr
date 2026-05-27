@@ -1,8 +1,47 @@
+import { pino } from 'pino';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { createApp as CreateApp } from '../index.js';
-import { MCP_PROTOCOL_VERSION } from './server.js';
+import { MCP_ERROR, McpToolError } from './errors.js';
+import { createRateLimiter } from './rateLimit.js';
+import {
+  MCP_PROTOCOL_VERSION,
+  wrapToolHandler,
+  type WrapToolHandlerDeps,
+} from './server.js';
+import type { InvocationLogger } from './telemetry.js';
 
 let createApp: typeof CreateApp;
+
+function makeCapturingLogger(): {
+  logger: InvocationLogger;
+  records: Record<string, unknown>[];
+} {
+  const records: Record<string, unknown>[] = [];
+  const logger = pino(
+    { level: 'info' },
+    {
+      write(chunk: string) {
+        records.push(JSON.parse(chunk));
+      },
+    },
+  );
+  return { logger, records };
+}
+
+function makeDeps(overrides: Partial<WrapToolHandlerDeps> = {}): {
+  deps: WrapToolHandlerDeps;
+  records: Record<string, unknown>[];
+} {
+  const { logger, records } = makeCapturingLogger();
+  const deps: WrapToolHandlerDeps = {
+    limiter: createRateLimiter(),
+    logger,
+    principalOf: () => 'sub-test',
+    sessionOf: () => 'sess-test',
+    ...overrides,
+  };
+  return { deps, records };
+}
 
 beforeAll(async () => {
   vi.stubEnv('NODE_ENV', 'development');
@@ -142,6 +181,163 @@ describe('mcpHandler', () => {
       id: 2,
       result: { tools: expect.any(Array) },
     });
+  });
+});
+
+describe('wrapToolHandler', () => {
+  it('blocks the 601st read invocation for a single principal with a -32005 McpToolError', async () => {
+    let now = 0;
+    const limiter = createRateLimiter(() => now);
+    const { deps } = makeDeps({ limiter });
+    const wrapped = wrapToolHandler(
+      'registry_search',
+      async (_extra: unknown) => ({ content: [] }),
+      deps,
+    );
+
+    for (let i = 0; i < 600; i++) {
+      await wrapped({});
+    }
+
+    let caught: unknown;
+    try {
+      await wrapped({});
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(McpToolError);
+    const err = caught as McpToolError;
+    expect(err.code).toBe(MCP_ERROR.rate_limited);
+    expect(err.code).toBe(-32005);
+    const retryAfter = (err.data as { retryAfterSeconds?: unknown } | undefined)
+      ?.retryAfterSeconds;
+    expect(typeof retryAfter).toBe('number');
+    expect(retryAfter as number).toBeGreaterThanOrEqual(1);
+    expect(retryAfter as number).toBeLessThanOrEqual(60);
+  });
+
+  it('rejects BEFORE the handler runs when rate-limited', async () => {
+    let now = 0;
+    const limiter = createRateLimiter(() => now);
+    const { deps } = makeDeps({ limiter });
+    let calls = 0;
+    const wrapped = wrapToolHandler(
+      'review_decision',
+      async (_extra: unknown) => {
+        calls += 1;
+        return { ok: true };
+      },
+      deps,
+    );
+
+    for (let i = 0; i < 60; i++) {
+      await wrapped({});
+    }
+    expect(calls).toBe(60);
+
+    await expect(wrapped({})).rejects.toBeInstanceOf(McpToolError);
+    expect(calls).toBe(60);
+  });
+
+  it('emits exactly the six telemetry fields on a successful invocation', async () => {
+    const { deps, records } = makeDeps({
+      principalOf: () => 'sub-123',
+      sessionOf: () => 'sess-abc',
+    });
+    const wrapped = wrapToolHandler(
+      'registry_search',
+      async (_extra: unknown) => ({ content: [{ type: 'text', text: 'secret-payload' }] }),
+      deps,
+    );
+
+    await wrapped({});
+
+    expect(records).toHaveLength(1);
+    const record = records[0]!;
+    const payloadKeys = Object.keys(record).filter(
+      (k) => !['level', 'time', 'pid', 'hostname', 'name', 'v', 'msg'].includes(k),
+    );
+    expect(new Set(payloadKeys)).toEqual(
+      new Set(['traceId', 'sessionId', 'principalSub', 'tool', 'durationMs', 'outcome']),
+    );
+    expect(record.outcome).toBe('ok');
+    expect(record.tool).toBe('registry_search');
+    expect(record.principalSub).toBe('sub-123');
+    expect(record.sessionId).toBe('sess-abc');
+    expect(typeof record.traceId).toBe('string');
+    expect(typeof record.durationMs).toBe('number');
+    for (const forbidden of ['input', 'output', 'result', 'args', 'arguments', 'content']) {
+      expect(record).not.toHaveProperty(forbidden);
+    }
+  });
+
+  it('records outcome=error with code from McpToolError in the finally block', async () => {
+    const { deps, records } = makeDeps();
+    const wrapped = wrapToolHandler(
+      'registry_info',
+      async (_extra: unknown) => {
+        throw new McpToolError(MCP_ERROR.resource_not_found, 'resource_not_found');
+      },
+      deps,
+    );
+
+    await expect(wrapped({})).rejects.toBeInstanceOf(McpToolError);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      outcome: 'error',
+      code: MCP_ERROR.resource_not_found,
+      tool: 'registry_info',
+    });
+  });
+
+  it('logs the rate-limit rejection with outcome=error code=-32005 durationMs=0', async () => {
+    let now = 0;
+    const limiter = createRateLimiter(() => now);
+    const { deps, records } = makeDeps({ limiter });
+    const wrapped = wrapToolHandler(
+      'review_decision',
+      async (_extra: unknown) => ({ ok: true }),
+      deps,
+    );
+
+    for (let i = 0; i < 60; i++) {
+      await wrapped({});
+    }
+    await expect(wrapped({})).rejects.toBeInstanceOf(McpToolError);
+
+    const last = records[records.length - 1]!;
+    expect(last.outcome).toBe('error');
+    expect(last.code).toBe(MCP_ERROR.rate_limited);
+    expect(last.tool).toBe('review_decision');
+    expect(last.durationMs).toBe(0);
+  });
+
+  it('resolves principalSub/sessionId from the extra arg passed to the tool callback', async () => {
+    const seen: Array<{ p: string; s: string }> = [];
+    const deps: WrapToolHandlerDeps = {
+      limiter: createRateLimiter(),
+      logger: makeCapturingLogger().logger,
+      principalOf: (extra) => {
+        const auth = (extra as { authInfo?: { extra?: { principal?: { sub?: string } } } })
+          .authInfo;
+        const sub = auth?.extra?.principal?.sub ?? '';
+        seen.push({ p: sub, s: (extra as { sessionId?: string }).sessionId ?? '' });
+        return sub;
+      },
+      sessionOf: (extra) => (extra as { sessionId?: string }).sessionId ?? '',
+    };
+
+    const wrapped = wrapToolHandler(
+      'registry_search',
+      async (_extra: unknown) => ({}),
+      deps,
+    );
+    await wrapped({
+      authInfo: { extra: { principal: { sub: 'caller-9' } } },
+      sessionId: 'sess-9',
+    });
+
+    expect(seen).toEqual([{ p: 'caller-9', s: 'sess-9' }]);
   });
 });
 

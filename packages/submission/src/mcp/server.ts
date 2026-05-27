@@ -5,7 +5,9 @@ import type { Handler } from 'hono';
 import { randomUUID } from 'node:crypto';
 import type { Identity } from '../auth/types.js';
 import { resolveMcpPrincipal } from './auth.js';
-import { McpToolError, mcpError } from './errors.js';
+import { MCP_ERROR, McpToolError, mcpError } from './errors.js';
+import { createRateLimiter, type RateLimiter } from './rateLimit.js';
+import { baseLogger, logInvocation, type InvocationLogger } from './telemetry.js';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SERVER_VERSION = '0.1.0';
@@ -17,15 +19,104 @@ interface McpSession {
 
 const sessions = new Map<string, McpSession>();
 
-export function createMcpServer(): McpServer {
+const defaultLimiter: RateLimiter = createRateLimiter();
+
+export type ToolHandler<Args extends unknown[] = unknown[], R = unknown> = (
+  ...args: Args
+) => R | Promise<R>;
+
+export interface WrapToolHandlerDeps {
+  limiter: RateLimiter;
+  logger: InvocationLogger;
+  principalOf: (extra: unknown) => string;
+  sessionOf: (extra: unknown) => string;
+}
+
+export function wrapToolHandler<Args extends unknown[], R>(
+  tool: string,
+  handler: ToolHandler<Args, R>,
+  deps: WrapToolHandlerDeps,
+): ToolHandler<Args, R> {
+  return async (...args: Args): Promise<R> => {
+    const extra = args[args.length - 1];
+    const principalSub = deps.principalOf(extra);
+    const sessionId = deps.sessionOf(extra);
+    const traceId = randomUUID();
+
+    const limit = deps.limiter.check(principalSub, tool);
+    if (!limit.ok) {
+      logInvocation(
+        {
+          traceId,
+          sessionId,
+          principalSub,
+          tool,
+          durationMs: 0,
+          outcome: 'error',
+          code: MCP_ERROR.rate_limited,
+        },
+        deps.logger,
+      );
+      throw new McpToolError(MCP_ERROR.rate_limited, 'rate_limited', {
+        retryAfterSeconds: limit.retryAfterSeconds,
+      });
+    }
+
+    const startedAt = Date.now();
+    let outcome: 'ok' | 'error' = 'ok';
+    let code: number | undefined;
+    try {
+      return await handler(...args);
+    } catch (err) {
+      outcome = 'error';
+      if (err instanceof McpToolError) {
+        code = err.code;
+      }
+      throw err;
+    } finally {
+      const durationMs = Date.now() - startedAt;
+      logInvocation(
+        { traceId, sessionId, principalSub, tool, durationMs, outcome, code },
+        deps.logger,
+      );
+    }
+  };
+}
+
+function defaultPrincipalOf(extra: unknown): string {
+  if (typeof extra !== 'object' || extra === null) return '';
+  const authInfo = (extra as { authInfo?: { extra?: { principal?: Identity } } }).authInfo;
+  return authInfo?.extra?.principal?.sub ?? '';
+}
+
+function defaultSessionOf(extra: unknown): string {
+  if (typeof extra !== 'object' || extra === null) return '';
+  return (extra as { sessionId?: string }).sessionId ?? '';
+}
+
+export interface CreateMcpServerOptions {
+  limiter?: RateLimiter;
+  logger?: InvocationLogger;
+}
+
+export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
   const server = new McpServer({
     name: 'asr-registry',
     version: SERVER_VERSION,
   });
+  const deps: WrapToolHandlerDeps = {
+    limiter: opts.limiter ?? defaultLimiter,
+    logger: opts.logger ?? baseLogger,
+    principalOf: defaultPrincipalOf,
+    sessionOf: defaultSessionOf,
+  };
   // Eagerly initialise the tools/* request handlers so tools/list returns
   // an empty list before downstream tasks (asr-76e.x, asr-3hs.x) register
-  // real tools. Disabled tools are filtered out of the listing.
-  server.tool('_noop', () => ({ content: [] })).disable();
+  // real tools. Disabled tools are filtered out of the listing. Route through
+  // wrapToolHandler so every future tool inherits rate limiting + telemetry.
+  server
+    .tool('_noop', wrapToolHandler('_noop', () => ({ content: [] }), deps))
+    .disable();
   return server;
 }
 
