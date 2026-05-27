@@ -1,4 +1,6 @@
 import { Buffer } from 'node:buffer';
+import type Database from 'better-sqlite3';
+import { emitAudit } from './emit.js';
 
 export interface KeyRing {
   readonly activeId: string;
@@ -57,4 +59,35 @@ export function loadKeyRing(
       currentActiveId = id;
     },
   };
+}
+
+/**
+ * Rotate the audit HMAC key.
+ *
+ * Per specs/audit.md (HMAC Key Management): a `key.rotated` event is appended
+ * with both the old and new key ids, signed by the OLD key, then all new events
+ * use the new key. The whole sequence runs in a single db.transaction so the
+ * keyring mutation and the audit row land atomically.
+ */
+export function rotateKey(
+  db: Database.Database,
+  keys: KeyRing,
+  newId: string,
+  newBytes: Buffer,
+): void {
+  const oldKeyId = keys.activeId;
+  db.transaction(() => {
+    keys.addKey(newId, newBytes);
+    emitAudit(
+      db,
+      {
+        action: 'key.rotated',
+        actor: 'system',
+        actorType: 'system',
+        detail: { oldKeyId, newKeyId: newId },
+      },
+      keys,
+    );
+    keys.setActive(newId);
+  })();
 }
