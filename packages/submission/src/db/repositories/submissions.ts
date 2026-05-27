@@ -124,6 +124,35 @@ export function listSubmissionsBySubmitter(
     .all(submittedBy, limit) as SubmissionRow[];
 }
 
+export function listSubmissionsByStatusPhase(
+  db: Database.Database,
+  statusPhase: string,
+  limit = 50,
+): SubmissionRow[] {
+  return db
+    .prepare(
+      `
+        SELECT
+          id,
+          manifest_json,
+          classification,
+          content_hash,
+          submitted_at,
+          submitted_by,
+          branch_name,
+          pr_number,
+          status_phase,
+          status_json,
+          lock_version
+        FROM submissions
+        WHERE status_phase = ?
+        ORDER BY submitted_at ASC
+        LIMIT ?
+      `,
+    )
+    .all(statusPhase, limit) as SubmissionRow[];
+}
+
 export function rowToSubmission(row: SubmissionRow): Submission {
   const manifest = JSON.parse(row.manifest_json) as SkillManifest;
   const status = JSON.parse(row.status_json) as SubmissionStatus;

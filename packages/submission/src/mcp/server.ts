@@ -4,10 +4,12 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import type { Handler } from 'hono';
 import { randomUUID } from 'node:crypto';
 import type { Identity } from '../auth/types.js';
+import type { Database } from '../db/index.js';
 import { resolveMcpPrincipal } from './auth.js';
 import { MCP_ERROR, McpToolError, mcpError } from './errors.js';
 import { createRateLimiter, type RateLimiter } from './rateLimit.js';
 import { baseLogger, logInvocation, type InvocationLogger } from './telemetry.js';
+import { registerReviewQueue } from './tools/reviewQueue.js';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SERVER_VERSION = '0.1.0';
@@ -97,6 +99,7 @@ function defaultSessionOf(extra: unknown): string {
 export interface CreateMcpServerOptions {
   limiter?: RateLimiter;
   logger?: InvocationLogger;
+  db?: Database;
 }
 
 export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
@@ -117,6 +120,9 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
   server
     .tool('_noop', wrapToolHandler('_noop', () => ({ content: [] }), deps))
     .disable();
+  if (opts.db) {
+    registerReviewQueue(server, opts.db, deps);
+  }
   return server;
 }
 

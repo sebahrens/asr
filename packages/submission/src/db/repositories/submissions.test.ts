@@ -5,6 +5,7 @@ import { runMigrations } from '../migrations/index.js';
 import {
   getSubmissionById,
   insertSubmission,
+  listSubmissionsByStatusPhase,
   listSubmissionsBySubmitter,
   rowToSubmission,
   updateSubmissionStatus,
@@ -176,6 +177,75 @@ describe('submissions repository', () => {
     runMigrations(db);
 
     expect(listSubmissionsBySubmitter(db, 'ghost')).toEqual([]);
+  });
+
+  it('lists submissions matching a status_phase oldest-first', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    insertSubmission(db, {
+      id: 'cr-newer',
+      manifestJson: '{}',
+      classification: 'md-only',
+      contentHash: 'sha256:cr-newer',
+      submittedAt: '2026-05-24T12:00:00.000Z',
+      submittedBy: 'alice',
+      statusPhase: 'compliance-review',
+      statusJson: '{"phase":"compliance-review"}',
+    });
+    insertSubmission(db, {
+      id: 'cr-older',
+      manifestJson: '{}',
+      classification: 'md-only',
+      contentHash: 'sha256:cr-older',
+      submittedAt: '2026-05-24T10:00:00.000Z',
+      submittedBy: 'bob',
+      statusPhase: 'compliance-review',
+      statusJson: '{"phase":"compliance-review"}',
+    });
+    insertSubmission(db, {
+      id: 'scan',
+      manifestJson: '{}',
+      classification: 'md-only',
+      contentHash: 'sha256:scan',
+      submittedAt: '2026-05-24T11:00:00.000Z',
+      submittedBy: 'carol',
+      statusPhase: 'scanning',
+      statusJson: '{"phase":"scanning","scanJobId":"s1"}',
+    });
+
+    const rows = listSubmissionsByStatusPhase(db, 'compliance-review');
+    expect(rows.map((r) => r.id)).toEqual(['cr-older', 'cr-newer']);
+    expect(rows.every((r) => r.status_phase === 'compliance-review')).toBe(true);
+  });
+
+  it('respects the limit parameter when listing by status_phase', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    for (let i = 0; i < 3; i += 1) {
+      insertSubmission(db, {
+        id: `phase-${i}`,
+        manifestJson: '{}',
+        classification: 'md-only',
+        contentHash: `sha256:phase-${i}`,
+        submittedAt: `2026-05-24T1${i}:00:00.000Z`,
+        submittedBy: 'queue-user',
+        statusPhase: 'compliance-review',
+        statusJson: '{"phase":"compliance-review"}',
+      });
+    }
+
+    const rows = listSubmissionsByStatusPhase(db, 'compliance-review', 2);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.id)).toEqual(['phase-0', 'phase-1']);
+  });
+
+  it('returns an empty array when no submissions match the status_phase', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    expect(listSubmissionsByStatusPhase(db, 'compliance-review')).toEqual([]);
   });
 
   it('guards status updates with the expected lock version', () => {
