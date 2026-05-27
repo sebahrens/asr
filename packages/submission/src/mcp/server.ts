@@ -9,6 +9,10 @@ import { resolveMcpPrincipal } from './auth.js';
 import { MCP_ERROR, McpToolError, mcpError } from './errors.js';
 import { createRateLimiter, type RateLimiter } from './rateLimit.js';
 import { baseLogger, logInvocation, type InvocationLogger } from './telemetry.js';
+import {
+  registerReviewDecision,
+  type ReviewDecisionDeps,
+} from './tools/reviewDecision.js';
 import { registerReviewQueue } from './tools/reviewQueue.js';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
@@ -100,6 +104,7 @@ export interface CreateMcpServerOptions {
   limiter?: RateLimiter;
   logger?: InvocationLogger;
   db?: Database;
+  reviewDecisionDeps?: ReviewDecisionDeps;
 }
 
 export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
@@ -122,6 +127,9 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
     .disable();
   if (opts.db) {
     registerReviewQueue(server, opts.db, deps);
+    if (opts.reviewDecisionDeps) {
+      registerReviewDecision(server, opts.db, opts.reviewDecisionDeps, deps);
+    }
   }
   return server;
 }
