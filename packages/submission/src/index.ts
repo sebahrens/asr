@@ -11,6 +11,7 @@ import { healthRoutes } from './http/health.js';
 import { createRegistryRoutes, type RegistryRouteOptions } from './http/registry.js';
 import { createSubmissionRoutes, type SubmissionRouteOptions } from './http/submissions.js';
 import { createWorkflowRoutes, type WorkflowRouteOptions } from './http/workflow.js';
+import { createYankRoutes, type YankRouteOptions } from './http/yank.js';
 import { createMcpRoute, type McpRouteOptions } from './mcp/server.js';
 
 assertAuthModeAllowed();
@@ -23,6 +24,7 @@ export interface CreateAppOptions {
   workflow?: WorkflowRouteOptions;
   mcp?: McpRouteOptions;
   audit?: AuditRouteOptions;
+  yank?: YankRouteOptions;
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -37,6 +39,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.route('/api/v1/submissions', createSubmissionRoutes(options.submissions));
   app.route('/api/v1/submissions', createWorkflowRoutes(options.workflow));
   app.route('/submissions', createWorkflowRoutes(options.workflow));
+  app.route('/api/v1/skills', createYankRoutes(options.yank));
   app.route('/api/v1/audit', createAuditRoutes(options.audit));
 
   return app;
