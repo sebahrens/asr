@@ -12,6 +12,7 @@ import { registerLogin, registerLogout, registerWhoami } from './commands/auth.j
 import { registerSearch } from './commands/search.js';
 import { registerInfo } from './commands/info.js';
 import { registerVersions } from './commands/versions.js';
+import { registerPublish } from './commands/publish.js';
 import { getConfig, setConfig, getTargetDir } from './config.js';
 import { recordInstall, removeFromLock, getAllInstalled } from './lockfile.js';
 import { installSkill } from './install.js';
@@ -96,6 +97,7 @@ registerLogout(program);
 registerSearch(program);
 registerInfo(program);
 registerVersions(program);
+registerPublish(program);
 
 program
   .command('browse')
@@ -540,65 +542,6 @@ program
       spinner.succeed(`Synced ${skills.length} skills to ${pc.cyan(options.output)}`);
     } catch (err) {
       spinner.fail('Sync failed');
-      console.error(pc.red(String(err)));
-      process.exit(1);
-    }
-  });
-
-program
-  .command('publish <path>', { hidden: true })
-  .description('Publish a local skill to private registry')
-  .action(async (source) => {
-    const config = getConfig();
-    if (!config.registry) {
-      console.log(pc.yellow('No registry configured. Use: asr config set registry <url>'));
-      process.exit(1);
-    }
-    if (!config.token) {
-      console.log(pc.yellow('No token configured. Use: asr config set token <token>'));
-      process.exit(1);
-    }
-
-    const skillMdPath = source.endsWith('SKILL.md') ? source : join(source, 'SKILL.md');
-    const content = await readFile(skillMdPath, 'utf-8');
-    const pathParts = source.split('/');
-    const skillName = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
-    const meta = parseSkillMd(content);
-    const displayName = meta.name || skillName;
-
-    const confirmed = await confirm(`Publish "${displayName}" to registry?`);
-    if (!confirmed) {
-      console.log(pc.yellow('Cancelled.'));
-      process.exit(0);
-    }
-
-    const spinner = ora('Publishing skill...').start();
-    try {
-      spinner.text = 'Publishing to registry...';
-      const res = await fetch(`${config.registry}/api/admin/skills`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.token}`,
-        },
-        body: JSON.stringify({
-          owner: 'local',
-          repo: 'skills',
-          name: displayName,
-          description: meta.description,
-          tags: meta.tags,
-          content,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(`Registry error: ${err}`);
-      }
-
-      spinner.succeed(`Published ${pc.green(displayName)} to registry`);
-    } catch (err) {
-      spinner.fail('Publish failed');
       console.error(pc.red(String(err)));
       process.exit(1);
     }
