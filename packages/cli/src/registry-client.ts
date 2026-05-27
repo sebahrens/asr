@@ -96,3 +96,37 @@ export async function listVersions(
     fetchOptions
   );
 }
+
+export interface ResolvedDownload {
+  url: string;
+  yanked: boolean;
+}
+
+export async function resolveDownload(
+  owner: string,
+  name: string,
+  version: string,
+  fetchOptions: RegistryFetchOptions = {}
+): Promise<ResolvedDownload> {
+  const base = resolveBaseUrl();
+  const path = `/api/v1/skills/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/v/${encodeURIComponent(version)}/download`;
+  const url = `${base}${path}`;
+
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (fetchOptions.token) headers.Authorization = `Bearer ${fetchOptions.token}`;
+
+  const res = await fetch(url, { headers, redirect: 'manual' });
+
+  if (res.status < 300 || res.status >= 400) {
+    const body = await res.text().catch(() => '');
+    throw new RegistryError(res.status, body, `expected 3xx redirect, got ${res.status}`);
+  }
+
+  const location = res.headers.get('Location');
+  if (!location) {
+    throw new RegistryError(res.status, '', `redirect ${res.status} missing Location header`);
+  }
+
+  const yanked = res.headers.get('X-ASR-Yanked') === 'true';
+  return { url: location, yanked };
+}

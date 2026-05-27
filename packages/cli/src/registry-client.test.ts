@@ -4,6 +4,7 @@ import {
   getSkillDetail,
   listVersions,
   registryFetch,
+  resolveDownload,
   searchSkills,
 } from './registry-client.js';
 
@@ -166,6 +167,73 @@ describe('registry-client', () => {
       const [url] = fetchSpy.mock.calls[0];
       expect(url).toBe(`${BASE}/api/v1/skills/acme/code-review/versions`);
       expect(result).toEqual(versions);
+    });
+  });
+
+  describe('resolveDownload', () => {
+    it('returns Location and yanked=true from a 302 with X-ASR-Yanked', async () => {
+      const downloadUrl =
+        'https://forgejo.internal/api/packages/acme/generic/code-review/1.0.0/skill.zip';
+      fetchSpy.mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { Location: downloadUrl, 'X-ASR-Yanked': 'true' },
+        })
+      );
+
+      const result = await resolveDownload('acme', 'code-review', '1.0.0');
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchSpy.mock.calls[0];
+      expect(url).toBe(`${BASE}/api/v1/skills/acme/code-review/v/1.0.0/download`);
+      expect((init as RequestInit).redirect).toBe('manual');
+      expect(result).toEqual({ url: downloadUrl, yanked: true });
+    });
+
+    it('returns yanked=false when X-ASR-Yanked header is absent', async () => {
+      const downloadUrl =
+        'https://forgejo.internal/api/packages/acme/generic/code-review/1.0.0/skill.zip';
+      fetchSpy.mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { Location: downloadUrl },
+        })
+      );
+
+      const result = await resolveDownload('acme', 'code-review', '1.0.0');
+      expect(result).toEqual({ url: downloadUrl, yanked: false });
+    });
+
+    it('throws RegistryError if the 3xx response lacks a Location header', async () => {
+      fetchSpy.mockResolvedValueOnce(new Response(null, { status: 302 }));
+
+      await expect(resolveDownload('acme', 'code-review', '1.0.0')).rejects.toMatchObject({
+        name: 'RegistryError',
+        status: 302,
+      });
+    });
+
+    it('throws RegistryError on a non-3xx status', async () => {
+      fetchSpy.mockResolvedValueOnce(new Response('not found', { status: 404 }));
+
+      await expect(resolveDownload('acme', 'code-review', '1.0.0')).rejects.toMatchObject({
+        name: 'RegistryError',
+        status: 404,
+      });
+    });
+
+    it('encodes owner, name, and version path segments and attaches Bearer token', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: { Location: 'https://x/y' } })
+      );
+
+      await resolveDownload('acme/team', 'code review', '1.0.0+build.1', { token: 't0k' });
+
+      const [url, init] = fetchSpy.mock.calls[0];
+      expect(url).toBe(
+        `${BASE}/api/v1/skills/acme%2Fteam/code%20review/v/1.0.0%2Bbuild.1/download`
+      );
+      expect((init as RequestInit).headers).toMatchObject({ Authorization: 'Bearer t0k' });
     });
   });
 
