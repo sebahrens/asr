@@ -4,6 +4,7 @@ import { migration0002ScanResults } from './0002_scan_results.js';
 import { migration0003WorkflowLocks } from './0003_workflow_locks.js';
 import { migration0004AuditEvents } from './0004_audit_events.js';
 import { migration0005Versioning } from './0005_versioning.js';
+import { migration0006Principals } from './0006_principals.js';
 
 export interface Migration {
   id: number;
@@ -17,6 +18,7 @@ export const migrations: Migration[] = [
   migration0003WorkflowLocks,
   migration0004AuditEvents,
   migration0005Versioning,
+  migration0006Principals,
 ];
 
 export function runMigrations(db: Database.Database): void {
