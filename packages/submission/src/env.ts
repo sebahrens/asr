@@ -13,6 +13,8 @@ const envSchema = z
     FORGEJO_MARKETPLACE_OWNER: z.string().optional(),
     FORGEJO_MARKETPLACE_REPO: z.string().default('skill-marketplace'),
     DATABASE_PATH: z.string().optional(),
+    NOTIFY_TRANSPORT: z.enum(['memory', 'smtp', 'graph']).default('memory'),
+    PUBLIC_BASE_URL: z.string().url().optional(),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && env.AUTH_MODE === 'mock') {
