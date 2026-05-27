@@ -1,6 +1,7 @@
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import type { SkillDetail } from '@asr/core';
 import { agentSkillDir, detectAgents, type AgentTarget } from './agents.js';
 import { readBundleContents } from './bundle.js';
 import { downloadAndVerify } from './download.js';
@@ -46,6 +47,43 @@ function formatYankRefusal(
 ): string {
   const base = `Refusing to install ${owner}/${name}@${version}: version is yanked`;
   return reason ? `${base} (${reason})` : base;
+}
+
+export interface ResolveInstallTargetDeps {
+  fetchRegistry: (owner: string, name: string) => Promise<SkillDetail>;
+}
+
+export type ResolveInstallTargetResult =
+  | { ok: true; version: string }
+  | { ok: false; reason: string };
+
+export async function resolveInstallTarget(
+  deps: ResolveInstallTargetDeps,
+  owner: string,
+  name: string,
+  version?: string,
+): Promise<ResolveInstallTargetResult> {
+  const detail = await deps.fetchRegistry(owner, name);
+
+  if (version) {
+    const entry = detail.versions?.find((v) => v.version === version);
+    if (!entry) {
+      return { ok: false, reason: `version ${version} not found for ${owner}/${name}` };
+    }
+    if (entry.yanked) {
+      return {
+        ok: false,
+        reason: `version ${version} was yanked: ${entry.yankReason ?? 'withdrawn'}`,
+      };
+    }
+    return { ok: true, version };
+  }
+
+  const latest = detail.latestVersion;
+  if (!latest) {
+    return { ok: false, reason: `no non-yanked version available for ${owner}/${name}` };
+  }
+  return { ok: true, version: latest };
 }
 
 function buildPersonaContent(

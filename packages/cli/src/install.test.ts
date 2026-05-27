@@ -26,7 +26,9 @@ vi.mock('./bundle.js', () => ({
   readBundleContents: (...args: unknown[]) => readBundleContents(...args),
 }));
 
-const { installSkill, removeSkill, updateSkill } = await import('./install.js');
+const { installSkill, removeSkill, resolveInstallTarget, updateSkill } = await import(
+  './install.js'
+);
 
 function emptyBundle() {
   return { root: null, references: new Map() };
@@ -415,6 +417,75 @@ describe('installSkill', () => {
     await expect(
       readFile(join(tempDir, '.claude', 'skills', 'demo', 'SKILL.md'), 'utf-8'),
     ).rejects.toThrow();
+  });
+});
+
+describe('resolveInstallTarget', () => {
+  function makeDetail(overrides: Record<string, unknown> = {}): unknown {
+    return {
+      owner: 'acme',
+      name: 'x',
+      latestVersion: '1.1.0',
+      description: 'x',
+      tags: [],
+      kind: 'skill',
+      publishedAt: '2026-05-23T10:00:00Z',
+      downloadCount: 0,
+      riskAssessmentLatest: 'low',
+      manifestLatest: {},
+      versions: [
+        { version: '1.0.0', yanked: false },
+        { version: '1.1.0', yanked: false },
+        { version: '0.9.0', yanked: true, yankReason: 'leak' },
+      ],
+      ...overrides,
+    };
+  }
+
+  it('refuses an explicit yanked version with a reason matching /yanked/', async () => {
+    const fetchRegistry = vi.fn(async () => makeDetail()) as never;
+    const result = await resolveInstallTarget({ fetchRegistry }, 'acme', 'x', '0.9.0');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toMatch(/yanked/);
+      expect(result.reason).toContain('leak');
+    }
+  });
+
+  it('returns ok with latestVersion when no version is given', async () => {
+    const fetchRegistry = vi.fn(async () => makeDetail()) as never;
+    const result = await resolveInstallTarget({ fetchRegistry }, 'acme', 'x');
+    expect(result).toEqual({ ok: true, version: '1.1.0' });
+  });
+
+  it('returns ok with the requested non-yanked version', async () => {
+    const fetchRegistry = vi.fn(async () => makeDetail()) as never;
+    const result = await resolveInstallTarget({ fetchRegistry }, 'acme', 'x', '1.0.0');
+    expect(result).toEqual({ ok: true, version: '1.0.0' });
+  });
+
+  it('returns ok:false when explicit version is not found in detail.versions', async () => {
+    const fetchRegistry = vi.fn(async () => makeDetail()) as never;
+    const result = await resolveInstallTarget({ fetchRegistry }, 'acme', 'x', '9.9.9');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatch(/9\.9\.9 not found/);
+  });
+
+  it('falls back to "withdrawn" when yankReason is absent', async () => {
+    const detail = makeDetail({
+      versions: [{ version: '0.9.0', yanked: true }],
+    });
+    const fetchRegistry = vi.fn(async () => detail) as never;
+    const result = await resolveInstallTarget({ fetchRegistry }, 'acme', 'x', '0.9.0');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain('withdrawn');
+  });
+
+  it('returns ok:false when latestVersion is empty and no version is given', async () => {
+    const fetchRegistry = vi.fn(async () => makeDetail({ latestVersion: '' })) as never;
+    const result = await resolveInstallTarget({ fetchRegistry }, 'acme', 'x');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatch(/no non-yanked version/);
   });
 });
 
