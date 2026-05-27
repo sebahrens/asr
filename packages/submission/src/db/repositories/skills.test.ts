@@ -2,7 +2,11 @@ import type { SkillKind, SkillManifest } from '@asr/core';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../migrations/index.js';
-import { listPublishedSkills, getPublishedSkill } from './skills.js';
+import {
+  getPublishedSkill,
+  getPublishedSkillVersion,
+  listPublishedSkills,
+} from './skills.js';
 import { insertSubmission } from './submissions.js';
 
 describe('published skills repository', () => {
@@ -127,6 +131,51 @@ describe('published skills repository', () => {
     expect(listPublishedSkills(db).items).toEqual([]);
     expect(getPublishedSkill(db, 'acme', 'draft')).toBeUndefined();
   });
+
+  it('resolves a specific published version with its manifest', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    insertPublishedSubmission(db, {
+      id: 'submission-x-090',
+      version: '0.9.0',
+      submittedAt: '2026-05-22T10:00:00.000Z',
+      publishedAt: '2026-05-22T10:05:00.000Z',
+      contentHash: 'sha256:x-090',
+      yankedAt: '2026-05-22T11:00:00.000Z',
+      yankReason: 'security',
+    });
+    insertPublishedSubmission(db, {
+      id: 'submission-x-100',
+      version: '1.0.0',
+      submittedAt: '2026-05-23T10:00:00.000Z',
+      publishedAt: '2026-05-23T10:05:00.000Z',
+      contentHash: 'sha256:x-100',
+    });
+    insertPublishedSubmission(db, {
+      id: 'submission-x-110',
+      version: '1.1.0',
+      submittedAt: '2026-05-24T10:00:00.000Z',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+      contentHash: 'sha256:x-110',
+    });
+
+    const exact = getPublishedSkillVersion(db, 'acme', 'x', '1.0.0');
+    expect(exact?.manifest.version).toBe('1.0.0');
+    expect(exact?.skillVersion.contentHash).toBe('sha256:x-100');
+    expect(exact?.skillVersion.yanked).toBe(false);
+
+    const defaulted = getPublishedSkillVersion(db, 'acme', 'x');
+    expect(defaulted?.skillVersion.version).toBe('1.1.0');
+    expect(defaulted?.skillVersion.yanked).toBe(false);
+
+    const yanked = getPublishedSkillVersion(db, 'acme', 'x', '0.9.0');
+    expect(yanked?.skillVersion.yanked).toBe(true);
+    expect(yanked?.skillVersion.yankReason).toBe('security');
+
+    expect(getPublishedSkillVersion(db, 'acme', 'x', '9.9.9')).toBeUndefined();
+    expect(getPublishedSkillVersion(db, 'acme', 'missing')).toBeUndefined();
+  });
 });
 
 interface PublishedSubmissionFixture {
@@ -139,9 +188,19 @@ interface PublishedSubmissionFixture {
   submittedAt: string;
   publishedAt: string;
   contentHash?: string;
+  yankedAt?: string;
+  yankReason?: string;
 }
 
 function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubmissionFixture): void {
+  const status: Record<string, unknown> = {
+    phase: 'published',
+    publishedAt: fixture.publishedAt,
+    mergeCommit: `merge-${fixture.id}`,
+  };
+  if (fixture.yankedAt) status.yankedAt = fixture.yankedAt;
+  if (fixture.yankReason) status.yankReason = fixture.yankReason;
+
   insertSubmission(db, {
     id: fixture.id,
     manifestJson: JSON.stringify(
@@ -159,11 +218,7 @@ function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubm
     submittedBy: 'submitter@example.com',
     prNumber: 42,
     statusPhase: 'published',
-    statusJson: JSON.stringify({
-      phase: 'published',
-      publishedAt: fixture.publishedAt,
-      mergeCommit: `merge-${fixture.id}`,
-    }),
+    statusJson: JSON.stringify(status),
   });
 }
 

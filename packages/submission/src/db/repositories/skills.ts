@@ -78,6 +78,39 @@ export function getPublishedSkill(
     .at(0);
 }
 
+export interface PublishedSkillVersionRecord {
+  manifest: SkillManifest;
+  skillVersion: SkillVersion;
+}
+
+export function getPublishedSkillVersion(
+  db: Database.Database,
+  owner: string,
+  name: string,
+  version?: string,
+): PublishedSkillVersionRecord | undefined {
+  const group = groupPublishedSkills(readPublishedRows(db)).find(
+    (candidate) => candidate.owner === owner && candidate.name === name,
+  );
+  if (!group) {
+    return undefined;
+  }
+
+  const sortedVersions = sortVersions(group.versions);
+  const target =
+    version === undefined
+      ? sortedVersions.find((entry) => !entry.status.yankedAt)
+      : sortedVersions.find((entry) => entry.manifest.version === version);
+  if (!target) {
+    return undefined;
+  }
+
+  return {
+    manifest: target.manifest,
+    skillVersion: toSkillVersion(target),
+  };
+}
+
 function readPublishedRows(db: Database.Database): PublishedSubmissionRow[] {
   return db
     .prepare(
