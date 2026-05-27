@@ -27,6 +27,16 @@ function pickComposeCommand() {
   }
 }
 
+function assertDockerDaemon() {
+  try {
+    execSync('docker info', { stdio: 'ignore' });
+  } catch {
+    console.error('E2E smoke check SKIPPED: Docker daemon is not reachable.');
+    console.error('Start Docker Desktop (or your Docker engine) and re-run: pnpm test:e2e');
+    process.exit(1);
+  }
+}
+
 function run(cmd, options = {}) {
   execSync(cmd, { cwd: composeCwd, stdio: 'inherit', ...options });
 }
@@ -140,6 +150,7 @@ async function assertRegistryBrowse() {
 }
 
 const composeCmd = pickComposeCommand();
+assertDockerDaemon();
 
 console.log(`Starting dev stack via "${composeCmd}" in ${composeCwd}...`);
 run(`${composeCmd} down -v`);
