@@ -22,6 +22,7 @@ export const AUDIT_ACTIONS = [
   'key.rotated',
   'audit.anchored',
   'audit.verify.failed',
+  'marketplace_sync.failed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

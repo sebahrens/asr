@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer';
 import type { ForgejoClient, MarketplaceManifest, MarketplacePlugin, SkillKind, SkillManifest } from '@asr/core';
+import type { EmitAuditInput } from '../audit/emit.js';
 
 export interface MarketplaceSkillInput {
   name: string;
@@ -108,6 +109,47 @@ export async function syncMarketplaceRepo(
   await deps.client.mergePR(pr.prNumber);
 
   return { prNumber: pr.prNumber, merged: true };
+}
+
+export interface RunMarketplaceSyncDeps extends SyncMarketplaceRepoDeps {
+  emitAudit: (input: EmitAuditInput) => void;
+  pager: (skillName: string, error: unknown) => void;
+  now?: () => number;
+}
+
+const PAGE_INTERVAL_MS = 3_600_000;
+const lastPagedAt = new Map<string, number>();
+
+/** Visible for tests only. */
+export function __resetMarketplaceSyncPagerState(): void {
+  lastPagedAt.clear();
+}
+
+export async function runMarketplaceSync(
+  skillName: string,
+  deps: RunMarketplaceSyncDeps,
+): Promise<SyncMarketplaceRepoResult> {
+  try {
+    return await syncMarketplaceRepo(deps);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    deps.emitAudit({
+      action: 'marketplace_sync.failed',
+      skillName,
+      actor: 'system',
+      actorType: 'system',
+      detail: { skillName, error: message },
+    });
+
+    const now = deps.now?.() ?? Date.now();
+    const last = lastPagedAt.get(skillName);
+    if (last === undefined || now - last >= PAGE_INTERVAL_MS) {
+      lastPagedAt.set(skillName, now);
+      deps.pager(skillName, error);
+    }
+
+    throw error;
+  }
 }
 
 function marketplaceSyncManifest(skills: SkillRow[]): SkillManifest {

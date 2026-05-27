@@ -1,5 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
-import { buildMarketplaceFiles, syncMarketplaceRepo } from './marketplaceSync.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  __resetMarketplaceSyncPagerState,
+  buildMarketplaceFiles,
+  runMarketplaceSync,
+  syncMarketplaceRepo,
+} from './marketplaceSync.js';
 
 describe('buildMarketplaceFiles', () => {
   it('builds marketplace manifest and per-plugin files for published skills', () => {
@@ -141,5 +146,100 @@ describe('syncMarketplaceRepo', () => {
     );
     expect(mergePR).toHaveBeenCalledWith(17);
     expect(result).toEqual({ prNumber: 17, merged: true });
+  });
+});
+
+describe('runMarketplaceSync', () => {
+  beforeEach(() => {
+    __resetMarketplaceSyncPagerState();
+  });
+
+  it('emits marketplace_sync.failed on every failure but rate-limits the pager to once per hour per skill', async () => {
+    const emitAudit = vi.fn();
+    const pager = vi.fn();
+    const openSubmissionPR = vi.fn().mockRejectedValue(new Error('forgejo unavailable'));
+    const mergePR = vi.fn();
+
+    const now = vi.fn();
+    now.mockReturnValueOnce(1_000_000);
+    now.mockReturnValueOnce(1_000_000 + 60_000); // +60s — same hour
+
+    const deps = {
+      client: { openSubmissionPR, mergePR },
+      readPublishedSkills: async () => [
+        {
+          name: 'summarizer',
+          version: '1.0.0',
+          description: 'Summarizes documents',
+          kind: 'skill' as const,
+          skillMd: '# Summarizer\n',
+        },
+      ],
+      emitAudit,
+      pager,
+      now,
+    };
+
+    await expect(runMarketplaceSync('summarizer', deps)).rejects.toThrow('forgejo unavailable');
+    await expect(runMarketplaceSync('summarizer', deps)).rejects.toThrow('forgejo unavailable');
+
+    expect(emitAudit).toHaveBeenCalledTimes(2);
+    expect(emitAudit).toHaveBeenNthCalledWith(1, {
+      action: 'marketplace_sync.failed',
+      skillName: 'summarizer',
+      actor: 'system',
+      actorType: 'system',
+      detail: { skillName: 'summarizer', error: 'forgejo unavailable' },
+    });
+    expect(pager).toHaveBeenCalledTimes(1);
+    expect(pager).toHaveBeenCalledWith('summarizer', expect.any(Error));
+  });
+
+  it('pages again once the per-skill 1-hour window elapses', async () => {
+    const emitAudit = vi.fn();
+    const pager = vi.fn();
+    const openSubmissionPR = vi.fn().mockRejectedValue(new Error('boom'));
+    const mergePR = vi.fn();
+
+    const now = vi.fn();
+    now.mockReturnValueOnce(1_000_000);
+    now.mockReturnValueOnce(1_000_000 + 3_600_000); // exactly +1h
+
+    const deps = {
+      client: { openSubmissionPR, mergePR },
+      readPublishedSkills: async () => [],
+      emitAudit,
+      pager,
+      now,
+    };
+
+    await expect(runMarketplaceSync('flapper', deps)).rejects.toThrow('boom');
+    await expect(runMarketplaceSync('flapper', deps)).rejects.toThrow('boom');
+
+    expect(pager).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns the sync result and does not emit or page on success', async () => {
+    const emitAudit = vi.fn();
+    const pager = vi.fn();
+    const openSubmissionPR = vi.fn().mockResolvedValue({
+      branch: 'submit/marketplace-sync-ok',
+      prNumber: 42,
+      headSha: 'sha',
+    });
+    const mergePR = vi.fn().mockResolvedValue({ sha: 'merge-sha' });
+
+    const deps = {
+      client: { openSubmissionPR, mergePR },
+      readPublishedSkills: async () => [],
+      emitAudit,
+      pager,
+    };
+
+    const result = await runMarketplaceSync('summarizer', deps);
+
+    expect(result).toEqual({ prNumber: 42, merged: true });
+    expect(emitAudit).not.toHaveBeenCalled();
+    expect(pager).not.toHaveBeenCalled();
   });
 });
