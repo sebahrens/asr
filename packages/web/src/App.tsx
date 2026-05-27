@@ -2665,11 +2665,19 @@ function BrowseRegistry() {
     const order: Record<SkillSummary['riskAssessmentLatest'], number> = { low: 0, medium: 1, high: 2 };
     return order[a] - order[b];
   });
-  const filteredSkills = skills.filter((skill) => (
-    (activeTag === null || skill.tags.includes(activeTag))
-    && (activeKind === 'all' || skill.kind === activeKind)
-    && (activeRisk === 'all' || skill.riskAssessmentLatest === activeRisk)
-  ));
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredSkills = skills.filter((skill) => {
+    const matchesSearch = normalizedSearch === ''
+      || [skill.owner, skill.name, skill.description, ...skill.tags]
+        .some((value) => value.toLowerCase().includes(normalizedSearch));
+
+    return (
+      matchesSearch
+      && (activeTag === null || skill.tags.includes(activeTag))
+      && (activeKind === 'all' || skill.kind === activeKind)
+      && (activeRisk === 'all' || skill.riskAssessmentLatest === activeRisk)
+    );
+  });
   const totalStars = filteredSkills.reduce((a, s) => a + s.stars, 0);
 
   function applyTagFilter(tag: string) {

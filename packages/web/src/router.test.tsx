@@ -227,6 +227,24 @@ describe('router', () => {
     expect(within(card).getByText(/low risk/i)).toBeInTheDocument();
   });
 
+  it('filters browse cards by the search input client-side', async () => {
+    renderRoute('/');
+
+    expect(await screen.findByRole('link', { name: /open asr\/security-review details/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /open asr\/release-notes details/i })).toBeInTheDocument();
+
+    const searchInput = screen.getByPlaceholderText(/search agent skills/i);
+    fireEvent.change(searchInput, { target: { value: 'xyzzzzzzzzzzzzzz-impossible' } });
+
+    expect(screen.queryByRole('link', { name: /open asr\/security-review details/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /open asr\/release-notes details/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/no skills found/i)).toBeInTheDocument();
+
+    fireEvent.change(searchInput, { target: { value: 'security' } });
+    expect(screen.getByRole('link', { name: /open asr\/security-review details/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /open asr\/release-notes details/i })).not.toBeInTheDocument();
+  });
+
   it('filters browse cards by kind and risk chips', async () => {
     renderRoute('/');
 
