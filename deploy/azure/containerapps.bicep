@@ -16,6 +16,12 @@ param clientId string
 @description('Internal URL of the Forgejo Container App (e.g. https://forgejo.internal.<fqdn>).')
 param forgejoUrl string
 
+@description('Base URI of the Key Vault that holds api runtime secrets (e.g. https://asr-kv.vault.azure.net/).')
+param keyVaultUri string
+
+@description('Resource id of the user-assigned managed identity used to read Key Vault secrets.')
+param managedIdentityId string
+
 resource env 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
   name: envName
 }
@@ -23,6 +29,12 @@ resource env 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
 resource api 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'api'
   location: location
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${managedIdentityId}': {}
+    }
+  }
   properties: {
     managedEnvironmentId: env.id
     configuration: {
@@ -31,6 +43,23 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: 3001
         transport: 'auto'
       }
+      secrets: [
+        {
+          name: 'forgejo-upload-token'
+          keyVaultUrl: '${keyVaultUri}secrets/forgejo-upload-token'
+          identity: managedIdentityId
+        }
+        {
+          name: 'forgejo-merge-token'
+          keyVaultUrl: '${keyVaultUri}secrets/forgejo-merge-token'
+          identity: managedIdentityId
+        }
+        {
+          name: 'audit-hmac-key'
+          keyVaultUrl: '${keyVaultUri}secrets/audit-hmac-key'
+          identity: managedIdentityId
+        }
+      ]
     }
     template: {
       containers: [
@@ -65,6 +94,18 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'DATABASE_PATH'
               value: '/app/data/workflow.db'
+            }
+            {
+              name: 'FORGEJO_UPLOAD_TOKEN'
+              secretRef: 'forgejo-upload-token'
+            }
+            {
+              name: 'FORGEJO_MERGE_TOKEN'
+              secretRef: 'forgejo-merge-token'
+            }
+            {
+              name: 'AUDIT_HMAC_KEY_BYTES'
+              secretRef: 'audit-hmac-key'
             }
           ]
           volumeMounts: [
