@@ -123,6 +123,8 @@ async function runVeracode() {
     'sarif',
     '--output',
     sarifPath,
+    '--policy',
+    process.env.VERACODE_POLICY || 'default',
   ]);
 
   return {

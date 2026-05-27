@@ -42,6 +42,32 @@ test('passes against an empty clean directory', async () => {
   }
 });
 
+test('invokes veracode CLI with documented args when credentials are set', async () => {
+  const fixture = await createFixture();
+  try {
+    const recordPath = join(fixture.root, 'veracode-invocation.json');
+    await installRecordingVeracode(fixture.binDir, recordPath);
+
+    const result = await runOrchestrator(fixture, {
+      VERACODE_API_KEY_ID: 'test-id',
+      VERACODE_API_KEY_SECRET: 'test-secret',
+      VERACODE_POLICY: 'strict',
+    });
+
+    const invocation = JSON.parse(await readFile(recordPath, 'utf8'));
+    assert.equal(invocation.argv[0], 'static');
+    assert.equal(invocation.argv[1], 'scan');
+    assert.equal(invocation.argv[2], fixture.scanDir);
+    assert.ok(invocation.argv.includes('--format'));
+    assert.ok(invocation.argv.includes('sarif'));
+    assert.ok(invocation.argv.includes('--policy'));
+    assert.equal(invocation.argv[invocation.argv.indexOf('--policy') + 1], 'strict');
+    assert.equal(result.report.toolResults.veracode.skipped, undefined);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 async function createFixture() {
   const root = await mkdtemp(join(tmpdir(), 'asr-scan-'));
   const scanDir = join(root, 'scan');
@@ -56,7 +82,7 @@ async function createFixture() {
   return { root, scanDir, outputDir, binDir };
 }
 
-async function runOrchestrator(fixture) {
+async function runOrchestrator(fixture, extraEnv = {}) {
   try {
     const { stdout } = await exec(process.execPath, [orchestratorPath], {
       env: {
@@ -68,6 +94,7 @@ async function runOrchestrator(fixture) {
         CONTENT_HASH: 'sha256:test',
         SCANNER_IMAGE: 'asr-scanner:test',
         SCAN_SIGNING_KEY: 'test-key',
+        ...extraEnv,
       },
     });
     return { exitCode: 0, report: JSON.parse(stdout) };
@@ -117,6 +144,20 @@ import { writeFile } from 'node:fs/promises';
 
 const outputPath = process.argv[process.argv.indexOf('${outputFlag}') + 1];
 await writeFile(outputPath, JSON.stringify({ version: '2.1.0', runs: [{ tool: { driver: { name: 'mock' } }, results: [] }] }));
+`,
+  );
+}
+
+async function installRecordingVeracode(binDir, recordPath) {
+  await writeExecutable(
+    join(binDir, 'veracode'),
+    `#!/usr/bin/env node
+import { writeFile } from 'node:fs/promises';
+
+const argv = process.argv.slice(2);
+const outputPath = argv[argv.indexOf('--output') + 1];
+await writeFile(${JSON.stringify(recordPath)}, JSON.stringify({ argv }));
+await writeFile(outputPath, JSON.stringify({ version: '2.1.0', runs: [{ tool: { driver: { name: 'veracode' } }, results: [] }] }));
 `,
   );
 }
