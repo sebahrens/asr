@@ -347,6 +347,115 @@ describe('ForgejoClient', () => {
     expect(mergeRequest).toHaveBeenCalledTimes(2);
   });
 
+  it('commits a marker file to main via branch, PR, merge, and branch cleanup', async () => {
+    const client = new ForgejoClient(cfg);
+    const { upload, merge } = internals(client);
+    const uploadRequest = vi
+      .spyOn(upload, 'request')
+      .mockResolvedValueOnce({ data: { commit: { id: 'marker-branch-sha' } } } as never)
+      .mockResolvedValueOnce({ data: { commit: { sha: 'marker-put-sha' } } } as never)
+      .mockResolvedValueOnce({ data: { number: 99 } } as never)
+      .mockResolvedValueOnce({ data: { number: 99, mergeable: true } } as never);
+    const mergeRequest = vi
+      .spyOn(merge, 'request')
+      .mockResolvedValueOnce({ data: {} } as never)
+      .mockResolvedValueOnce({ data: { merge_commit_sha: 'marker-merge-sha' } } as never)
+      .mockResolvedValueOnce({ data: {} } as never);
+
+    await expect(
+      client.commitFileToMain({
+        owner: 'acme',
+        name: 'x',
+        path: 'skills/acme/x/YANKED.md',
+        content: Buffer.from('yanked'),
+        message: 'yank x@1.0.0',
+        idempotencyKey: 'yank-x-1.0.0',
+      }),
+    ).resolves.toEqual({ sha: 'marker-merge-sha' });
+
+    expect(uploadRequest).toHaveBeenNthCalledWith(1, 'POST /repos/{owner}/{repo}/branches', {
+      owner: 'asr',
+      repo: 'skills',
+      new_branch_name: 'marker/yank-x-1.0.0',
+      old_branch_name: 'main',
+    });
+    expect(uploadRequest).toHaveBeenNthCalledWith(2, 'PUT /repos/{owner}/{repo}/contents/{path}', {
+      owner: 'asr',
+      repo: 'skills',
+      path: 'skills/acme/x/YANKED.md',
+      message: 'submit: skills/acme/x/YANKED.md (yank-x-1.0.0)',
+      content: Buffer.from('yanked').toString('base64'),
+      branch: 'marker/yank-x-1.0.0',
+    });
+    expect(uploadRequest).toHaveBeenNthCalledWith(3, 'POST /repos/{owner}/{repo}/pulls', {
+      owner: 'asr',
+      repo: 'skills',
+      title: 'yank x@1.0.0',
+      head: 'marker/yank-x-1.0.0',
+      base: 'main',
+      body: ['yank x@1.0.0', 'Skill: acme/x', 'File: skills/acme/x/YANKED.md'].join('\n'),
+      labels: ['marker'],
+    });
+    expect(uploadRequest).toHaveBeenNthCalledWith(4, 'GET /repos/{owner}/{repo}/pulls/{index}', {
+      owner: 'asr',
+      repo: 'skills',
+      index: 99,
+    });
+    expect(mergeRequest).toHaveBeenNthCalledWith(
+      1,
+      'POST /repos/{owner}/{repo}/pulls/{index}/merge',
+      {
+        owner: 'asr',
+        repo: 'skills',
+        index: 99,
+        Do: 'squash',
+        merge_message_field: 'Approved and published (#99)',
+        delete_branch_after_merge: true,
+      },
+    );
+    expect(mergeRequest).toHaveBeenNthCalledWith(2, 'GET /repos/{owner}/{repo}/pulls/{index}', {
+      owner: 'asr',
+      repo: 'skills',
+      index: 99,
+    });
+    expect(mergeRequest).toHaveBeenNthCalledWith(
+      3,
+      'DELETE /repos/{owner}/{repo}/branches/{branch}',
+      {
+        owner: 'asr',
+        repo: 'skills',
+        branch: 'marker/yank-x-1.0.0',
+      },
+    );
+  });
+
+  it('tolerates idempotent retries of commitFileToMain (409 branch, 409 put, 405 merge)', async () => {
+    const client = new ForgejoClient(cfg);
+    const { upload, merge } = internals(client);
+    vi.spyOn(upload, 'request')
+      .mockRejectedValueOnce({ status: 409 })
+      .mockResolvedValueOnce({ data: { commit: { id: 'existing-branch-sha' } } } as never)
+      .mockRejectedValueOnce({ status: 409 })
+      .mockResolvedValueOnce({ data: { commit: { id: 'existing-put-sha' } } } as never)
+      .mockResolvedValueOnce({ data: { number: 100 } } as never)
+      .mockResolvedValueOnce({ data: { number: 100, mergeable: true } } as never);
+    vi.spyOn(merge, 'request')
+      .mockRejectedValueOnce({ status: 405 })
+      .mockResolvedValueOnce({ data: { merge_commit_sha: 'retry-merge-sha' } } as never)
+      .mockRejectedValueOnce({ status: 404 });
+
+    await expect(
+      client.commitFileToMain({
+        owner: 'acme',
+        name: 'x',
+        path: 'skills/acme/x/YANKED.md',
+        content: Buffer.from('yanked'),
+        message: 'yank x@1.0.0',
+        idempotencyKey: 'yank-x-1.0.0',
+      }),
+    ).resolves.toEqual({ sha: 'retry-merge-sha' });
+  });
+
   it('deletes branches with the merge token client and tolerates missing branches', async () => {
     const client = new ForgejoClient(cfg);
     const { upload, merge } = internals(client);

@@ -201,6 +201,40 @@ export class ForgejoClient {
     return { sha: data.merge_commit_sha };
   }
 
+  async commitFileToMain(input: {
+    owner: string;
+    name: string;
+    path: string;
+    content: Buffer;
+    message: string;
+    idempotencyKey: string;
+  }): Promise<{ sha: string }> {
+    const { owner, repo } = this.cfg;
+    const branch = `marker/${input.idempotencyKey}`;
+
+    await this.createOrGetBranch(branch);
+    await this.putFile(branch, input.path, input.content, input.idempotencyKey);
+
+    const { data } = await this.upload.request('POST /repos/{owner}/{repo}/pulls', {
+      owner,
+      repo,
+      title: input.message,
+      head: branch,
+      base: this.cfg.defaultBranch ?? 'main',
+      body: [input.message, `Skill: ${input.owner}/${input.name}`, `File: ${input.path}`].join(
+        '\n',
+      ),
+      labels: ['marker'],
+    });
+    const pr = forgejoPull(data);
+
+    await this.waitMergeable(pr.number);
+    const { sha } = await this.mergePR(pr.number);
+    await this.deleteBranch(branch);
+
+    return { sha };
+  }
+
   async deleteBranch(branch: string): Promise<void> {
     const { owner, repo } = this.cfg;
 
