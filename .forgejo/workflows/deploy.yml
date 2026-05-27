@@ -20,3 +20,15 @@ jobs:
             --password "$(jq -r .clientSecret /tmp/sp.json)" \
             --tenant   "$(jq -r .tenantId   /tmp/sp.json)"
           shred -u /tmp/sp.json
+      - name: Build images in ACR
+        run: |
+          set -euo pipefail
+          GIT_SHA=$(git rev-parse --short HEAD)
+          az acr build --registry "$ACR" --image "asr-api:$GIT_SHA" ./deploy/docker/api
+          az acr build --registry "$ACR" --image "asr-web:$GIT_SHA" ./packages/web
+      - name: Roll Container Apps
+        run: |
+          set -euo pipefail
+          GIT_SHA=$(git rev-parse --short HEAD)
+          az containerapp update --name api --resource-group "$RG" --image "$ACR.azurecr.io/asr-api:$GIT_SHA"
+          az containerapp update --name web --resource-group "$RG" --image "$ACR.azurecr.io/asr-web:$GIT_SHA"
