@@ -21,6 +21,33 @@ export function findSubmissionIdByContentHash(
   return row?.id;
 }
 
+export function insertBlockedHash(
+  db: Database.Database,
+  row: BlockedHashRow,
+): void {
+  db.prepare(
+    `
+      INSERT INTO blocked_hashes (
+        content_hash,
+        skill_name,
+        version,
+        blocked_at,
+        blocked_by,
+        reason,
+        source
+      ) VALUES (
+        @content_hash,
+        @skill_name,
+        @version,
+        @blocked_at,
+        @blocked_by,
+        @reason,
+        @source
+      )
+    `,
+  ).run(row);
+}
+
 export function getBlockedHash(
   db: Database.Database,
   contentHash: string,

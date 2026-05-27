@@ -112,6 +112,25 @@ export function listVersions(
     .all(skillName) as SkillVersionRow[];
 }
 
+export function markVersionYanked(
+  db: Database.Database,
+  skillName: string,
+  version: string,
+  input: { yankedAt: string; yankedBy: string; reason: string },
+): boolean {
+  const info = db
+    .prepare(
+      `
+        UPDATE skill_versions
+        SET yanked_at = ?, yanked_by = ?, yank_reason = ?
+        WHERE skill_name = ? AND version = ? AND yanked_at IS NULL
+      `,
+    )
+    .run(input.yankedAt, input.yankedBy, input.reason, skillName, version);
+
+  return info.changes === 1;
+}
+
 export function resolveLatestVersion(
   db: Database.Database,
   skillName: string,

@@ -4,6 +4,7 @@ import { runMigrations } from '../migrations/index.js';
 import {
   findSubmissionIdByContentHash,
   getBlockedHash,
+  insertBlockedHash,
   type BlockedHashRow,
 } from './versions.js';
 
@@ -114,6 +115,48 @@ describe('versions repository', () => {
       runMigrations(db);
 
       expect(getBlockedHash(db, 'unknown')).toBeUndefined();
+    });
+  });
+
+  describe('insertBlockedHash', () => {
+    it('persists a yanked-source row and is readable via getBlockedHash', () => {
+      db = new Database(':memory:');
+      runMigrations(db);
+
+      const row: BlockedHashRow = {
+        content_hash: 'sha256:ab',
+        skill_name: 'acme/x',
+        version: '1.0.0',
+        blocked_at: '2026-05-24T00:00:00.000Z',
+        blocked_by: 'compliance@example.com',
+        reason: 'leak',
+        source: 'yanked',
+      };
+
+      insertBlockedHash(db, row);
+
+      const fetched = getBlockedHash(db, 'sha256:ab');
+      expect(fetched).toEqual(row);
+      expect(fetched?.source).toBe('yanked');
+    });
+
+    it('throws on duplicate content_hash insert', () => {
+      db = new Database(':memory:');
+      runMigrations(db);
+
+      const row: BlockedHashRow = {
+        content_hash: 'sha256:dup',
+        skill_name: 'acme/x',
+        version: '1.0.0',
+        blocked_at: '2026-05-24T00:00:00.000Z',
+        blocked_by: 'compliance@example.com',
+        reason: 'leak',
+        source: 'yanked',
+      };
+
+      insertBlockedHash(db, row);
+
+      expect(() => insertBlockedHash(db!, row)).toThrow();
     });
   });
 });

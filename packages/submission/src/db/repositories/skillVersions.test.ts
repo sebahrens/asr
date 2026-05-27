@@ -5,6 +5,7 @@ import {
   getSkillVersion,
   insertSkillVersion,
   listVersions,
+  markVersionYanked,
   resolveLatestVersion,
   type SkillVersionRow,
 } from './skillVersions.js';
@@ -103,6 +104,67 @@ describe('skillVersions repository', () => {
         sampleRow({ content_hash: 'sha256:other', merge_commit: 'merge-sha-2' }),
       );
     }).toThrow();
+  });
+
+  describe('markVersionYanked', () => {
+    it('sets yanked_at/by/reason and returns true on a live row', () => {
+      db = new Database(':memory:');
+      runMigrations(db);
+      insertSubmissionRow(db, SUBMISSION_ID);
+      insertSkillVersion(db, sampleRow());
+
+      const result = markVersionYanked(db, 'acme/x', '1.0.0', {
+        yankedAt: '2026-01-01T00:00:00.000Z',
+        yankedBy: 'compliance@example.com',
+        reason: 'leak',
+      });
+
+      expect(result).toBe(true);
+
+      const fetched = getSkillVersion(db, 'acme/x', '1.0.0');
+      expect(fetched?.yanked_at).toBe('2026-01-01T00:00:00.000Z');
+      expect(fetched?.yanked_by).toBe('compliance@example.com');
+      expect(fetched?.yank_reason).toBe('leak');
+    });
+
+    it('returns false when the version is already yanked (idempotent)', () => {
+      db = new Database(':memory:');
+      runMigrations(db);
+      insertSubmissionRow(db, SUBMISSION_ID);
+      insertSkillVersion(db, sampleRow());
+
+      const first = markVersionYanked(db, 'acme/x', '1.0.0', {
+        yankedAt: '2026-01-01T00:00:00.000Z',
+        yankedBy: 'compliance@example.com',
+        reason: 'leak',
+      });
+      const second = markVersionYanked(db, 'acme/x', '1.0.0', {
+        yankedAt: '2026-02-01T00:00:00.000Z',
+        yankedBy: 'other@example.com',
+        reason: 'duplicate',
+      });
+
+      expect(first).toBe(true);
+      expect(second).toBe(false);
+
+      const fetched = getSkillVersion(db, 'acme/x', '1.0.0');
+      expect(fetched?.yanked_at).toBe('2026-01-01T00:00:00.000Z');
+      expect(fetched?.yanked_by).toBe('compliance@example.com');
+      expect(fetched?.yank_reason).toBe('leak');
+    });
+
+    it('returns false for an unknown (skill_name, version)', () => {
+      db = new Database(':memory:');
+      runMigrations(db);
+
+      const result = markVersionYanked(db, 'missing/skill', '1.0.0', {
+        yankedAt: '2026-01-01T00:00:00.000Z',
+        yankedBy: 'compliance@example.com',
+        reason: 'leak',
+      });
+
+      expect(result).toBe(false);
+    });
   });
 
   describe('listVersions / resolveLatestVersion', () => {
