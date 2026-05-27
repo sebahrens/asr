@@ -1,0 +1,39 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable && pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Compute SHA-256
+        run: |
+          cd packages/cli/dist
+          sha256sum asr.mjs > asr.mjs.sha256
+      - name: Create release via Forgejo API
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_RELEASE_TOKEN }}
+          FORGEJO_URL:   ${{ secrets.FORGEJO_URL }}
+          REPO:          ${{ secrets.RELEASE_REPO }}
+        run: |
+          set -euo pipefail
+          TAG=${GITHUB_REF#refs/tags/}
+          RID=$(curl -fsS -X POST \
+            -H "Authorization: token $FORGEJO_TOKEN" \
+            -H "Content-Type: application/json" \
+            "$FORGEJO_URL/api/v1/repos/$REPO/releases" \
+            -d "{\"tag_name\":\"$TAG\",\"name\":\"$TAG\"}" \
+            | jq -r .id)
+          for f in packages/cli/dist/asr.mjs packages/cli/dist/asr.mjs.sha256 scripts/install.sh scripts/install.ps1; do
+            curl -fsS -X POST \
+              -H "Authorization: token $FORGEJO_TOKEN" \
+              -F "attachment=@$f;filename=$(basename $f)" \
+              "$FORGEJO_URL/api/v1/repos/$REPO/releases/$RID/assets"
+          done
