@@ -13,6 +13,8 @@ export type ApiError =
   | 'version_in_progress'
   | 'version_yanked'
   | 'version_downgrade'
+  | 'version_not_greater'
+  | 'invalid_version'
   | 'invalid_zip'
   | 'invalid_manifest'
   | 'content_blocked'

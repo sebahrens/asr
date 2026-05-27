@@ -44,7 +44,7 @@ describe('POST /api/v1/submissions per-version soft lock', () => {
     expect(pendingRow).toBeUndefined();
   });
 
-  it('returns 409 version_in_progress when a second submission targets the same name@version', async () => {
+  it('rejects a second submission that targets an already-published name@version with 409', async () => {
     db = new Database(':memory:');
     runMigrations(db);
 
@@ -85,11 +85,12 @@ describe('POST /api/v1/submissions per-version soft lock', () => {
     expect(secondRes.status).toBe(409);
     const body = (await secondRes.json()) as {
       error: string;
-      details?: { name?: string; version?: string };
+      details?: { name?: string; version?: string; next?: string; current?: string };
     };
-    expect(body.error).toBe('version_in_progress');
+    // The first submission published demo@1.0.0; resubmitting the same version is now caught
+    // by the update-flow version-greater check (asr-ak7.3) before the per-version soft lock.
+    expect(body.error).toBe('version_not_greater');
     expect(body.details?.name).toBe('demo');
-    expect(body.details?.version).toBe('1.0.0');
 
     const submissionCount = db
       .prepare('SELECT COUNT(*) as c FROM submissions')

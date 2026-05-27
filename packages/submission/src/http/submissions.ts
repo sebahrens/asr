@@ -1,9 +1,15 @@
 import {
   canonicalHash,
+  computeVersionDiff,
   parseSkillManifest,
+  selectApprovalPath,
+  validateVersionUpgrade,
+  type ApprovalPath,
   type ForgejoClient,
+  type SkillManifest,
   type Submission,
   type SubmissionStatus,
+  type VersionSnapshot,
 } from '@asr/core';
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
@@ -13,11 +19,16 @@ import { join } from 'node:path';
 import { ulid } from 'ulid';
 import type { AuthVariables } from '../auth/types.js';
 import {
+  getSkillVersion,
+  resolveLatestVersion,
+} from '../db/repositories/skillVersions.js';
+import {
   getSubmissionById,
   insertSubmission,
   rowToSubmission,
   type SubmissionInsertRow,
 } from '../db/repositories/submissions.js';
+import { insertVersionDiff } from '../db/repositories/versionDiffs.js';
 import { findSubmissionIdByContentHash, getBlockedHash } from '../db/repositories/versions.js';
 import { forgejoFromEnv } from '../forgejo/index.js';
 import {
@@ -33,6 +44,10 @@ export type SubmissionPersist = (row: SubmissionInsertRow) => void | Promise<voi
 export type SubmissionLookup = (
   id: string,
 ) => Submission | undefined | Promise<Submission | undefined>;
+export type GetPriorFiles = (
+  skillName: string,
+  version: string,
+) => Promise<Array<{ path: string; content: Buffer }> | null | undefined>;
 
 export interface SubmissionRouteOptions {
   db?: Database.Database;
@@ -41,6 +56,7 @@ export interface SubmissionRouteOptions {
   now?: () => Date;
   generateId?: () => string;
   forgejo?: ForgejoClient;
+  getPriorFiles?: GetPriorFiles;
 }
 
 interface UploadedFile {
@@ -140,6 +156,10 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
       const contentHash = canonicalHash(fileEntries);
 
       const db = options.db;
+      let currentVersion: string | undefined;
+      let versionDiff: ReturnType<typeof computeVersionDiff> | undefined;
+      let approvalPath: ApprovalPath | undefined;
+
       if (db) {
         const blocked = getBlockedHash(db, contentHash);
         if (blocked) {
@@ -153,12 +173,47 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
             details: { reason: 'duplicate_content', existingSubmissionId },
           });
         }
+
+        currentVersion = resolveLatestVersion(db, manifest.name);
+
+        if (currentVersion !== undefined) {
+          const upgrade = validateVersionUpgrade(manifest.version, currentVersion);
+          if (!upgrade.ok) {
+            const apiCode =
+              upgrade.error === 'invalid_format' ? 'invalid_version' : 'version_not_greater';
+            return apiError(c, 409, apiCode, {
+              details: {
+                name: manifest.name,
+                next: manifest.version,
+                current: currentVersion,
+              },
+            });
+          }
+
+          const priorSnapshot = await buildPriorSnapshot(
+            db,
+            manifest.name,
+            currentVersion,
+            options.getPriorFiles,
+          );
+          const incomingSnapshot: VersionSnapshot = {
+            version: manifest.version,
+            contentHash,
+            files: filesAsRecord(fileEntries),
+            manifest,
+          };
+          versionDiff = computeVersionDiff(priorSnapshot, incomingSnapshot);
+          approvalPath = selectApprovalPath(versionDiff);
+        }
       }
 
       const id = generateId();
       const createdAt = now().toISOString();
       const status: SubmissionStatus = { phase: 'uploaded' };
       const submittedBy = c.get('identity')?.sub ?? process.env.MOCK_USER_SUB ?? '';
+
+      const statusJsonPayload =
+        approvalPath !== undefined ? { ...status, approvalPath } : status;
 
       const insertRow: SubmissionInsertRow = {
         id,
@@ -168,13 +223,16 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
         submittedAt: createdAt,
         submittedBy,
         statusPhase: status.phase,
-        statusJson: JSON.stringify(status),
+        statusJson: JSON.stringify(statusJsonPayload),
       };
 
       if (db) {
         try {
           db.transaction(() => {
             insertSubmission(db, insertRow);
+            if (versionDiff !== undefined) {
+              insertVersionDiff(db, id, versionDiff);
+            }
             if (!acquirePendingVersion(db, manifest.name, manifest.version, id)) {
               throw new PendingVersionContentionError();
             }
@@ -201,7 +259,9 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
         status,
       };
 
-      if (classification === 'md-only' && db) {
+      const isFirstPublish = currentVersion === undefined;
+
+      if (isFirstPublish && classification === 'md-only' && db) {
         try {
           const forgejo = options.forgejo ?? forgejoFromEnv();
           const result = await publishMdOnly(
@@ -221,10 +281,15 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
         }
       }
 
+      const responseStatus =
+        approvalPath !== undefined && submission.status.phase === 'uploaded'
+          ? { ...submission.status, approvalPath }
+          : submission.status;
+
       return c.json(
         {
           id: submission.id,
-          status: submission.status,
+          status: responseStatus,
           manifest: submission.manifest,
           contentHash: submission.contentHash,
           createdAt,
@@ -237,6 +302,49 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
   });
 
   return routes;
+}
+
+function filesAsRecord(
+  entries: Array<{ path: string; content: Buffer }>,
+): Record<string, string> {
+  const record: Record<string, string> = {};
+  for (const entry of entries) {
+    record[entry.path] = entry.content.toString('base64');
+  }
+  return record;
+}
+
+async function buildPriorSnapshot(
+  db: Database.Database,
+  skillName: string,
+  currentVersion: string,
+  getPriorFiles: GetPriorFiles | undefined,
+): Promise<VersionSnapshot | null> {
+  const versionRow = getSkillVersion(db, skillName, currentVersion);
+  if (versionRow === undefined) {
+    return null;
+  }
+
+  const submissionRow = getSubmissionById(db, versionRow.submission_id);
+  if (submissionRow === undefined) {
+    return null;
+  }
+
+  let priorManifest: SkillManifest;
+  try {
+    priorManifest = JSON.parse(submissionRow.manifest_json) as SkillManifest;
+  } catch {
+    return null;
+  }
+
+  const priorFiles = getPriorFiles ? await getPriorFiles(skillName, currentVersion) : null;
+
+  return {
+    version: versionRow.version,
+    contentHash: versionRow.content_hash,
+    files: priorFiles ? filesAsRecord(priorFiles) : {},
+    manifest: priorManifest,
+  };
 }
 
 export const submissionRoutes = createSubmissionRoutes();
