@@ -181,28 +181,42 @@ test.describe('Canonical Defect Category Verification', () => {
     await page.goto(`${BASE_URL}/`);
     await page.waitForLoadState('networkidle');
 
-    // Get header bounding box before scroll
-    const header = page.locator('header, [class*="header"]').first();
-    const headerBefore = await header.boundingBox();
+    const header = page.locator('header').first();
+    await expect(header).toBeVisible();
 
-    // Scroll down
+    // The contract for "header doesn't overlap content" with a sticky header is:
+    //  (a) the header is sticky/fixed and pinned to the top of the viewport, and
+    //  (b) the header has an opaque background so content scrolling underneath it
+    //      is visually occluded rather than bleeding through.
+    // Asserting that <main>.y stays below the header is wrong: <main> is in the
+    // normal document flow and naturally scrolls off-screen on a long page.
+    const headerStyles = await header.evaluate((el) => {
+      const style = window.getComputedStyle(el as HTMLElement);
+      return {
+        position: style.position,
+        top: style.top,
+        backgroundColor: style.backgroundColor,
+        zIndex: style.zIndex,
+      };
+    });
+
+    expect(['sticky', 'fixed']).toContain(headerStyles.position);
+    expect(headerStyles.top).toBe('0px');
+    expect(headerStyles.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+    expect(headerStyles.backgroundColor).not.toBe('transparent');
+    expect(Number.parseInt(headerStyles.zIndex, 10)).toBeGreaterThanOrEqual(1);
+
     await page.evaluate(() => window.scrollBy(0, 300));
     await page.waitForTimeout(200);
 
-    // Header should still be visible and not overlap main content
     const headerAfter = await header.boundingBox();
-    const mainContent = page.locator('main').first();
-    const mainBoundingBox = await mainContent.boundingBox();
-
-    if (headerBefore && headerAfter && mainBoundingBox) {
-      // Header should remain at top or fixed position
-      expect(headerAfter.y).toBeLessThanOrEqual(50); // Allow small variance
-
-      // Main content should start below header
-      expect(mainBoundingBox.y).toBeGreaterThan(headerAfter.y + headerAfter.height);
+    if (headerAfter) {
+      // Header stays pinned to the top of the viewport after scroll.
+      expect(headerAfter.y).toBeGreaterThanOrEqual(-5);
+      expect(headerAfter.y).toBeLessThanOrEqual(5);
     }
 
-    console.log('✅ defect:sticky-header - PASS (no overlap after scroll)');
+    console.log('✅ defect:sticky-header - PASS (header pinned, opaque, layered)');
   });
 
   test('defect:install-snippet - correct asr install command format', async ({ page }) => {
