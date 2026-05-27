@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SessionContext } from '../auth/SessionProvider';
 import { ReviewDetail } from './ReviewDetail';
 
 const submission: Submission = {
@@ -73,11 +74,13 @@ function renderRoute(id: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[`/review/${id}`]}>
-        <Routes>
-          <Route path="/review/:id" element={<ReviewDetail />} />
-        </Routes>
-      </MemoryRouter>
+      <SessionContext.Provider value={{ sub: 'reviewer', name: 'Reviewer', roles: ['Compliance'] }}>
+        <MemoryRouter initialEntries={[`/review/${id}`]}>
+          <Routes>
+            <Route path="/review/:id" element={<ReviewDetail />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionContext.Provider>
     </QueryClientProvider>,
   );
 }
@@ -126,5 +129,10 @@ describe('ReviewDetail', () => {
     const scanPanel = screen.getByRole('tabpanel', { name: /scan/i });
     expect(scanPanel).toHaveTextContent(/high-severity issue found/i);
     expect(scanPanel).toHaveTextContent(/high/i);
+
+    // Sticky decision panel is mounted with Approve + Reject controls
+    const decisionSlot = screen.getByRole('complementary', { name: /decision panel/i });
+    expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^approve$/i }));
+    expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^reject$/i }));
   });
 });

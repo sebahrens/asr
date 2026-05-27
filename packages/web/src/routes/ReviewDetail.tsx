@@ -2,6 +2,7 @@ import type { ScanReport, Submission, VersionDiff } from '@asr/core';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { DecisionPanel } from './DecisionPanel';
 
 type TabId = 'diff' | 'scan';
 
@@ -117,7 +118,9 @@ export function ReviewDetail() {
         </section>
       )}
 
-      <aside className="review-detail-decision-slot" aria-label="Decision panel" />
+      <aside className="review-detail-decision-slot" aria-label="Decision panel">
+        <DecisionPanel submission={submission} risk={diff.riskAssessment} />
+      </aside>
     </main>
   );
 }
