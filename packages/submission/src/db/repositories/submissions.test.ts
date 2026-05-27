@@ -5,6 +5,7 @@ import { runMigrations } from '../migrations/index.js';
 import {
   getSubmissionById,
   insertSubmission,
+  listSubmissionsBySubmitter,
   rowToSubmission,
   updateSubmissionStatus,
 } from './submissions.js';
@@ -103,6 +104,78 @@ describe('submissions repository', () => {
     runMigrations(db);
 
     expect(getSubmissionById(db, 'missing-id')).toBeUndefined();
+  });
+
+  it('lists only own submissions newest-first when filtering by submitted_by', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    insertSubmission(db, {
+      id: 'submission-userA-older',
+      manifestJson: '{}',
+      classification: 'md-only',
+      contentHash: 'sha256:a-older',
+      submittedAt: '2026-05-24T09:00:00.000Z',
+      submittedBy: 'userA',
+      statusPhase: 'submitted',
+      statusJson: '{"phase":"submitted"}',
+    });
+    insertSubmission(db, {
+      id: 'submission-userA-newer',
+      manifestJson: '{}',
+      classification: 'md-only',
+      contentHash: 'sha256:a-newer',
+      submittedAt: '2026-05-24T11:00:00.000Z',
+      submittedBy: 'userA',
+      statusPhase: 'submitted',
+      statusJson: '{"phase":"submitted"}',
+    });
+    insertSubmission(db, {
+      id: 'submission-userB',
+      manifestJson: '{}',
+      classification: 'md-only',
+      contentHash: 'sha256:b',
+      submittedAt: '2026-05-24T10:00:00.000Z',
+      submittedBy: 'userB',
+      statusPhase: 'submitted',
+      statusJson: '{"phase":"submitted"}',
+    });
+
+    const rows = listSubmissionsBySubmitter(db, 'userA');
+    expect(rows.map((r) => r.id)).toEqual([
+      'submission-userA-newer',
+      'submission-userA-older',
+    ]);
+    expect(rows.every((r) => r.submitted_by === 'userA')).toBe(true);
+  });
+
+  it('respects the limit parameter when listing by submitter', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    for (let i = 0; i < 3; i += 1) {
+      insertSubmission(db, {
+        id: `submission-${i}`,
+        manifestJson: '{}',
+        classification: 'md-only',
+        contentHash: `sha256:${i}`,
+        submittedAt: `2026-05-24T1${i}:00:00.000Z`,
+        submittedBy: 'userA',
+        statusPhase: 'submitted',
+        statusJson: '{"phase":"submitted"}',
+      });
+    }
+
+    const rows = listSubmissionsBySubmitter(db, 'userA', 2);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.id)).toEqual(['submission-2', 'submission-1']);
+  });
+
+  it('returns an empty array when no submissions match the submitter', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    expect(listSubmissionsBySubmitter(db, 'ghost')).toEqual([]);
   });
 
   it('guards status updates with the expected lock version', () => {
