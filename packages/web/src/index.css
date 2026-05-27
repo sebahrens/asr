@@ -1615,6 +1615,127 @@ main {
   padding: 22px;
 }
 
+.review-queue {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+  display: grid;
+  gap: 24px;
+}
+
+.review-queue-header {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  padding: 24px;
+}
+
+.review-queue-header h1 {
+  font-size: 1.6rem;
+  line-height: 1.2;
+  margin-bottom: 6px;
+}
+
+.review-queue-header p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.review-queue-table {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+}
+
+.review-queue-table thead th {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+  padding: 14px 24px;
+}
+
+.review-queue-table tbody th,
+.review-queue-table tbody td {
+  border-bottom: 1px solid var(--border-light);
+  font-size: 0.92rem;
+  font-weight: 500;
+  padding: 16px 24px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.review-queue-table tbody tr:last-child th,
+.review-queue-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.review-queue-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.review-queue-table tbody th a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.review-queue-table tbody th a:hover,
+.review-queue-table tbody th a:focus-visible {
+  text-decoration: underline;
+}
+
+.review-queue-skeleton {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 20px 24px;
+}
+
+.review-queue-skeleton-row {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  height: 18px;
+}
+
+.review-queue-skeleton-row::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.74), transparent);
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.review-queue-error {
+  background: #ffe9e9;
+  border: 1px solid #f4b4b4;
+  border-radius: 8px;
+  color: #8f1f16;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0;
+  padding: 16px 24px;
+}
+
 .submission-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
