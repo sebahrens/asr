@@ -331,6 +331,20 @@ describe('router', () => {
     expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
   });
 
+  it('marks every required upload-step field with aria-required and a visible indicator', () => {
+    renderRoute('/publish');
+
+    const ownerField = screen.getByLabelText(/registry owner/i);
+    const archiveField = screen.getByLabelText(/skill archive/i);
+    const skillMdField = screen.getByLabelText(/skill\.md/i);
+
+    expect(ownerField).toHaveAttribute('aria-required', 'true');
+    expect(archiveField).toHaveAttribute('aria-required', 'true');
+    expect(skillMdField).toHaveAttribute('aria-required', 'true');
+
+    expect(screen.getAllByText(/\(required\)/i)).toHaveLength(3);
+  });
+
   it('keeps future publish steps locked after invalid archive validation', async () => {
     renderRoute('/publish');
 

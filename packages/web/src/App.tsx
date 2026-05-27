@@ -2325,7 +2325,11 @@ function PublishSkill() {
                   <h2 id="publish-upload-title">Upload archive</h2>
                 </div>
                 <label className="field" htmlFor="publish-owner">
-                  <span>Registry owner</span>
+                  <span>
+                    Registry owner
+                    <span className="field-required" aria-hidden="true">*</span>
+                    <span className="visually-hidden"> (required)</span>
+                  </span>
                   <input
                     id="publish-owner"
                     type="text"
@@ -2337,6 +2341,8 @@ function PublishSkill() {
                       }
                     }}
                     placeholder="platform"
+                    required
+                    aria-required="true"
                     aria-invalid={Boolean(errors.owner)}
                     aria-describedby={errors.owner ? 'publish-owner-error' : undefined}
                   />
@@ -2356,13 +2362,19 @@ function PublishSkill() {
                     }
                   }}
                 >
-                  <span>Skill archive</span>
+                  <span>
+                    Skill archive
+                    <span className="field-required" aria-hidden="true">*</span>
+                    <span className="visually-hidden"> (required)</span>
+                  </span>
                   <strong>{skillArchive ? skillArchive.name : 'Drop zip archive here'}</strong>
                   <em>{archiveSize ? `${archiveSize} selected` : 'Zip archive, 50 MB maximum.'}</em>
                   <input
                     id="publish-archive"
                     type="file"
                     accept=".zip,application/zip"
+                    required
+                    aria-required="true"
                     onChange={(event) => void selectArchive(event.target.files?.[0] ?? null, event.currentTarget)}
                     aria-invalid={Boolean(errors.skillArchive)}
                     aria-describedby={errors.skillArchive ? 'publish-archive-error' : undefined}
@@ -2373,13 +2385,19 @@ function PublishSkill() {
                 </label>
 
                 <label className="field" htmlFor="publish-skill-md">
-                  <span>SKILL.md</span>
+                  <span>
+                    SKILL.md
+                    <span className="field-required" aria-hidden="true">*</span>
+                    <span className="visually-hidden"> (required)</span>
+                  </span>
                   <textarea
                     id="publish-skill-md"
                     value={skillMd}
                     onChange={(event) => updateSkillMd(event.target.value)}
                     rows={10}
                     placeholder={'---\nname: secure-code-review\nversion: 1.0.0\nauthor: Platform Team\ndescription: Review code for security issues.\ntags: [security, review]\n---\n\nUse this skill when...'}
+                    required
+                    aria-required="true"
                     aria-invalid={Boolean(errors.skillMd)}
                     aria-describedby={errors.skillMd ? 'publish-skill-md-error' : undefined}
                   />
