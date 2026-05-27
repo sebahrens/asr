@@ -19,6 +19,7 @@ import { registerList } from './commands/list.js';
 import { getConfig, setConfig, getTargetDir } from './config.js';
 import { recordInstall } from './lockfile.js';
 import { installSkill, removeSkill, updateSkill } from './install.js';
+import { registerYank } from './yank.js';
 
 interface RegistrySkill {
   id?: string;
@@ -91,6 +92,7 @@ registerStatus(program);
 registerSubmissions(program);
 registerToken(program);
 registerList(program);
+registerYank(program);
 
 program
   .command('browse')
