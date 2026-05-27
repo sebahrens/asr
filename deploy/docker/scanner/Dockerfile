@@ -5,6 +5,7 @@ FROM node:22-slim AS base
 ARG TRIVY_VERSION=0.70.0
 ARG FOXGUARD_VERSION=0.8.1
 ARG OPENGREP_VERSION=1.22.0
+ARG VERACODE_CLI_VERSION=2.27.0
 ARG TARGETARCH
 
 RUN apt-get update \
@@ -33,6 +34,17 @@ RUN case "${TARGETARCH}" in \
     && curl -fsSL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_${opengrep_arch}" \
       -o /usr/local/bin/opengrep \
     && chmod 0755 /usr/local/bin/opengrep
+
+# Veracode CLI (proprietary, Tier 3 — optional enterprise).
+# Build-safe (`|| true`): images still build when tools.veracode.com is
+# unreachable. The orchestrator only invokes `veracode` when VERACODE_API_KEY_ID
+# and VERACODE_API_KEY_SECRET are set; a missing binary is a clean skip there.
+# VERSION env var pins the installer where supported; falls through to latest
+# silently if ignored.
+RUN (curl -fsS https://tools.veracode.com/veracode-cli/install \
+        | VERSION="${VERACODE_CLI_VERSION}" sh \
+      && mv veracode /usr/local/bin/veracode \
+      && veracode --version) || true
 
 COPY rules/ /opt/scan/rules/
 
