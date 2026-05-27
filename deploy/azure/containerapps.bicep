@@ -4,14 +4,17 @@ param location string = resourceGroup().location
 @description('Existing managed environment that hosts the Container App.')
 param envName string = 'asr-env'
 
-@description('Container image for the api app (defaults to the asr-api tag pushed to the project ACR).')
-param image string = '$ACR.azurecr.io/asr-api:latest'
+@description('Login server of the Azure Container Registry that hosts mirrored and built images (e.g. asracr.azurecr.io).')
+param acrLoginServer string
 
-@description('Container image for the forgejo app (defaults to the mirrored forgejo:15 tag in the project ACR; final value set by asr-1h5).')
-param forgejoImage string = '$ACR.azurecr.io/forgejo:15'
+@description('Container image for the api app (defaults to the asr-api tag pushed to the project ACR).')
+param image string = '${acrLoginServer}/asr-api:latest'
+
+@description('Container image for the forgejo app (defaults to the mirrored forgejo:15 tag in the project ACR).')
+param forgejoImage string = '${acrLoginServer}/forgejo:15'
 
 @description('Container image for the web app (defaults to the asr-web tag pushed to the project ACR).')
-param webImage string = '$ACR.azurecr.io/asr-web:latest'
+param webImage string = '${acrLoginServer}/asr-web:latest'
 
 @description('Entra ID tenant id used by API auth middleware.')
 param tenantId string
@@ -161,6 +164,12 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
 resource forgejo 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'forgejo'
   location: location
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${managedIdentityId}': {}
+    }
+  }
   properties: {
     managedEnvironmentId: env.id
     configuration: {
@@ -169,6 +178,12 @@ resource forgejo 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: 3000
         transport: 'auto'
       }
+      registries: [
+        {
+          server: acrLoginServer
+          identity: managedIdentityId
+        }
+      ]
     }
     template: {
       containers: [
