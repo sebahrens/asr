@@ -3,11 +3,12 @@ import { createBrowserRouter } from 'react-router-dom';
 import App from './App';
 import { RequireRole } from './auth/RequireRole';
 import { SessionProvider } from './auth/SessionProvider';
+import { ErrorPage } from './routes/ErrorPage';
 import { ReviewAppShell } from './routes/ReviewAppShell';
 import { ReviewDetail } from './routes/ReviewDetail';
 import { ReviewQueue } from './routes/ReviewQueue';
 
-function ErrorPage() {
+function RouteRenderError() {
   return (
     <main>
       <h1>Registry route error</h1>
@@ -28,7 +29,7 @@ export const routes: RouteObject[] = [
         </RequireRole>
       </SessionProvider>
     ),
-    errorElement: <ErrorPage />,
+    errorElement: <RouteRenderError />,
   },
   {
     path: '/review/:id',
@@ -41,12 +42,17 @@ export const routes: RouteObject[] = [
         </RequireRole>
       </SessionProvider>
     ),
-    errorElement: <ErrorPage />,
+    errorElement: <RouteRenderError />,
+  },
+  {
+    path: '/error',
+    element: <ErrorPage />,
+    errorElement: <RouteRenderError />,
   },
   {
     path: '*',
     element: <App />,
-    errorElement: <ErrorPage />,
+    errorElement: <RouteRenderError />,
   },
 ];
 

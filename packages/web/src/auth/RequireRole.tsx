@@ -14,7 +14,8 @@ export function RequireRole({ allowed, children }: RequireRoleProps) {
   const hasRole = session.roles.some((role) => allowedSet.has(role));
 
   if (!hasRole) {
-    return <Navigate to="/error?code=403" replace />;
+    const rolesParam = encodeURIComponent(allowed.join(','));
+    return <Navigate to={`/error?code=403&roles=${rolesParam}`} replace />;
   }
 
   return <>{children}</>;
