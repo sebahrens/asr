@@ -15,6 +15,12 @@ param actionGroupName string = 'asr-alerts'
 @description('Short name (max 12 chars) for the shared action group, surfaced in SMS/email subjects.')
 param actionGroupShortName string = 'asrAlerts'
 
+@description('Resource id of the Log Analytics workspace (asr-5v0.1) that the 5xx error-rate scheduled query runs against.')
+param logAnalyticsWorkspaceId string
+
+@description('Container App name of the api app whose console logs are filtered for the 5xx error-rate query. Matches the name set in containerapps.bicep.')
+param apiAppName string = 'api'
+
 resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = {
   name: actionGroupName
   location: 'global'
@@ -103,5 +109,43 @@ resource restartAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   }
 }
 
+resource errorRateAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'asr-api-5xx-error-rate-gt-1pct'
+  location: resourceGroup().location
+  properties: {
+    description: '5xx response ratio on the api Container App exceeds 1% of total requests over a 5-minute window.'
+    severity: alertSeverity
+    enabled: true
+    scopes: [
+      logAnalyticsWorkspaceId
+    ]
+    evaluationFrequency: 'PT1M'
+    windowSize: 'PT5M'
+    criteria: {
+      allOf: [
+        {
+          query: 'ContainerAppConsoleLogs_CL\n| where TimeGenerated > ago(5m)\n| where ContainerAppName_s == \'${apiAppName}\'\n| extend status = toint(extract("\\"status\\"\\\\s*:\\\\s*(\\\\d+)", 1, Log_s))\n| where isnotnull(status)\n| summarize total = count(), errors = countif(status >= 500 and status < 600)\n| where total > 0\n| extend errorRate = todouble(errors) / todouble(total)\n| where errorRate > 0.01'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: {
+      actionGroups: [
+        actionGroup.id
+      ]
+    }
+  }
+}
+
 @description('Resource id of the shared action group; consumed by the asr-b4q.3 5xx error-rate log-query alert.')
 output actionGroupId string = actionGroup.id
+
+@description('Resource id of the asr-b4q.3 5xx error-rate scheduled query alert, exported so operators can find it via az monitor scheduled-query list.')
+output errorRateAlertId string = errorRateAlert.id
