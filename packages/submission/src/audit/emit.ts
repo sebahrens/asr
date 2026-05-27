@@ -13,6 +13,23 @@ export interface EmitAuditInput {
   detail: Record<string, unknown>;
 }
 
+const PII_KEYS = [
+  'email',
+  'displayname',
+  'name',
+  'givenname',
+  'surname',
+  'upn',
+];
+
+function assertNoPii(detail: Record<string, unknown>): void {
+  for (const k of Object.keys(detail)) {
+    if (PII_KEYS.includes(k.toLowerCase())) {
+      throw new Error(`audit detail must not contain PII key: ${k}`);
+    }
+  }
+}
+
 /**
  * Insert a hash-chained audit row.
  *
@@ -31,6 +48,8 @@ export function emitAudit(
   if (!(AUDIT_ACTIONS as readonly string[]).includes(input.action)) {
     throw new Error(`unknown audit action: ${input.action}`);
   }
+
+  assertNoPii(input.detail);
 
   const keyId = process.env.AUDIT_HMAC_KEY_ID;
   const keyBytesB64 = process.env.AUDIT_HMAC_KEY_BYTES;

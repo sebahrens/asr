@@ -157,6 +157,58 @@ describe('emitAudit', () => {
     expect(rowCount).toBe(0);
   });
 
+  it('rejects a detail payload containing a PII key before any DB write', () => {
+    const database = db!;
+
+    expect(() =>
+      emitAudit(database, {
+        action: 'submission.created',
+        submissionId: 'sub_1',
+        actor: 'sub_1',
+        actorType: 'user',
+        detail: { email: 'x@y.z' },
+      }),
+    ).toThrow(/audit detail must not contain PII key: email/);
+
+    const rowCount = database
+      .prepare('SELECT COUNT(*) FROM audit_events')
+      .pluck()
+      .get() as number;
+    expect(rowCount).toBe(0);
+  });
+
+  it('rejects PII keys regardless of casing', () => {
+    const database = db!;
+
+    expect(() =>
+      emitAudit(database, {
+        action: 'submission.created',
+        submissionId: 'sub_1',
+        actor: 'sub_1',
+        actorType: 'user',
+        detail: { DisplayName: 'Alice' },
+      }),
+    ).toThrow(/audit detail must not contain PII key: DisplayName/);
+  });
+
+  it('inserts one row when the detail is PII-free', () => {
+    const database = db!;
+
+    emitAudit(database, {
+      action: 'submission.created',
+      submissionId: 'sub_1',
+      actor: 'sub_1',
+      actorType: 'user',
+      detail: { submissionId: 's1' },
+    });
+
+    const rowCount = database
+      .prepare('SELECT COUNT(*) FROM audit_events')
+      .pluck()
+      .get() as number;
+    expect(rowCount).toBe(1);
+  });
+
   it('does not open its own transaction (subsequent caller insert can still be rolled back)', () => {
     const database = db!;
 
