@@ -4,6 +4,8 @@ import { runMigrations } from '../migrations/index.js';
 import {
   getSkillVersion,
   insertSkillVersion,
+  listVersions,
+  resolveLatestVersion,
   type SkillVersionRow,
 } from './skillVersions.js';
 
@@ -101,5 +103,119 @@ describe('skillVersions repository', () => {
         sampleRow({ content_hash: 'sha256:other', merge_commit: 'merge-sha-2' }),
       );
     }).toThrow();
+  });
+
+  describe('listVersions / resolveLatestVersion', () => {
+    function seedThreeVersions(database: Database.Database, skillName: string): void {
+      insertSubmissionRow(database, `${SUBMISSION_ID}-100`);
+      insertSubmissionRow(database, `${SUBMISSION_ID}-110`);
+      insertSubmissionRow(database, `${SUBMISSION_ID}-120`);
+
+      insertSkillVersion(
+        database,
+        sampleRow({
+          skill_name: skillName,
+          version: '1.0.0',
+          content_hash: 'sha256:v100',
+          submission_id: `${SUBMISSION_ID}-100`,
+          merge_commit: 'merge-100',
+        }),
+      );
+      insertSkillVersion(
+        database,
+        sampleRow({
+          skill_name: skillName,
+          version: '1.1.0',
+          content_hash: 'sha256:v110',
+          submission_id: `${SUBMISSION_ID}-110`,
+          merge_commit: 'merge-110',
+        }),
+      );
+      insertSkillVersion(
+        database,
+        sampleRow({
+          skill_name: skillName,
+          version: '1.2.0',
+          content_hash: 'sha256:v120',
+          submission_id: `${SUBMISSION_ID}-120`,
+          merge_commit: 'merge-120',
+          yanked_at: '2026-02-01T00:00:00.000Z',
+          yanked_by: 'compliance@example.com',
+          yank_reason: 'leak',
+        }),
+      );
+    }
+
+    it('resolveLatestVersion ignores yanked rows and returns highest semver', () => {
+      db = new Database(':memory:');
+      runMigrations(db);
+      seedThreeVersions(db, 'acme/x');
+
+      expect(resolveLatestVersion(db, 'acme/x')).toBe('1.1.0');
+
+      const rows = listVersions(db, 'acme/x');
+      expect(rows).toHaveLength(3);
+      const byVersion = new Map(rows.map((r) => [r.version, r]));
+      expect(byVersion.get('1.0.0')?.yanked_at).toBeNull();
+      expect(byVersion.get('1.1.0')?.yanked_at).toBeNull();
+      expect(byVersion.get('1.2.0')?.yanked_at).toBe('2026-02-01T00:00:00.000Z');
+      expect(byVersion.get('1.2.0')?.yanked_by).toBe('compliance@example.com');
+      expect(byVersion.get('1.2.0')?.yank_reason).toBe('leak');
+    });
+
+    it('resolveLatestVersion is undefined when all versions yanked', () => {
+      db = new Database(':memory:');
+      runMigrations(db);
+      insertSubmissionRow(db, SUBMISSION_ID);
+
+      insertSkillVersion(
+        db,
+        sampleRow({
+          skill_name: 'acme/y',
+          version: '1.0.0',
+          submission_id: SUBMISSION_ID,
+          yanked_at: '2026-02-01T00:00:00.000Z',
+          yanked_by: 'compliance@example.com',
+          yank_reason: 'leak',
+        }),
+      );
+
+      expect(resolveLatestVersion(db, 'acme/y')).toBeUndefined();
+      expect(listVersions(db, 'acme/y')).toHaveLength(1);
+    });
+
+    it('resolveLatestVersion is undefined for an unknown skill', () => {
+      db = new Database(':memory:');
+      runMigrations(db);
+
+      expect(resolveLatestVersion(db, 'missing/skill')).toBeUndefined();
+      expect(listVersions(db, 'missing/skill')).toEqual([]);
+    });
+
+    it('resolveLatestVersion uses semver ordering, not lexicographic', () => {
+      db = new Database(':memory:');
+      runMigrations(db);
+      insertSubmissionRow(db, `${SUBMISSION_ID}-2`);
+      insertSubmissionRow(db, `${SUBMISSION_ID}-10`);
+
+      insertSkillVersion(
+        db,
+        sampleRow({
+          skill_name: 'acme/z',
+          version: '0.2.0',
+          submission_id: `${SUBMISSION_ID}-2`,
+        }),
+      );
+      insertSkillVersion(
+        db,
+        sampleRow({
+          skill_name: 'acme/z',
+          version: '0.10.0',
+          submission_id: `${SUBMISSION_ID}-10`,
+        }),
+      );
+
+      expect(resolveLatestVersion(db, 'acme/z')).toBe('0.10.0');
+    });
   });
 });
