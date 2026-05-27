@@ -7,6 +7,7 @@ const getSkillDetail = vi.fn();
 const resolveDownload = vi.fn();
 const downloadAndVerify = vi.fn();
 const extractZip = vi.fn();
+const readBundleContents = vi.fn();
 
 vi.mock('./registry-client.js', () => ({
   getSkillDetail: (...args: unknown[]) => getSkillDetail(...args),
@@ -21,7 +22,66 @@ vi.mock('./extract.js', () => ({
   extractZip: (...args: unknown[]) => extractZip(...args),
 }));
 
+vi.mock('./bundle.js', () => ({
+  readBundleContents: (...args: unknown[]) => readBundleContents(...args),
+}));
+
 const { installSkill, removeSkill, updateSkill } = await import('./install.js');
+
+function emptyBundle() {
+  return { root: null, references: new Map() };
+}
+
+function personaBundle(overrides: {
+  persona_mode?: 'inject' | 'delegate';
+  references?: string[];
+  body?: string;
+  bundledRefs?: Record<string, { references?: string[]; body?: string }>;
+} = {}) {
+  const refs = new Map();
+  for (const [name, info] of Object.entries(overrides.bundledRefs ?? {})) {
+    refs.set(name, {
+      manifest: {
+        name,
+        version: '1.0.0',
+        author: 'a',
+        description: `${name} desc`,
+        tags: [],
+        kind: 'skill',
+        references: info.references,
+        permissions: {
+          network: false,
+          filesystem: 'none',
+          subprocess: false,
+          environment: [],
+        },
+      },
+      body: info.body ?? `# ${name}`,
+    });
+  }
+  return {
+    root: {
+      manifest: {
+        name: 'demo',
+        version: '1.2.3',
+        author: 'finance',
+        description: 'demo persona',
+        tags: [],
+        kind: 'persona' as const,
+        persona_mode: overrides.persona_mode ?? 'inject',
+        references: overrides.references,
+        permissions: {
+          network: false,
+          filesystem: 'read-write-own' as const,
+          subprocess: true,
+          environment: [],
+        },
+      },
+      body: overrides.body ?? 'You are a demo persona.',
+    },
+    references: refs,
+  };
+}
 
 const DOWNLOAD_URL =
   'https://forgejo.internal/api/packages/acme/generic/demo/1.2.3/skill.zip';
@@ -85,6 +145,8 @@ describe('installSkill', () => {
     downloadAndVerify.mockReset();
     extractZip.mockReset();
     extractZip.mockResolvedValue(['SKILL.md']);
+    readBundleContents.mockReset();
+    readBundleContents.mockResolvedValue(emptyBundle());
   });
 
   afterEach(async () => {
@@ -252,6 +314,108 @@ describe('installSkill', () => {
     expect(resolveDownload).toHaveBeenCalledWith('acme', 'demo', '1.2.3', { token: 't0k' });
     expect(downloadAndVerify).toHaveBeenCalledWith(DOWNLOAD_URL, HASH, { token: 't0k' });
   });
+
+  it('writes a generated SKILL.md with when_to_use: always for an inject persona', async () => {
+    getSkillDetail.mockResolvedValueOnce(detail({ kind: 'persona' }));
+    resolveDownload.mockResolvedValueOnce({ url: DOWNLOAD_URL, yanked: false });
+    downloadAndVerify.mockResolvedValueOnce(ZIP_BUF);
+    readBundleContents.mockResolvedValueOnce(
+      personaBundle({ persona_mode: 'inject', body: 'You are a demo persona.' }),
+    );
+
+    await installSkill('acme/demo');
+
+    const skillMd = await readFile(
+      join(tempDir, '.claude', 'skills', 'demo', 'SKILL.md'),
+      'utf-8',
+    );
+    expect(skillMd).toMatch(/when_to_use:\s*always/);
+    expect(skillMd).toContain('You are a demo persona.');
+  });
+
+  it('writes a generated SKILL.md with allowed-tools including Agent for a delegate persona', async () => {
+    getSkillDetail.mockResolvedValueOnce(detail({ kind: 'persona' }));
+    resolveDownload.mockResolvedValueOnce({ url: DOWNLOAD_URL, yanked: false });
+    downloadAndVerify.mockResolvedValueOnce(ZIP_BUF);
+    readBundleContents.mockResolvedValueOnce(
+      personaBundle({
+        persona_mode: 'delegate',
+        references: ['code-review'],
+        bundledRefs: { 'code-review': { body: 'Reviews code.' } },
+      }),
+    );
+
+    await installSkill('acme/demo');
+
+    const skillMd = await readFile(
+      join(tempDir, '.claude', 'skills', 'demo', 'SKILL.md'),
+      'utf-8',
+    );
+    const frontmatter = skillMd.split('---')[1] ?? '';
+    const tools = frontmatter.match(/allowed-tools:\s*(.+)/)?.[1] ?? '';
+    expect(tools).toContain('Agent');
+    expect(skillMd).toContain('### code-review');
+    expect(skillMd).toContain('Reviews code.');
+  });
+
+  it('rejects a persona with a reference cycle as invalid_manifest and writes no files', async () => {
+    getSkillDetail.mockResolvedValueOnce(detail({ kind: 'persona' }));
+    resolveDownload.mockResolvedValueOnce({ url: DOWNLOAD_URL, yanked: false });
+    downloadAndVerify.mockResolvedValueOnce(ZIP_BUF);
+    readBundleContents.mockResolvedValueOnce(
+      personaBundle({ persona_mode: 'delegate', references: ['demo'] }),
+    );
+
+    let caught: unknown;
+    try {
+      await installSkill('acme/demo');
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeDefined();
+    expect((caught as { code?: string }).code).toBe('invalid_manifest');
+    expect((caught as Error).message).toMatch(/cycle/);
+    expect(extractZip).not.toHaveBeenCalled();
+    await expect(
+      readFile(join(tempDir, '.claude', 'skills', 'demo', 'SKILL.md'), 'utf-8'),
+    ).rejects.toThrow();
+    await expect(
+      readFile(join(tempDir, '.agent', 'asr.lock.json'), 'utf-8'),
+    ).rejects.toThrow();
+  });
+
+  it('keeps verbatim copy for kind:skill (no persona overlay)', async () => {
+    getSkillDetail.mockResolvedValueOnce(detail());
+    resolveDownload.mockResolvedValueOnce({ url: DOWNLOAD_URL, yanked: false });
+    downloadAndVerify.mockResolvedValueOnce(ZIP_BUF);
+    readBundleContents.mockResolvedValueOnce({
+      root: {
+        manifest: {
+          name: 'demo',
+          version: '1.2.3',
+          author: 'a',
+          description: 'demo skill',
+          tags: [],
+          kind: 'skill' as const,
+          permissions: {
+            network: false,
+            filesystem: 'none' as const,
+            subprocess: false,
+            environment: [],
+          },
+        },
+        body: '# verbatim body',
+      },
+      references: new Map(),
+    });
+
+    await installSkill('acme/demo');
+
+    expect(extractZip).toHaveBeenCalledTimes(1);
+    await expect(
+      readFile(join(tempDir, '.claude', 'skills', 'demo', 'SKILL.md'), 'utf-8'),
+    ).rejects.toThrow();
+  });
 });
 
 describe('updateSkill', () => {
@@ -291,6 +455,8 @@ describe('updateSkill', () => {
     downloadAndVerify.mockReset();
     extractZip.mockReset();
     extractZip.mockResolvedValue(['SKILL.md']);
+    readBundleContents.mockReset();
+    readBundleContents.mockResolvedValue(emptyBundle());
   });
 
   afterEach(async () => {

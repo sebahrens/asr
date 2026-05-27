@@ -1,7 +1,8 @@
-import { mkdir, rm, stat } from 'node:fs/promises';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { agentSkillDir, detectAgents, type AgentTarget } from './agents.js';
+import { readBundleContents } from './bundle.js';
 import { downloadAndVerify } from './download.js';
 import { extractZip } from './extract.js';
 import {
@@ -10,6 +11,8 @@ import {
   recordInstall,
   removeFromLock,
 } from './lockfile.js';
+import { generatePersonaSkillMd } from './persona.js';
+import { assertNoReferenceCycles } from './persona-refs.js';
 import { getSkillDetail, resolveDownload } from './registry-client.js';
 
 export interface InstallSkillOptions {
@@ -43,6 +46,35 @@ function formatYankRefusal(
 ): string {
   const base = `Refusing to install ${owner}/${name}@${version}: version is yanked`;
   return reason ? `${base} (${reason})` : base;
+}
+
+function buildPersonaContent(
+  bundle: Awaited<ReturnType<typeof readBundleContents>>,
+  agents: readonly AgentTarget[],
+): Partial<Record<AgentTarget, string>> | null {
+  const root = bundle.root;
+  if (!root || root.manifest.kind !== 'persona') return null;
+
+  const { manifest, body } = root;
+  const references = manifest.references ?? [];
+
+  const getRefs = (n: string): readonly string[] => {
+    if (n === manifest.name) return references;
+    return bundle.references.get(n)?.manifest.references ?? [];
+  };
+  assertNoReferenceCycles(manifest.name, getRefs);
+
+  const resolved: Record<string, string> = {};
+  for (const ref of references) {
+    const r = bundle.references.get(ref);
+    if (r) resolved[ref] = r.body;
+  }
+
+  const out: Partial<Record<AgentTarget, string>> = {};
+  for (const agent of agents) {
+    out[agent] = generatePersonaSkillMd(manifest, body, resolved, { agent });
+  }
+  return out;
 }
 
 function parseSlug(slug: string): { owner: string; name: string; version?: string } {
@@ -90,11 +122,19 @@ export async function installSkill(
   const global = opts.global ?? false;
   const agents = detectAgents({ explicit: opts.agent });
 
+  const bundle = await readBundleContents(buf);
+  const personaContent = buildPersonaContent(bundle, agents);
+
   const locations: InstalledLocation[] = [];
   for (const agent of agents) {
     const dir = agentSkillDir(agent, name, { global });
     await mkdir(dir, { recursive: true });
     const files = await extractZip(buf, dir);
+    const generated = personaContent?.[agent];
+    if (generated !== undefined) {
+      await writeFile(join(dir, 'SKILL.md'), generated, 'utf-8');
+      if (!files.includes('SKILL.md')) files.push('SKILL.md');
+    }
     locations.push({ agent, dir, files });
   }
 
