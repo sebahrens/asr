@@ -202,15 +202,43 @@ describe('installSkill', () => {
     );
   });
 
-  it('only reads the yanked flag (does not refuse here)', async () => {
+  it('refuses to install when detail.versions entry is yanked (without yankReason)', async () => {
+    const d = detail();
+    (d as { versions: Array<{ version: string; yanked: boolean }> }).versions[0].yanked = true;
+    getSkillDetail.mockResolvedValueOnce(d);
+
+    await expect(installSkill('acme/demo@1.2.3')).rejects.toThrow(
+      /Refusing to install acme\/demo@1\.2\.3: version is yanked/,
+    );
+    expect(resolveDownload).not.toHaveBeenCalled();
+    expect(downloadAndVerify).not.toHaveBeenCalled();
+    expect(extractZip).not.toHaveBeenCalled();
+    await expect(readFile(join(tempDir, '.agent', 'asr.lock.json'), 'utf-8')).rejects.toThrow();
+  });
+
+  it('refuses to install when detail.versions entry is yanked and includes yankReason in the message', async () => {
+    const d = detail();
+    const v0 = (d as { versions: Array<{ version: string; yanked: boolean; yankReason?: string }> })
+      .versions[0];
+    v0.yanked = true;
+    v0.yankReason = 'CVE-2026-0001';
+    getSkillDetail.mockResolvedValueOnce(d);
+
+    await expect(installSkill('acme/demo@1.2.3')).rejects.toThrow(/CVE-2026-0001/);
+    expect(resolveDownload).not.toHaveBeenCalled();
+    expect(downloadAndVerify).not.toHaveBeenCalled();
+  });
+
+  it('refuses to install when resolveDownload reports yanked even if detail entry is stale', async () => {
     getSkillDetail.mockResolvedValueOnce(detail());
     resolveDownload.mockResolvedValueOnce({ url: DOWNLOAD_URL, yanked: true });
-    downloadAndVerify.mockResolvedValueOnce(ZIP_BUF);
 
-    const result = await installSkill('acme/demo');
-
-    expect(result.yanked).toBe(true);
-    expect(downloadAndVerify).toHaveBeenCalled();
+    await expect(installSkill('acme/demo')).rejects.toThrow(
+      /Refusing to install acme\/demo@1\.2\.3: version is yanked/,
+    );
+    expect(downloadAndVerify).not.toHaveBeenCalled();
+    expect(extractZip).not.toHaveBeenCalled();
+    await expect(readFile(join(tempDir, '.agent', 'asr.lock.json'), 'utf-8')).rejects.toThrow();
   });
 
   it('propagates Bearer token to all collaborators when opts.token is set', async () => {

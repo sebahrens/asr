@@ -30,6 +30,16 @@ export interface InstallSkillResult {
   locations: InstalledLocation[];
 }
 
+function formatYankRefusal(
+  owner: string,
+  name: string,
+  version: string,
+  reason?: string,
+): string {
+  const base = `Refusing to install ${owner}/${name}@${version}: version is yanked`;
+  return reason ? `${base} (${reason})` : base;
+}
+
 function parseSlug(slug: string): { owner: string; name: string; version?: string } {
   const trimmed = slug.trim();
   const atIdx = trimmed.indexOf('@');
@@ -60,9 +70,15 @@ export async function installSkill(
   if (!versionEntry) {
     throw new Error(`Version ${targetVersion} not found for ${owner}/${name}`);
   }
+  if (versionEntry.yanked) {
+    throw new Error(formatYankRefusal(owner, name, targetVersion, versionEntry.yankReason));
+  }
   const expectedHash = versionEntry.contentHash;
 
   const { url, yanked } = await resolveDownload(owner, name, targetVersion, fetchOpts);
+  if (yanked) {
+    throw new Error(formatYankRefusal(owner, name, targetVersion, versionEntry.yankReason));
+  }
 
   const buf = await downloadAndVerify(url, expectedHash, fetchOpts);
 
