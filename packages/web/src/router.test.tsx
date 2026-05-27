@@ -197,6 +197,22 @@ describe('router', () => {
     expect(await screen.findByText(/no submissions awaiting review/i)).toBeInTheDocument();
   });
 
+  it('renders the application shell (logo, primary nav, mock auth banner) on /review', async () => {
+    renderRoute('/review');
+
+    expect(await screen.findByRole('heading', { name: /^review queue$/i })).toBeInTheDocument();
+
+    expect(screen.getByRole('link', { name: /asr home/i })).toHaveAttribute('href', '/');
+
+    const primaryNav = screen.getByRole('navigation', { name: /primary navigation/i });
+    expect(within(primaryNav).getByRole('link', { name: /browse/i })).toHaveAttribute('href', '/');
+    expect(within(primaryNav).getByRole('link', { name: /publish/i })).toHaveAttribute('href', '/publish');
+    expect(within(primaryNav).getByRole('link', { name: /review/i })).toHaveAttribute('aria-current', 'page');
+
+    expect(screen.getByRole('status', { name: /development mock auth session/i })).toBeInTheDocument();
+    expect(screen.getByText(/dev mock auth/i)).toBeInTheDocument();
+  });
+
   it('keeps the existing browse page on the index route', async () => {
     renderRoute('/');
 

@@ -3,6 +3,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import App from './App';
 import { RequireRole } from './auth/RequireRole';
 import { SessionProvider } from './auth/SessionProvider';
+import { ReviewAppShell } from './routes/ReviewAppShell';
 import { ReviewDetail } from './routes/ReviewDetail';
 import { ReviewQueue } from './routes/ReviewQueue';
 
@@ -21,7 +22,9 @@ export const routes: RouteObject[] = [
     element: (
       <SessionProvider>
         <RequireRole allowed={['Compliance', 'Admin']}>
-          <ReviewQueue />
+          <ReviewAppShell current="review">
+            <ReviewQueue />
+          </ReviewAppShell>
         </RequireRole>
       </SessionProvider>
     ),
@@ -32,7 +35,9 @@ export const routes: RouteObject[] = [
     element: (
       <SessionProvider>
         <RequireRole allowed={['Compliance', 'Admin']}>
-          <ReviewDetail />
+          <ReviewAppShell current="review">
+            <ReviewDetail />
+          </ReviewAppShell>
         </RequireRole>
       </SessionProvider>
     ),
