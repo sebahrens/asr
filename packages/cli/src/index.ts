@@ -10,6 +10,7 @@ import {
 } from '@asr/core';
 import { registerLogin, registerLogout, registerWhoami } from './commands/auth.js';
 import { registerSearch } from './commands/search.js';
+import { registerInfo } from './commands/info.js';
 import { getConfig, setConfig, getTargetDir } from './config.js';
 import { recordInstall, removeFromLock, getAllInstalled } from './lockfile.js';
 
@@ -91,6 +92,7 @@ registerLogin(program);
 registerWhoami(program);
 registerLogout(program);
 registerSearch(program);
+registerInfo(program);
 
 program
   .command('browse')
