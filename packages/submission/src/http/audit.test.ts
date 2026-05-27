@@ -178,4 +178,51 @@ describe('GET /api/v1/audit routes', () => {
     const res = await app.request('/api/v1/audit/verify');
     expect(res.status).toBe(403);
   });
+
+  it('GET /submission/:id returns 200 to the owning submitter (chronological, only that submission)', async () => {
+    const app = makeApp(db!, { sub: 'submitter@example.com', roles: ['Submitter'] });
+    const res = await app.request('/api/v1/audit/submission/sub_a');
+    expect(res.status).toBe(200);
+    const events = (await res.json()) as Array<{
+      submissionId: string | null;
+      action: string;
+    }>;
+    expect(events).toHaveLength(2);
+    expect(events.every((e) => e.submissionId === 'sub_a')).toBe(true);
+    expect(events.map((e) => e.action)).toEqual([
+      'submission.created',
+      'submission.classified',
+    ]);
+  });
+
+  it('GET /submission/:id returns 403 to an unrelated Submitter', async () => {
+    const app = makeApp(db!, { sub: 'other@example.com', roles: ['Submitter'] });
+    const res = await app.request('/api/v1/audit/submission/sub_a');
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('insufficient_permissions');
+  });
+
+  it('GET /submission/:id returns 200 to a non-owner Compliance reviewer', async () => {
+    const app = makeApp(db!, { sub: 'compliance@example.com', roles: ['Compliance'] });
+    const res = await app.request('/api/v1/audit/submission/sub_a');
+    expect(res.status).toBe(200);
+    const events = (await res.json()) as Array<{ submissionId: string | null }>;
+    expect(events).toHaveLength(2);
+    expect(events.every((e) => e.submissionId === 'sub_a')).toBe(true);
+  });
+
+  it('GET /submission/:id returns 404 for an unknown submission id', async () => {
+    const app = makeApp(db!, { sub: 'submitter@example.com', roles: ['Submitter'] });
+    const res = await app.request('/api/v1/audit/submission/sub_missing');
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('submission_not_found');
+  });
+
+  it('GET /submission/:id returns 401 when unauthenticated', async () => {
+    const app = makeApp(db!, null);
+    const res = await app.request('/api/v1/audit/submission/sub_a');
+    expect(res.status).toBe(401);
+  });
 });
