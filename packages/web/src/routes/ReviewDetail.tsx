@@ -2,6 +2,10 @@ import type { ScanReport, Submission, VersionDiff } from '@asr/core';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import {
+  getReviewSubmissionMock,
+  isDevMockMode,
+} from '../dev-mocks/reviewSubmissionMocks';
 import { DecisionPanel } from './DecisionPanel';
 
 type TabId = 'diff' | 'scan';
@@ -21,6 +25,26 @@ async function fetchJson<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+type SubmissionEvidenceKey = 'submission' | 'diff' | 'scan';
+
+// In `vite dev` with no API URL configured, the dev server has no backend that
+// serves /api/v1/submissions/:id, so route requests through canonical mock
+// evidence instead. Tests run in MODE='test' and stub fetch directly, so this
+// branch is inert there.
+async function fetchSubmissionEvidence<T>(
+  id: string,
+  kind: SubmissionEvidenceKey,
+  url: string,
+): Promise<T> {
+  if (isDevMockMode()) {
+    const mock = getReviewSubmissionMock(id);
+    if (mock) {
+      return mock[kind] as unknown as T;
+    }
+  }
+  return fetchJson<T>(url);
+}
+
 // react-query retries failed queries 3 times by default. For client errors
 // (4xx) the response will not change on retry, so the user would otherwise
 // see ~7s of "Loading…" before the error state appears on an invalid id.
@@ -37,19 +61,31 @@ export function ReviewDetail() {
 
   const submissionQuery = useQuery({
     queryKey: ['submission', id],
-    queryFn: () => fetchJson<Submission>(`/api/v1/submissions/${encodeURIComponent(id)}`),
+    queryFn: () => fetchSubmissionEvidence<Submission>(
+      id,
+      'submission',
+      `/api/v1/submissions/${encodeURIComponent(id)}`,
+    ),
     enabled: id !== '',
     retry: retryUnless4xx,
   });
   const diffQuery = useQuery({
     queryKey: ['submission', id, 'diff'],
-    queryFn: () => fetchJson<VersionDiff>(`/api/v1/submissions/${encodeURIComponent(id)}/diff`),
+    queryFn: () => fetchSubmissionEvidence<VersionDiff>(
+      id,
+      'diff',
+      `/api/v1/submissions/${encodeURIComponent(id)}/diff`,
+    ),
     enabled: id !== '',
     retry: retryUnless4xx,
   });
   const scanQuery = useQuery({
     queryKey: ['submission', id, 'scan'],
-    queryFn: () => fetchJson<ScanReport>(`/api/v1/submissions/${encodeURIComponent(id)}/scan`),
+    queryFn: () => fetchSubmissionEvidence<ScanReport>(
+      id,
+      'scan',
+      `/api/v1/submissions/${encodeURIComponent(id)}/scan`,
+    ),
     enabled: id !== '',
     retry: retryUnless4xx,
   });
