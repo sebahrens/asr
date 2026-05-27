@@ -14,6 +14,7 @@ interface SpyDeps {
   markExtendedCalls: { id: string; stage: HitlStageRecord['stage'] }[];
   rejectCalls: SlaRejectInput[];
   notifyCalls: string[];
+  escalateCalls: string[];
   auditCalls: EmitAuditInput[];
 }
 
@@ -21,6 +22,7 @@ function buildDeps(stagesRef: () => HitlStageRecord[]): SpyDeps {
   const markExtendedCalls: { id: string; stage: HitlStageRecord['stage'] }[] = [];
   const rejectCalls: SlaRejectInput[] = [];
   const notifyCalls: string[] = [];
+  const escalateCalls: string[] = [];
   const auditCalls: EmitAuditInput[] = [];
 
   const deps: SlaTimeoutDeps = {
@@ -34,12 +36,15 @@ function buildDeps(stagesRef: () => HitlStageRecord[]): SpyDeps {
     notifySlaExtended: (id) => {
       notifyCalls.push(id);
     },
+    notifySlaEscalated: (id) => {
+      escalateCalls.push(id);
+    },
     emitAudit: (input) => {
       auditCalls.push(input);
     },
   };
 
-  return { deps, markExtendedCalls, rejectCalls, notifyCalls, auditCalls };
+  return { deps, markExtendedCalls, rejectCalls, notifyCalls, escalateCalls, auditCalls };
 }
 
 describe('runSlaSweep', () => {
@@ -140,26 +145,74 @@ describe('runSlaSweep', () => {
     expect(spies.auditCalls).toEqual([]);
   });
 
-  it('leaves the review stage untouched (escalate is owned by asr-h4i.3)', async () => {
+  it('escalates a stale review then auto-rejects', async () => {
+    let extended = false;
     const spies = buildDeps(() => [
       {
         submissionId: 'sub-r',
+        stage: 'review',
+        enteredAtIso: '2026-01-01T00:00:00.000Z',
+        alreadyExtended: extended,
+      },
+    ]);
+    const originalMarkExtended = spies.deps.markExtended;
+    spies.deps.markExtended = (id, stage) => {
+      originalMarkExtended(id, stage);
+      if (id === 'sub-r') extended = true;
+    };
+
+    // First sweep: 31 days past entry — past the 30d review deadline, not yet extended.
+    const day31 = new Date('2026-02-01T00:00:00.000Z');
+    const first = await runSlaSweep(day31, spies.deps);
+
+    expect(first.extended).toEqual([]);
+    expect(first.escalated).toEqual(['sub-r']);
+    expect(first.rejected).toEqual([]);
+    expect(spies.escalateCalls).toEqual(['sub-r']);
+    expect(spies.notifyCalls).toEqual([]);
+    expect(spies.markExtendedCalls).toEqual([{ id: 'sub-r', stage: 'review' }]);
+    expect(spies.rejectCalls).toEqual([]);
+    expect(spies.auditCalls).toEqual([]);
+
+    // Second sweep: 38 days past entry — past the extended 30+7=37d deadline.
+    const day38 = new Date('2026-02-08T00:00:00.000Z');
+    const second = await runSlaSweep(day38, spies.deps);
+
+    expect(second.extended).toEqual([]);
+    expect(second.escalated).toEqual([]);
+    expect(second.rejected).toEqual(['sub-r']);
+    expect(spies.rejectCalls).toEqual([
+      { submissionId: 'sub-r', reason: 'timeout', stage: 'review' },
+    ]);
+    expect(spies.auditCalls).toHaveLength(1);
+    expect(spies.auditCalls[0]).toMatchObject({
+      action: 'workflow.review.rejected',
+      submissionId: 'sub-r',
+      actor: 'system',
+      actorType: 'system',
+      detail: { reason: 'timeout', stage: 'review' },
+    });
+  });
+
+  it('does nothing for a review still within its deadline', async () => {
+    const spies = buildDeps(() => [
+      {
+        submissionId: 'sub-r-fresh',
         stage: 'review',
         enteredAtIso: '2026-01-01T00:00:00.000Z',
         alreadyExtended: false,
       },
     ]);
 
-    // 31 days past entry — past the 30d review deadline. Action is 'escalate'.
-    const day31 = new Date('2026-02-01T00:00:00.000Z');
-    const result = await runSlaSweep(day31, spies.deps);
+    // 10 days past entry — well within the 30d review deadline.
+    const day10 = new Date('2026-01-11T00:00:00.000Z');
+    const result = await runSlaSweep(day10, spies.deps);
 
     expect(result.extended).toEqual([]);
+    expect(result.escalated).toEqual([]);
     expect(result.rejected).toEqual([]);
     expect(spies.markExtendedCalls).toEqual([]);
-    expect(spies.rejectCalls).toEqual([]);
-    expect(spies.notifyCalls).toEqual([]);
-    expect(spies.auditCalls).toEqual([]);
+    expect(spies.escalateCalls).toEqual([]);
   });
 
   it('processes a batch of mixed stages in one sweep', async () => {

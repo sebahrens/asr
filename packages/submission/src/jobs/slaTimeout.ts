@@ -19,19 +19,21 @@ export interface SlaTimeoutDeps {
   markExtended(submissionId: string, stage: SlaStage): Promise<void> | void;
   deliverReject(input: SlaRejectInput): Promise<void> | void;
   notifySlaExtended(submissionId: string): Promise<void> | void;
+  notifySlaEscalated(submissionId: string): Promise<void> | void;
   emitAudit(input: EmitAuditInput): Promise<void> | void;
 }
 
 export interface SlaSweepResult {
   extended: string[];
+  escalated: string[];
   rejected: string[];
 }
 
 /**
  * Periodic SLA enforcement pass: extends questionnaires once, then auto-rejects;
- * auto-rejects stale confirmations immediately. The 30d compliance-review
- * escalate branch is owned by a separate task (asr-h4i.3) and intentionally
- * left untouched here.
+ * auto-rejects stale confirmations immediately; escalates stale 30d compliance
+ * reviews to an admin with a one-time 7d extension, then auto-rejects with a
+ * `workflow.review.rejected` audit event.
  */
 export async function runSlaSweep(
   now: Date,
@@ -39,6 +41,7 @@ export async function runSlaSweep(
 ): Promise<SlaSweepResult> {
   const stages = await deps.readActiveHitlStages();
   const extended: string[] = [];
+  const escalated: string[] = [];
   const rejected: string[] = [];
 
   for (const stage of stages) {
@@ -55,14 +58,25 @@ export async function runSlaSweep(
       continue;
     }
 
+    if (action === 'escalate') {
+      await deps.markExtended(stage.submissionId, stage.stage);
+      await deps.notifySlaEscalated(stage.submissionId);
+      escalated.push(stage.submissionId);
+      continue;
+    }
+
     if (action === 'auto_reject') {
       await deps.deliverReject({
         submissionId: stage.submissionId,
         reason: 'timeout',
         stage: stage.stage,
       });
+      // Compliance review rejections get the dedicated review audit action;
+      // questionnaire/confirmation use the generic submission.expired action.
+      const auditAction =
+        stage.stage === 'review' ? 'workflow.review.rejected' : 'submission.expired';
       await deps.emitAudit({
-        action: 'submission.expired',
+        action: auditAction,
         submissionId: stage.submissionId,
         actor: 'system',
         actorType: 'system',
@@ -70,10 +84,9 @@ export async function runSlaSweep(
       });
       rejected.push(stage.submissionId);
     }
-    // 'escalate' is the 30d compliance-review branch — owned by asr-h4i.3.
   }
 
-  return { extended, rejected };
+  return { extended, escalated, rejected };
 }
 
 export interface RegisterSlaTimeoutJobConfig {
