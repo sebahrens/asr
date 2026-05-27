@@ -22,6 +22,9 @@ param clientId string
 @description('Internal URL of the Forgejo Container App (e.g. https://forgejo.internal.<fqdn>).')
 param forgejoUrl string
 
+@description('Public origin of the web Container App used in CORS allowedOrigins (e.g. https://web.<fqdn>).')
+param webOrigin string
+
 @description('Base URI of the Key Vault that holds api runtime secrets (e.g. https://asr-kv.vault.azure.net/).')
 param keyVaultUri string
 
@@ -48,6 +51,23 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
         external: true
         targetPort: 3001
         transport: 'auto'
+        corsPolicy: {
+          allowedOrigins: [
+            webOrigin
+            'http://localhost:5173'
+          ]
+          allowedMethods: [
+            'GET'
+            'POST'
+            'PUT'
+            'DELETE'
+            'OPTIONS'
+          ]
+          allowedHeaders: [
+            'Authorization'
+            'Content-Type'
+          ]
+        }
       }
       secrets: [
         {
