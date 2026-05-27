@@ -713,6 +713,9 @@ main {
 
 /* States */
 .empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
   text-align: center;
   padding: 80px 0;
   color: var(--text-muted);
@@ -720,6 +723,7 @@ main {
 
 .empty-state p {
   font-size: 1rem;
+  margin: 0;
 }
 
 .registry-error-state {

@@ -238,7 +238,7 @@ describe('router', () => {
 
     expect(screen.queryByRole('link', { name: /open asr\/security-review details/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /open asr\/release-notes details/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/no skills found/i)).toBeInTheDocument();
+    expect(screen.getByText(/no skills match your search/i)).toBeInTheDocument();
 
     fireEvent.change(searchInput, { target: { value: 'security' } });
     expect(screen.getByRole('link', { name: /open asr\/security-review details/i })).toBeInTheDocument();
@@ -259,7 +259,7 @@ describe('router', () => {
     const riskFilters = screen.getByRole('group', { name: /filter skills by risk/i });
     fireEvent.click(within(riskFilters).getByRole('button', { name: /^low risk$/i }));
     expect(screen.queryByRole('link', { name: /open asr\/release-notes details/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/no skills found/i)).toBeInTheDocument();
+    expect(screen.getByText(/no skills match your search/i)).toBeInTheDocument();
 
     fireEvent.click(within(riskFilters).getByRole('button', { name: /^all$/i }));
     expect(screen.getByRole('link', { name: /open asr\/release-notes details/i })).toBeInTheDocument();

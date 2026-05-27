@@ -224,7 +224,7 @@ function createSession(role: MockRole): Session {
   };
 }
 
-function SessionProvider({ children }: { children: ReactNode }) {
+export function SessionProvider({ children }: { children: ReactNode }) {
   const [session] = useState(() => createSession(getMockRole()));
   return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
 }
@@ -2606,7 +2606,7 @@ function BrowseLoadingSkeleton() {
   );
 }
 
-function BrowseRegistry() {
+export function BrowseRegistry() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [registryStatus, setRegistryStatus] = useState<RegistryConnectionStatus>('checking');
@@ -2679,6 +2679,16 @@ function BrowseRegistry() {
     );
   });
   const totalStars = filteredSkills.reduce((a, s) => a + s.stars, 0);
+
+  const hasActiveFilters =
+    normalizedSearch !== '' || activeTag !== null || activeKind !== 'all' || activeRisk !== 'all';
+
+  function clearSearchAndFilters() {
+    setSearch('');
+    setActiveTag(null);
+    setActiveKind('all');
+    setActiveRisk('all');
+  }
 
   function applyTagFilter(tag: string) {
     setActiveTag((currentTag) => currentTag === tag ? null : tag);
@@ -2849,7 +2859,20 @@ function BrowseRegistry() {
             </div>
           ) : filteredSkills.length === 0 ? (
             <div className="empty-state">
-              <p>No skills found. Try a different search term or clear the active filter.</p>
+              <p>
+                {hasActiveFilters
+                  ? 'No skills match your search.'
+                  : 'No skills are available yet.'}
+              </p>
+              {hasActiveFilters ? (
+                <button
+                  className="secondary-btn"
+                  type="button"
+                  onClick={clearSearchAndFilters}
+                >
+                  Clear search and filters
+                </button>
+              ) : null}
             </div>
           ) : (
             <div className="skills-grid">
