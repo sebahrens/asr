@@ -18,10 +18,15 @@ interface McpSession {
 const sessions = new Map<string, McpSession>();
 
 export function createMcpServer(): McpServer {
-  return new McpServer({
+  const server = new McpServer({
     name: 'asr-registry',
     version: SERVER_VERSION,
   });
+  // Eagerly initialise the tools/* request handlers so tools/list returns
+  // an empty list before downstream tasks (asr-76e.x, asr-3hs.x) register
+  // real tools. Disabled tools are filtered out of the listing.
+  server.tool('_noop', () => ({ content: [] })).disable();
+  return server;
 }
 
 export const mcpHandler: Handler = async (c) => {

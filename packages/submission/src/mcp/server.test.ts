@@ -7,6 +7,8 @@ let createApp: typeof CreateApp;
 beforeAll(async () => {
   vi.stubEnv('NODE_ENV', 'development');
   vi.stubEnv('AUTH_MODE', 'mock');
+  vi.stubEnv('MOCK_USER_SUB', 'mock-user');
+  vi.stubEnv('MOCK_USER_ROLES', 'Submitter');
 
   ({ createApp } = await import('../index.js'));
 });
@@ -92,6 +94,54 @@ describe('mcpHandler', () => {
     });
 
     expect(res.status).toBe(404);
+  });
+
+  it('rejects an initialize with no bearer in entra mode (-32002, no session)', async () => {
+    vi.stubEnv('AUTH_MODE', 'entra');
+    try {
+      const app = createApp();
+      const res = await initializeMcpSession(app);
+
+      expect(res.headers.get('mcp-session-id')).toBeNull();
+      await expect(res.json()).resolves.toMatchObject({
+        jsonrpc: '2.0',
+        id: 1,
+        error: { code: -32002, message: 'authentication_required' },
+      });
+    } finally {
+      vi.stubEnv('AUTH_MODE', 'mock');
+    }
+  });
+
+  it('binds the mock Submitter principal and serves tools/list on follow-up', async () => {
+    const app = createApp();
+    const init = await initializeMcpSession(app);
+    const sessionId = init.headers.get('mcp-session-id');
+
+    expect(init.status).toBe(200);
+    expect(sessionId).toBeTruthy();
+
+    const res = await app.request('/mcp', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-session-id': sessionId ?? '',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/list',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      jsonrpc: '2.0',
+      id: 2,
+      result: { tools: expect.any(Array) },
+    });
   });
 });
 
