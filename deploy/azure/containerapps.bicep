@@ -143,6 +143,30 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
               mountPath: '/app/data'
             }
           ]
+          probes: [
+            {
+              type: 'Liveness'
+              httpGet: {
+                path: '/health'
+                port: 3001
+              }
+              initialDelaySeconds: 10
+              periodSeconds: 30
+              timeoutSeconds: 5
+              failureThreshold: 3
+            }
+            {
+              type: 'Readiness'
+              httpGet: {
+                path: '/health'
+                port: 3001
+              }
+              initialDelaySeconds: 5
+              periodSeconds: 10
+              timeoutSeconds: 5
+              failureThreshold: 3
+            }
+          ]
         }
       ]
       scale: {
@@ -208,6 +232,19 @@ resource forgejo 'Microsoft.App/containerApps@2024-03-01' = {
             {
               volumeName: 'forgejo-data'
               mountPath: '/data'
+            }
+          ]
+          probes: [
+            {
+              type: 'Liveness'
+              httpGet: {
+                path: '/api/v1/version'
+                port: 3000
+              }
+              initialDelaySeconds: 30
+              periodSeconds: 30
+              timeoutSeconds: 5
+              failureThreshold: 3
             }
           ]
         }
