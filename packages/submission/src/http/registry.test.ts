@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../db/migrations/index.js';
+import { insertSkillVersion } from '../db/repositories/skillVersions.js';
 import { insertSubmission } from '../db/repositories/submissions.js';
 import { createRegistryRoutes } from './registry.js';
 
@@ -75,6 +76,86 @@ describe('registryRoutes', () => {
         manifestLatest: expect.objectContaining({ name: 'x' }),
         versions: [expect.objectContaining({ version: '1.0.0' })],
       }),
+    );
+  });
+
+  it('resolves latest from skill_versions and includes yanked versions in detail', async () => {
+    const app = makeApp();
+    insertPublishedSubmission(db!, {
+      id: 'submission-x-110',
+      name: 'x',
+      version: '1.1.0',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+    });
+    insertPublishedSubmission(db!, {
+      id: 'submission-x-100',
+      name: 'x',
+      version: '1.0.0',
+      publishedAt: '2026-05-23T10:05:00.000Z',
+    });
+    insertPublishedSubmission(db!, {
+      id: 'submission-x-120',
+      name: 'x',
+      version: '1.2.0',
+      publishedAt: '2026-05-25T10:05:00.000Z',
+    });
+    insertSkillVersion(db!, {
+      skill_name: 'x',
+      version: '1.0.0',
+      content_hash: 'sha256:x-100',
+      submission_id: 'submission-x-100',
+      published_at: '2026-05-23T10:05:00.000Z',
+      published_by: 'submitter@example.com',
+      approved_by: 'reviewer@example.com',
+      pr_number: 1,
+      merge_commit: 'merge-100',
+      scan_report_id: null,
+      yanked_at: null,
+      yanked_by: null,
+      yank_reason: null,
+    });
+    insertSkillVersion(db!, {
+      skill_name: 'x',
+      version: '1.1.0',
+      content_hash: 'sha256:x-110',
+      submission_id: 'submission-x-110',
+      published_at: '2026-05-24T10:05:00.000Z',
+      published_by: 'submitter@example.com',
+      approved_by: 'reviewer@example.com',
+      pr_number: 2,
+      merge_commit: 'merge-110',
+      scan_report_id: null,
+      yanked_at: null,
+      yanked_by: null,
+      yank_reason: null,
+    });
+    insertSkillVersion(db!, {
+      skill_name: 'x',
+      version: '1.2.0',
+      content_hash: 'sha256:x-120',
+      submission_id: 'submission-x-120',
+      published_at: '2026-05-25T10:05:00.000Z',
+      published_by: 'submitter@example.com',
+      approved_by: 'reviewer@example.com',
+      pr_number: 3,
+      merge_commit: 'merge-120',
+      scan_report_id: null,
+      yanked_at: '2026-05-26T08:00:00.000Z',
+      yanked_by: 'compliance@example.com',
+      yank_reason: 'security incident',
+    });
+
+    const res = await app.request('/api/v1/skills/acme/x');
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { latestVersion: string; versions: Array<{ version: string; yanked: boolean }> };
+    expect(body.latestVersion).toBe('1.1.0');
+    expect(body.versions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ version: '1.2.0', yanked: true }),
+        expect.objectContaining({ version: '1.1.0', yanked: false }),
+        expect.objectContaining({ version: '1.0.0', yanked: false }),
+      ]),
     );
   });
 
