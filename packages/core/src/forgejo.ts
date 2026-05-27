@@ -103,6 +103,10 @@ export class ForgejoClient {
     return forgejoBranchHeadSha(data);
   }
 
+  async getDefaultBranchHeadSha(): Promise<string> {
+    return this.getBranchHeadSha(this.cfg.defaultBranch ?? 'main');
+  }
+
   async openSubmissionPR(input: {
     submissionId: string;
     manifest: SkillManifest;

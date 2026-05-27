@@ -380,6 +380,36 @@ describe('ForgejoClient', () => {
     );
   });
 
+  it('reads the configured default branch head sha via the upload client', async () => {
+    const client = new ForgejoClient(cfg);
+    const uploadRequest = vi.spyOn(internals(client).upload, 'request').mockResolvedValueOnce({
+      data: { commit: { id: 'main-head-sha' } },
+    } as never);
+
+    await expect(client.getDefaultBranchHeadSha()).resolves.toBe('main-head-sha');
+
+    expect(uploadRequest).toHaveBeenCalledWith('GET /repos/{owner}/{repo}/branches/{branch}', {
+      owner: 'asr',
+      repo: 'skills',
+      branch: 'main',
+    });
+  });
+
+  it('falls back to "main" when no defaultBranch is configured for getDefaultBranchHeadSha', async () => {
+    const client = new ForgejoClient({ ...cfg, defaultBranch: undefined });
+    const uploadRequest = vi.spyOn(internals(client).upload, 'request').mockResolvedValueOnce({
+      data: { commit: { id: 'fallback-head-sha' } },
+    } as never);
+
+    await expect(client.getDefaultBranchHeadSha()).resolves.toBe('fallback-head-sha');
+
+    expect(uploadRequest).toHaveBeenCalledWith('GET /repos/{owner}/{repo}/branches/{branch}', {
+      owner: 'asr',
+      repo: 'skills',
+      branch: 'main',
+    });
+  });
+
   it('creates an annotated tag and its ref via the upload client', async () => {
     const client = new ForgejoClient(cfg);
     const uploadRequest = vi
