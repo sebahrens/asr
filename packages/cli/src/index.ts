@@ -9,6 +9,7 @@ import {
   parseSkillMd,
 } from '@asr/core';
 import { registerLogin, registerLogout, registerWhoami } from './commands/auth.js';
+import { registerSearch } from './commands/search.js';
 import { getConfig, setConfig, getTargetDir } from './config.js';
 import { recordInstall, removeFromLock, getAllInstalled } from './lockfile.js';
 
@@ -52,14 +53,6 @@ async function fetchRegistry<T>(path: string, options: { token?: string } = {}):
   return (await res.json()) as T;
 }
 
-async function searchRegistrySkills(query: string, token?: string): Promise<RegistrySkill[]> {
-  const data = await fetchRegistry<RegistrySkillsResponse>(
-    `/api/skills?q=${encodeURIComponent(query)}`,
-    { token }
-  );
-  return data?.skills ?? [];
-}
-
 async function listSkillsInRepo(_repo: string, _token?: string, _skillsPath = 'skills'): Promise<string[]> {
   throw new Error('Direct repository listing is no longer supported. Configure a registry and use asr browse.');
 }
@@ -97,6 +90,7 @@ program
 registerLogin(program);
 registerWhoami(program);
 registerLogout(program);
+registerSearch(program);
 
 program
   .command('browse')
@@ -131,38 +125,6 @@ program
       }
     } catch (err) {
       spinner.fail('Failed to fetch registry');
-      console.error(pc.red(String(err)));
-      process.exit(1);
-    }
-  });
-
-program
-  .command('search <query>')
-  .description('Search for skills in the configured registry')
-  .option('-t, --token <token>', 'Registry token for API access')
-  .action(async (query, options) => {
-    const spinner = ora('Searching skills...').start();
-    try {
-      const config = getConfig();
-      const skills = await searchRegistrySkills(query, options.token || config.token);
-      spinner.stop();
-
-      if (skills.length === 0) {
-        console.log(pc.yellow('No skills found.'));
-        return;
-      }
-
-      console.log(pc.bold(`\nFound ${skills.length} skills:\n`));
-      for (const skill of skills) {
-        const stars = skill.stars ? pc.dim(`⭐ ${skill.stars}`) : '';
-        console.log(`  ${pc.cyan(skill.name)} ${stars}`);
-        if (skill.description) {
-          console.log(`    ${pc.dim(skill.description)}`);
-        }
-      }
-      console.log(pc.dim(`\nUse ${pc.cyan('asr add <skill-name>')} to install from the registry`));
-    } catch (err) {
-      spinner.fail('Search failed');
       console.error(pc.red(String(err)));
       process.exit(1);
     }
