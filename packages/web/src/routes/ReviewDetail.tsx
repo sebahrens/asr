@@ -6,12 +6,29 @@ import { DecisionPanel } from './DecisionPanel';
 
 type TabId = 'diff' | 'scan';
 
+class HttpError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = 'HttpError';
+  }
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) {
-    throw new Error(`Request to ${url} failed with ${res.status}`);
+    throw new HttpError(res.status, `Request to ${url} failed with ${res.status}`);
   }
   return (await res.json()) as T;
+}
+
+// react-query retries failed queries 3 times by default. For client errors
+// (4xx) the response will not change on retry, so the user would otherwise
+// see ~7s of "Loading…" before the error state appears on an invalid id.
+function retryUnless4xx(failureCount: number, error: unknown): boolean {
+  if (error instanceof HttpError && error.status >= 400 && error.status < 500) {
+    return false;
+  }
+  return failureCount < 3;
 }
 
 export function ReviewDetail() {
@@ -22,16 +39,19 @@ export function ReviewDetail() {
     queryKey: ['submission', id],
     queryFn: () => fetchJson<Submission>(`/api/v1/submissions/${encodeURIComponent(id)}`),
     enabled: id !== '',
+    retry: retryUnless4xx,
   });
   const diffQuery = useQuery({
     queryKey: ['submission', id, 'diff'],
     queryFn: () => fetchJson<VersionDiff>(`/api/v1/submissions/${encodeURIComponent(id)}/diff`),
     enabled: id !== '',
+    retry: retryUnless4xx,
   });
   const scanQuery = useQuery({
     queryKey: ['submission', id, 'scan'],
     queryFn: () => fetchJson<ScanReport>(`/api/v1/submissions/${encodeURIComponent(id)}/scan`),
     enabled: id !== '',
+    retry: retryUnless4xx,
   });
 
   const [activeTab, setActiveTab] = useState<TabId>('diff');

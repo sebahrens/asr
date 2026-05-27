@@ -70,10 +70,10 @@ const scanReport: ScanReport = {
   },
 };
 
-function renderRoute(id: string) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderRoute(id: string, queryClient?: QueryClient) {
+  const client = queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={client}>
       <SessionContext.Provider value={{ sub: 'reviewer', name: 'Reviewer', roles: ['Compliance'] }}>
         <MemoryRouter initialEntries={[`/review/${id}`]}>
           <Routes>
@@ -114,6 +114,33 @@ describe('ReviewDetail', () => {
     const backLink = screen.getByRole('link', { name: /back to review queue/i });
     expect(backLink).toHaveAttribute('href', '/review');
     expect(screen.queryByRole('link', { name: /browse skills/i })).not.toBeInTheDocument();
+  });
+
+  it('does not get stuck in loading on 404 when retries are enabled (no retry on 4xx)', async () => {
+    const fetchSpy = vi.fn(async () => {
+      return new Response(JSON.stringify({ error: 'not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    // Use a QueryClient that allows retries (mirrors production main.tsx).
+    // retryDelay: 0 keeps the test fast if the fix regresses.
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retryDelay: 0 } },
+    });
+
+    renderRoute('does-not-exist', queryClient);
+
+    const heading = await screen.findByRole('heading', {
+      name: /unable to load this submission|submission not found/i,
+    });
+    expect(heading).toBeInTheDocument();
+
+    // Each of the 3 queries (submission, diff, scan) should fire exactly once —
+    // 404 must short-circuit react-query's default 3-retry policy.
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 
   it('renders the submission header version, Diff tab modified file path, and Scan tab high finding message', async () => {
