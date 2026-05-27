@@ -29,14 +29,15 @@ export async function recordInstall(
   skillName: string,
   source: string,
   version?: string,
-  commit?: string
+  commit?: string,
+  options?: { contentHash?: string; sourceUrl?: string }
 ): Promise<void> {
   const lockPath = await getLockFilePath(target, global);
   const lock = await readLockFile(lockPath);
-  
+
   const now = new Date().toISOString();
   const existing = lock.skills[skillName];
-  
+
   lock.skills[skillName] = {
     name: skillName,
     source,
@@ -44,8 +45,10 @@ export async function recordInstall(
     commit,
     installedAt: existing?.installedAt || now,
     updatedAt: now,
+    contentHash: options?.contentHash,
+    sourceUrl: options?.sourceUrl,
   };
-  
+
   await writeLockFile(lockPath, lock);
 }
 

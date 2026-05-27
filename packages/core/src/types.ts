@@ -24,6 +24,8 @@ export interface InstalledSkill {
   commit?: string;
   installedAt: string;
   updatedAt: string;
+  contentHash?: string;
+  sourceUrl?: string;
 }
 
 export interface LockFile {
