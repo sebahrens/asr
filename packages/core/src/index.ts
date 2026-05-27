@@ -7,3 +7,4 @@ export * from './version.js';
 export * from './hash.js';
 export * from './audit.js';
 export * from './permissions.js';
+export * from './versionDiff.js';
