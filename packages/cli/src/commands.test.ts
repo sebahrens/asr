@@ -6,10 +6,14 @@ vi.mock('./config.js', () => ({
   getConfig: vi.fn(() => ({ defaultTarget: 'project' as const })),
 }));
 
-vi.mock('./registry-client.js', () => ({
-  searchSkills: vi.fn(),
-  getSkillDetail: vi.fn(),
-}));
+vi.mock('./registry-client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./registry-client.js')>();
+  return {
+    ...actual,
+    searchSkills: vi.fn(),
+    getSkillDetail: vi.fn(),
+  };
+});
 
 vi.mock('./lockfile.js', () => ({
   getAllInstalled: vi.fn(),
@@ -25,11 +29,11 @@ vi.mock('ora', () => ({
   }),
 }));
 
-import { getSkillDetail, searchSkills } from './registry-client.js';
+import { getSkillDetail, searchSkills, RegistryError } from './registry-client.js';
 import { getAllInstalled } from './lockfile.js';
 import { registerSearch } from './commands/search.js';
 import { registerInfo } from './commands/info.js';
-import { registerVersions } from './commands/versions.js';
+import { registerVersions, runVersions } from './commands/versions.js';
 import { registerList } from './commands/list.js';
 
 const searchMock = vi.mocked(searchSkills);
@@ -287,6 +291,33 @@ describe('versions command', () => {
     expect(firstLine).toContain('1.2.0');
     const lastLine = lines[lines.length - 1];
     expect(lastLine).toContain('1.0.0');
+  });
+
+  it('returns a non-zero exit code and surfaces "skill not found" when the registry 404s', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    getSkillDetailMock.mockRejectedValueOnce(new RegistryError(404, 'not found'));
+
+    const code = await runVersions('owner/missing');
+
+    expect(code).toBe(1);
+    const errPrinted = errSpy.mock.calls.map((args: unknown[]) => String(args[0])).join('\n');
+    expect(errPrinted).toContain('skill not found');
+    expect(errPrinted).toContain('owner/missing');
+
+    errSpy.mockRestore();
+  });
+
+  it('returns a non-zero exit code without calling the registry when the slug is malformed', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const code = await runVersions('not-a-slug');
+
+    expect(code).toBe(1);
+    expect(getSkillDetailMock).not.toHaveBeenCalled();
+    const errPrinted = errSpy.mock.calls.map((args: unknown[]) => String(args[0])).join('\n');
+    expect(errPrinted).toContain('Invalid slug');
+
+    errSpy.mockRestore();
   });
 });
 
