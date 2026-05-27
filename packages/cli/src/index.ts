@@ -17,7 +17,7 @@ import { registerStatus, registerSubmissions } from './commands/submissions.js';
 import { registerToken } from './commands/token.js';
 import { getConfig, setConfig, getTargetDir } from './config.js';
 import { recordInstall, removeFromLock, getAllInstalled } from './lockfile.js';
-import { installSkill } from './install.js';
+import { installSkill, updateSkill } from './install.js';
 
 interface RegistrySkill {
   id?: string;
@@ -383,64 +383,24 @@ program
   });
 
 program
-  .command('update [name]')
-  .description('Update installed skills (all or specific)')
-  .option('--agent <name>', 'Target agent (cursor/claude/project)', 'project')
-  .option('-g, --global', 'Use global skills')
-  .option('-t, --token <token>', 'GitHub token')
-  .action(async (name, options) => {
-    const spinner = ora('Updating skills...').start();
+  .command('update [slug]')
+  .description('Update installed skills to latest non-yanked version (all or owner/name)')
+  .option('-g, --global', 'Update globally installed skills (~/.agent)')
+  .option('--agent <name>', 'Target agent (claude|codex|both)')
+  .option('-t, --token <token>', 'Registry bearer token override')
+  .action(async (slug: string | undefined, options: { global?: boolean; agent?: string; token?: string }) => {
     try {
-      const config = getConfig();
-      const githubToken = options.token || config.githubToken;
-      const target = options.agent as 'cursor' | 'claude' | 'project';
-      const installed = await getAllInstalled(target, options.global);
+      const results = await updateSkill(slug, {
+        global: options.global,
+        agent: options.agent as 'claude' | 'codex' | 'both' | undefined,
+        token: options.token,
+      });
 
-      const toUpdate = name ? [name] : Object.keys(installed);
-      
-      if (toUpdate.length === 0) {
-        spinner.warn('No skills to update');
-        return;
+      if (results.length === 0) {
+        console.log(pc.yellow('No skills installed from the registry.'));
       }
-
-      let updated = 0;
-      for (const skillName of toUpdate) {
-        const info = installed[skillName];
-        if (!info) {
-          console.log(`  ${pc.yellow('⚠')} ${skillName} not found in lockfile`);
-          continue;
-        }
-
-        spinner.text = `Updating ${skillName}...`;
-
-        if (info.source.startsWith('registry:')) {
-          const parts = info.source.replace('registry:', '').split('/');
-          if (parts.length >= 3) {
-            await installFromRegistry(parts[0], parts[1], parts[2], target, options.global);
-            console.log(`  ${pc.green('✓')} ${skillName}`);
-            updated++;
-            continue;
-          }
-        }
-
-        const sourceParts = info.source.split('/');
-        if (sourceParts.length < 3) {
-          console.log(`  ${pc.yellow('⚠')} ${skillName} has invalid source: ${info.source}`);
-          continue;
-        }
-
-        const repo = `${sourceParts[0]}/${sourceParts[1]}`;
-        const skillsPath = sourceParts.slice(2, -1).join('/') || 'skills';
-        
-        await installFromGitHub(repo, skillName, skillsPath, target, options.global, githubToken);
-        console.log(`  ${pc.green('✓')} ${skillName}`);
-        updated++;
-      }
-
-      spinner.succeed(`Updated ${updated} skill(s)`);
     } catch (err) {
-      spinner.fail('Update failed');
-      console.error(pc.red(String(err)));
+      console.error(pc.red(err instanceof Error ? err.message : String(err)));
       process.exit(1);
     }
   });

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { agentSkillDir, detectAgents, type AgentTarget } from './agents.js';
 import { downloadAndVerify } from './download.js';
 import { extractZip } from './extract.js';
-import { recordInstall } from './lockfile.js';
+import { getAllInstalled, recordInstall } from './lockfile.js';
 import { getSkillDetail, resolveDownload } from './registry-client.js';
 
 export interface InstallSkillOptions {
@@ -114,4 +114,78 @@ export async function installSkill(
     yanked,
     locations,
   };
+}
+
+export interface UpdateSkillResult {
+  owner: string;
+  name: string;
+  oldVersion: string;
+  newVersion: string;
+  upToDate: boolean;
+  installResult?: InstallSkillResult;
+}
+
+export async function updateSkill(
+  slug?: string,
+  opts: InstallSkillOptions = {},
+): Promise<UpdateSkillResult[]> {
+  const global = opts.global ?? false;
+  const installed = await getAllInstalled('project', global);
+
+  type Target = { owner: string; name: string; currentVersion: string };
+  const targets: Target[] = [];
+
+  if (slug) {
+    const parsed = parseSlug(slug);
+    const entry = installed[parsed.name];
+    const expectedSource = `registry:${parsed.owner}/${parsed.name}`;
+    if (!entry || entry.source !== expectedSource) {
+      throw new Error(`${parsed.owner}/${parsed.name} is not installed from the registry`);
+    }
+    if (!entry.version) {
+      throw new Error(`${parsed.owner}/${parsed.name} has no recorded version`);
+    }
+    targets.push({ owner: parsed.owner, name: parsed.name, currentVersion: entry.version });
+  } else {
+    for (const info of Object.values(installed)) {
+      if (!info.source.startsWith('registry:') || !info.version) continue;
+      const rest = info.source.slice('registry:'.length);
+      const [o, n] = rest.split('/');
+      if (!o || !n) continue;
+      targets.push({ owner: o, name: n, currentVersion: info.version });
+    }
+  }
+
+  const fetchOpts = opts.token ? { token: opts.token } : {};
+  const results: UpdateSkillResult[] = [];
+
+  for (const t of targets) {
+    const detail = await getSkillDetail(t.owner, t.name, fetchOpts);
+    const latest = detail.latestVersion;
+
+    if (latest === t.currentVersion) {
+      console.log(`${t.owner}/${t.name}: up to date`);
+      results.push({
+        owner: t.owner,
+        name: t.name,
+        oldVersion: t.currentVersion,
+        newVersion: latest,
+        upToDate: true,
+      });
+      continue;
+    }
+
+    const installResult = await installSkill(`${t.owner}/${t.name}`, opts);
+    console.log(`${t.owner}/${t.name}: ${t.currentVersion} -> ${installResult.version}`);
+    results.push({
+      owner: t.owner,
+      name: t.name,
+      oldVersion: t.currentVersion,
+      newVersion: installResult.version,
+      upToDate: false,
+      installResult,
+    });
+  }
+
+  return results;
 }

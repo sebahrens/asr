@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,7 +21,7 @@ vi.mock('./extract.js', () => ({
   extractZip: (...args: unknown[]) => extractZip(...args),
 }));
 
-const { installSkill } = await import('./install.js');
+const { installSkill, updateSkill } = await import('./install.js');
 
 const DOWNLOAD_URL =
   'https://forgejo.internal/api/packages/acme/generic/demo/1.2.3/skill.zip';
@@ -251,5 +251,173 @@ describe('installSkill', () => {
     expect(getSkillDetail).toHaveBeenCalledWith('acme', 'demo', { token: 't0k' });
     expect(resolveDownload).toHaveBeenCalledWith('acme', 'demo', '1.2.3', { token: 't0k' });
     expect(downloadAndVerify).toHaveBeenCalledWith(DOWNLOAD_URL, HASH, { token: 't0k' });
+  });
+});
+
+describe('updateSkill', () => {
+  let tempDir: string;
+  let cwdSpy: ReturnType<typeof vi.spyOn>;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+
+  async function seedLockfile(skills: Record<string, { source: string; version?: string }>) {
+    const agentDir = join(tempDir, '.agent');
+    await mkdir(agentDir, { recursive: true });
+    const now = '2026-05-23T10:00:00Z';
+    const lock = {
+      version: 1,
+      skills: Object.fromEntries(
+        Object.entries(skills).map(([name, info]) => [
+          name,
+          {
+            name,
+            source: info.source,
+            version: info.version,
+            installedAt: now,
+            updatedAt: now,
+          },
+        ]),
+      ),
+    };
+    await writeFile(join(agentDir, 'asr.lock.json'), JSON.stringify(lock, null, 2));
+  }
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'asr-update-'));
+    await mkdir(join(tempDir, '.claude'), { recursive: true });
+    cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    getSkillDetail.mockReset();
+    resolveDownload.mockReset();
+    downloadAndVerify.mockReset();
+    extractZip.mockReset();
+    extractZip.mockResolvedValue(['SKILL.md']);
+  });
+
+  afterEach(async () => {
+    cwdSpy.mockRestore();
+    logSpy.mockRestore();
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('reinstalls latest non-yanked and prints "owner/name: old -> new"', async () => {
+    await seedLockfile({ demo: { source: 'registry:acme/demo', version: '1.0.0' } });
+
+    getSkillDetail.mockResolvedValueOnce(detail());
+    getSkillDetail.mockResolvedValueOnce(detail());
+    resolveDownload.mockResolvedValueOnce({ url: DOWNLOAD_URL, yanked: false });
+    downloadAndVerify.mockResolvedValueOnce(ZIP_BUF);
+
+    const results = await updateSkill('acme/demo');
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      owner: 'acme',
+      name: 'demo',
+      oldVersion: '1.0.0',
+      newVersion: '1.2.3',
+      upToDate: false,
+    });
+    expect(logSpy).toHaveBeenCalledWith('acme/demo: 1.0.0 -> 1.2.3');
+    expect(downloadAndVerify).toHaveBeenCalledTimes(1);
+
+    const lock = JSON.parse(
+      await readFile(join(tempDir, '.agent', 'asr.lock.json'), 'utf-8'),
+    );
+    expect(lock.skills['demo'].version).toBe('1.2.3');
+  });
+
+  it('prints "up to date" and skips reinstall when already at latest', async () => {
+    await seedLockfile({ demo: { source: 'registry:acme/demo', version: '1.2.3' } });
+
+    getSkillDetail.mockResolvedValueOnce(detail());
+
+    const results = await updateSkill('acme/demo');
+
+    expect(results[0]).toMatchObject({
+      oldVersion: '1.2.3',
+      newVersion: '1.2.3',
+      upToDate: true,
+    });
+    expect(logSpy).toHaveBeenCalledWith('acme/demo: up to date');
+    expect(resolveDownload).not.toHaveBeenCalled();
+    expect(downloadAndVerify).not.toHaveBeenCalled();
+    expect(extractZip).not.toHaveBeenCalled();
+  });
+
+  it('iterates every registry-sourced lockfile entry when no slug is given', async () => {
+    await seedLockfile({
+      demo: { source: 'registry:acme/demo', version: '1.0.0' },
+      other: { source: 'registry:acme/other', version: '2.0.0' },
+      'gh-only': { source: 'github:foo/bar/qux', version: '0.1.0' },
+    });
+
+    getSkillDetail.mockImplementation(async (owner: string, name: string) => {
+      if (name === 'demo') return detail();
+      return detail({
+        owner,
+        name,
+        latestVersion: '2.0.0',
+        versions: [
+          {
+            owner,
+            name,
+            version: '2.0.0',
+            contentHash: 'sha256:other',
+            publishedAt: '2026-05-01T00:00:00Z',
+            publishedBy: 'u',
+            approvedBy: null,
+            prNumber: 2,
+            mergeCommit: 'm',
+            yanked: false,
+            riskAssessment: 'low',
+          },
+        ],
+      });
+    });
+    resolveDownload.mockResolvedValueOnce({ url: DOWNLOAD_URL, yanked: false });
+    downloadAndVerify.mockResolvedValueOnce(ZIP_BUF);
+
+    const results = await updateSkill();
+
+    expect(results.map((r) => r.name)).toEqual(['demo', 'other']);
+    expect(results[0].upToDate).toBe(false);
+    expect(results[1].upToDate).toBe(true);
+    expect(logSpy).toHaveBeenCalledWith('acme/demo: 1.0.0 -> 1.2.3');
+    expect(logSpy).toHaveBeenCalledWith('acme/other: up to date');
+  });
+
+  it('throws when the named skill is not in the lockfile', async () => {
+    await seedLockfile({ demo: { source: 'registry:acme/demo', version: '1.0.0' } });
+
+    await expect(updateSkill('acme/missing')).rejects.toThrow(
+      /acme\/missing is not installed from the registry/,
+    );
+  });
+
+  it('throws when the named skill was installed from a non-registry source', async () => {
+    await seedLockfile({ demo: { source: 'github:foo/bar/demo', version: '1.0.0' } });
+
+    await expect(updateSkill('acme/demo')).rejects.toThrow(
+      /acme\/demo is not installed from the registry/,
+    );
+  });
+
+  it('returns empty list when no registry-sourced skills are installed and no slug is given', async () => {
+    await seedLockfile({ 'gh-only': { source: 'github:foo/bar/qux', version: '0.1.0' } });
+
+    const results = await updateSkill();
+
+    expect(results).toEqual([]);
+    expect(getSkillDetail).not.toHaveBeenCalled();
+  });
+
+  it('propagates token to getSkillDetail when opts.token is set', async () => {
+    await seedLockfile({ demo: { source: 'registry:acme/demo', version: '1.2.3' } });
+
+    getSkillDetail.mockResolvedValueOnce(detail());
+
+    await updateSkill('acme/demo', { token: 't0k' });
+
+    expect(getSkillDetail).toHaveBeenCalledWith('acme', 'demo', { token: 't0k' });
   });
 });
