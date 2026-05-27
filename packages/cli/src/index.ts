@@ -14,6 +14,7 @@ import { registerInfo } from './commands/info.js';
 import { registerVersions } from './commands/versions.js';
 import { registerPublish } from './commands/publish.js';
 import { registerStatus, registerSubmissions } from './commands/submissions.js';
+import { registerToken } from './commands/token.js';
 import { getConfig, setConfig, getTargetDir } from './config.js';
 import { recordInstall, removeFromLock, getAllInstalled } from './lockfile.js';
 import { installSkill } from './install.js';
@@ -71,20 +72,6 @@ async function downloadSkillFiles(
   throw new Error('Direct repository installs are no longer supported. Configure a registry and install by skill name.');
 }
 
-function getRegistryAuthOrExit(overrideToken?: string): { registry: string; token: string } {
-  const config = getConfig();
-  const token = overrideToken || config.token;
-  if (!config.registry) {
-    console.log(pc.yellow('No registry configured. Use: asr config set registry <url>'));
-    process.exit(1);
-  }
-  if (!token) {
-    console.log(pc.yellow('No token configured. Use: asr config set token <token>'));
-    process.exit(1);
-  }
-  return { registry: config.registry, token };
-}
-
 const program = new Command();
 
 program
@@ -101,6 +88,7 @@ registerVersions(program);
 registerPublish(program);
 registerStatus(program);
 registerSubmissions(program);
+registerToken(program);
 
 program
   .command('browse')
@@ -582,111 +570,6 @@ program
       console.error(pc.red(String(err)));
       process.exit(1);
     }
-  });
-
-program
-  .command('token <action> [value]')
-  .description('Manage registry API tokens (list/create/revoke)')
-  .option('-n, --name <name>', 'Token name for create')
-  .option('-p, --permissions <permissions>', 'Comma-separated permissions (read,publish,admin)', 'read')
-  .option('-t, --token <token>', 'Admin token override')
-  .action(async (action, value, options) => {
-    const { registry, token } = getRegistryAuthOrExit(options.token);
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    };
-
-    if (action === 'list') {
-      const spinner = ora('Fetching tokens...').start();
-      try {
-        const res = await fetch(`${registry}/api/admin/tokens`, { headers });
-        if (!res.ok) {
-          throw new Error(`${res.status} ${await res.text()}`);
-        }
-        const data = (await res.json()) as {
-          tokens: Array<{ id: string; name: string; permissions: string[]; createdAt?: string }>;
-        };
-        spinner.stop();
-        if (!data.tokens?.length) {
-          console.log(pc.yellow('No tokens found.'));
-          return;
-        }
-        console.log(pc.bold('\nRegistry tokens:\n'));
-        for (const t of data.tokens) {
-          console.log(`  ${pc.green(t.name)} ${pc.dim(t.id)}`);
-          console.log(`    permissions: ${pc.cyan(t.permissions.join(','))}`);
-          if (t.createdAt) console.log(`    created: ${pc.dim(t.createdAt)}`);
-        }
-        return;
-      } catch (err) {
-        spinner.fail('Failed to fetch tokens');
-        console.error(pc.red(String(err)));
-        process.exit(1);
-      }
-    }
-
-    if (action === 'create') {
-      const name = options.name || value;
-      if (!name) {
-        console.log(pc.yellow('Usage: asr token create <name> --permissions read,publish'));
-        process.exit(1);
-      }
-      const permissions = String(options.permissions || 'read')
-        .split(',')
-        .map((p) => p.trim())
-        .filter(Boolean);
-
-      const spinner = ora('Creating token...').start();
-      try {
-        const res = await fetch(`${registry}/api/admin/tokens`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ name, permissions }),
-        });
-        if (!res.ok) {
-          throw new Error(`${res.status} ${await res.text()}`);
-        }
-        const data = (await res.json()) as {
-          token: { id: string; name: string; permissions: string[]; value: string };
-        };
-        spinner.succeed(`Created token ${pc.green(data.token.name)} (${pc.dim(data.token.id)})`);
-        console.log(pc.bold('\nToken value (shown once):'));
-        console.log(pc.cyan(data.token.value));
-        return;
-      } catch (err) {
-        spinner.fail('Failed to create token');
-        console.error(pc.red(String(err)));
-        process.exit(1);
-      }
-    }
-
-    if (action === 'revoke') {
-      const tokenId = value;
-      if (!tokenId) {
-        console.log(pc.yellow('Usage: asr token revoke <token-id>'));
-        process.exit(1);
-      }
-      const spinner = ora('Revoking token...').start();
-      try {
-        const res = await fetch(`${registry}/api/admin/tokens/${tokenId}/revoke`, {
-          method: 'POST',
-          headers,
-        });
-        if (!res.ok) {
-          throw new Error(`${res.status} ${await res.text()}`);
-        }
-        spinner.succeed(`Revoked token ${pc.green(tokenId)}`);
-        return;
-      } catch (err) {
-        spinner.fail('Failed to revoke token');
-        console.error(pc.red(String(err)));
-        process.exit(1);
-      }
-    }
-
-    console.log(pc.yellow('Usage: asr token list | create <name> --permissions read,publish | revoke <token-id>'));
-    process.exit(1);
   });
 
 program
