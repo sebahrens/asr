@@ -38,3 +38,7 @@ AGENTS.md
 
 # Visual test artifacts
 .playwright-mcp/
+
+# Playwright runtime artifacts
+test-results/
+playwright-report/
