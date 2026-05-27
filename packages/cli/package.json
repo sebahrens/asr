@@ -20,12 +20,16 @@
     "commander": "^12.1.0",
     "picocolors": "^1.1.0",
     "ora": "^8.1.0",
-    "conf": "^13.0.0"
+    "conf": "^13.0.0",
+    "yauzl": "^3.0.0"
   },
   "devDependencies": {
     "tsup": "^8.3.0",
     "typescript": "^5.7.0",
     "@types/node": "^22.0.0",
-    "vitest": "^4.0.18"
+    "@types/yauzl": "^2.10.0",
+    "@types/yazl": "^3.3.1",
+    "vitest": "^4.0.18",
+    "yazl": "^2.5.1"
   }
 }
