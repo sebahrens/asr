@@ -35,6 +35,7 @@
 | [SPEC.md](SPEC.md) | Index of all specs, phases, decision summary |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System topology, auth flows, networking |
 | [DESIGN.md](DESIGN.md) | CLI distribution + publish approval design |
+| [docs/mcp-clients.md](docs/mcp-clients.md) | MCP client configuration (Claude Code, Codex CLI, dev mode) |
 | [specs/](specs/) | Detailed specifications for every subsystem |
 
 The plan loop in [`ralph-scripts/`](ralph-scripts/) decomposes these specs into atomic backlog beads.
