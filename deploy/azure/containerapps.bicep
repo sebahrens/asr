@@ -7,6 +7,12 @@ param envName string = 'asr-env'
 @description('Container image for the api app (defaults to the asr-api tag pushed to the project ACR).')
 param image string = '$ACR.azurecr.io/asr-api:latest'
 
+@description('Container image for the forgejo app (defaults to the mirrored forgejo:15 tag in the project ACR; final value set by asr-1h5).')
+param forgejoImage string = '$ACR.azurecr.io/forgejo:15'
+
+@description('Container image for the web app (defaults to the asr-web tag pushed to the project ACR).')
+param webImage string = '$ACR.azurecr.io/asr-web:latest'
+
 @description('Entra ID tenant id used by API auth middleware.')
 param tenantId string
 
@@ -128,6 +134,91 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           mountOptions: 'nobrl'
         }
       ]
+    }
+  }
+}
+
+resource forgejo 'Microsoft.App/containerApps@2024-03-01' = {
+  name: 'forgejo'
+  location: location
+  properties: {
+    managedEnvironmentId: env.id
+    configuration: {
+      ingress: {
+        external: false
+        targetPort: 3000
+        transport: 'auto'
+      }
+    }
+    template: {
+      containers: [
+        {
+          name: 'forgejo'
+          image: forgejoImage
+          resources: {
+            cpu: json('1.0')
+            memory: '2Gi'
+          }
+          env: [
+            {
+              name: 'FORGEJO__server__ROOT_URL'
+              value: forgejoUrl
+            }
+            {
+              name: 'FORGEJO__database__DB_TYPE'
+              value: 'sqlite3'
+            }
+          ]
+          volumeMounts: [
+            {
+              volumeName: 'forgejo-data'
+              mountPath: '/data'
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 1
+        maxReplicas: 1
+      }
+      volumes: [
+        {
+          name: 'forgejo-data'
+          storageName: 'forgejo-storage'
+          storageType: 'AzureFile'
+        }
+      ]
+    }
+  }
+}
+
+resource web 'Microsoft.App/containerApps@2024-03-01' = {
+  name: 'web'
+  location: location
+  properties: {
+    managedEnvironmentId: env.id
+    configuration: {
+      ingress: {
+        external: true
+        targetPort: 80
+        transport: 'auto'
+      }
+    }
+    template: {
+      containers: [
+        {
+          name: 'web'
+          image: webImage
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+        }
+      ]
+      scale: {
+        minReplicas: 0
+        maxReplicas: 3
+      }
     }
   }
 }
