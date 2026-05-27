@@ -6,6 +6,7 @@ import { assertAuthModeAllowed } from './auth/entra.js';
 import { authMiddleware } from './auth/middleware.js';
 import type { AuthVariables } from './auth/types.js';
 import { getEnv } from './env.js';
+import { createAuditRoutes, type AuditRouteOptions } from './http/audit.js';
 import { healthRoutes } from './http/health.js';
 import { createRegistryRoutes, type RegistryRouteOptions } from './http/registry.js';
 import { createSubmissionRoutes, type SubmissionRouteOptions } from './http/submissions.js';
@@ -21,6 +22,7 @@ export interface CreateAppOptions {
   submissions?: SubmissionRouteOptions;
   workflow?: WorkflowRouteOptions;
   mcp?: McpRouteOptions;
+  audit?: AuditRouteOptions;
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -35,6 +37,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.route('/api/v1/submissions', createSubmissionRoutes(options.submissions));
   app.route('/api/v1/submissions', createWorkflowRoutes(options.workflow));
   app.route('/submissions', createWorkflowRoutes(options.workflow));
+  app.route('/api/v1/audit', createAuditRoutes(options.audit));
 
   return app;
 }
