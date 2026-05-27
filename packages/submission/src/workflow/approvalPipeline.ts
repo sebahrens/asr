@@ -1,6 +1,8 @@
 import { ForgejoClient, type AuditAction, type ScanReport, type SkillManifest, type Submission, type VersionDiff } from '@asr/core';
 import { createFlow, FlowRuntime, type NodeContext, type WorkflowResult } from 'flowcraft';
 import { runScanner, type RunScannerInput } from '../scan/runScanner.js';
+import { notify, type NotifyEvent } from '../notify/mailer.js';
+import type { EmailTransport } from '../notify/transport.js';
 import { classifySkill } from '../zip/classify.js';
 
 const dayMs = 24 * 60 * 60 * 1000;
@@ -40,12 +42,21 @@ export interface HitlSignal {
   reason?: string;
 }
 
+export interface NotifierDependency {
+  transport: EmailTransport;
+  baseUrl: string;
+  resolveSubmitterEmail: (submission: Submission) => string | undefined;
+  resolveReviewerEmail: (submission: Submission) => string | undefined;
+  log?: (message: string, error?: unknown) => void;
+}
+
 export interface ApprovalPipelineDependencies {
   svc<T>(token: unknown): T;
   audit(action: AuditAction, detail: Record<string, unknown>): Promise<void> | void;
   runScanner?: (input: RunScannerInput) => Promise<ScanReport>;
   regenerateRegistryIndex?: () => Promise<void> | void;
   now?: () => Date;
+  notifier?: NotifierDependency;
 }
 
 type PipelineNodeContext = NodeContext<ApprovalPipelineContext, ApprovalPipelineDependencies>;
@@ -206,6 +217,11 @@ async function pushToForgejoNode({ context, dependencies }: PipelineNodeContext)
     autoApprove: classification === 'md-only',
   });
 
+  if (classification === 'code-containing') {
+    const submission = required(await context.get('submission'), 'submission');
+    await tryNotifySubmitter(dependencies, submission, submissionId, 'questionnaire_ready');
+  }
+
   return { action: classification };
 }
 
@@ -221,8 +237,9 @@ async function scanNode({ context, dependencies }: PipelineNodeContext) {
   await dependencies.audit('workflow.scan.started', {});
 
   const scanner = dependencies.runScanner ?? runScanner;
+  const submissionId = required(await context.get('submissionId'), 'submissionId');
   const report = await scanner({
-    submissionId: required(await context.get('submissionId'), 'submissionId'),
+    submissionId,
     contentHash: required(await context.get('contentHash'), 'contentHash'),
     extractedDir: required(await context.get('extractedDir'), 'extractedDir'),
   });
@@ -232,6 +249,11 @@ async function scanNode({ context, dependencies }: PipelineNodeContext) {
     scanId: report.scanId,
     verdict: report.verdict,
   });
+
+  if (report.verdict === 'review_required') {
+    const submission = required(await context.get('submission'), 'submission');
+    await tryNotifyReviewer(dependencies, submission, submissionId, 'scan_review_required');
+  }
 
   return { action: report.verdict === 'block' ? 'block' : 'continue' };
 }
@@ -243,12 +265,15 @@ async function autoApproveNode({ dependencies }: PipelineNodeContext) {
 
 async function publishNode({ context, dependencies }: PipelineNodeContext) {
   const review = await context.get('review') as HitlSignal | undefined;
+  const submissionId = required(await context.get('submissionId'), 'submissionId');
   if (review?.decision === 'rejected') {
     await context.set('status', 'rejected');
     await dependencies.audit('workflow.review.rejected', {
       actor: review.actor,
       reason: review.reason ?? 'rejected',
     });
+    const submission = required(await context.get('submission'), 'submission');
+    await tryNotifySubmitter(dependencies, submission, submissionId, 'rejected');
     return { action: 'rejected' };
   }
 
@@ -284,6 +309,10 @@ async function publishNode({ context, dependencies }: PipelineNodeContext) {
   await context.set('mergeCommit', merge.sha);
   await context.set('status', 'published');
   await dependencies.audit('workflow.published', { mergeCommit: merge.sha });
+  if (review?.decision === 'approved') {
+    const submission = required(await context.get('submission'), 'submission');
+    await tryNotifySubmitter(dependencies, submission, submissionId, 'approved');
+  }
   return { action: 'published' };
 }
 
@@ -298,4 +327,51 @@ function required<T>(value: T | undefined, name: string): T {
     throw new Error(`${name} is required`);
   }
   return value;
+}
+
+async function tryNotifySubmitter(
+  dependencies: ApprovalPipelineDependencies,
+  submission: Submission,
+  submissionId: string,
+  event: NotifyEvent,
+): Promise<void> {
+  const notifier = dependencies.notifier;
+  if (!notifier) {
+    return;
+  }
+  const to = notifier.resolveSubmitterEmail(submission);
+  await sendBestEffort(notifier, to, event, submissionId);
+}
+
+async function tryNotifyReviewer(
+  dependencies: ApprovalPipelineDependencies,
+  submission: Submission,
+  submissionId: string,
+  event: NotifyEvent,
+): Promise<void> {
+  const notifier = dependencies.notifier;
+  if (!notifier) {
+    return;
+  }
+  const to = notifier.resolveReviewerEmail(submission);
+  await sendBestEffort(notifier, to, event, submissionId);
+}
+
+async function sendBestEffort(
+  notifier: NotifierDependency,
+  to: string | undefined,
+  event: NotifyEvent,
+  submissionId: string,
+): Promise<void> {
+  if (!to) {
+    return;
+  }
+  try {
+    await notify(notifier.transport, to, event, {
+      submissionId,
+      baseUrl: notifier.baseUrl,
+    });
+  } catch (err) {
+    notifier.log?.(`notify ${event} to ${to} failed`, err);
+  }
 }
