@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsup src/index.ts --format esm --dts",
     "test": "vitest run",
-    "test:integration": "RUN_FORGEJO_INTEGRATION=1 vitest run test/integration/publish-download.test.ts"
+    "test:integration": "RUN_FORGEJO_INTEGRATION=1 vitest run test/integration/publish-download.test.ts test/integration/mcp-devmode.test.ts"
   },
   "dependencies": {
     "@asr/core": "workspace:*",

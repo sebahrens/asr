@@ -227,6 +227,10 @@ export interface RegistryRouteOptions {
 
 const defaultRegistryDb = createDefaultRegistryDb();
 
+export function getDefaultRegistryDb(): Database.Database {
+  return defaultRegistryDb;
+}
+
 export function createRegistryRoutes(options: RegistryRouteOptions = {}) {
   const routes = new Hono();
   const db = options.db ?? defaultRegistryDb;

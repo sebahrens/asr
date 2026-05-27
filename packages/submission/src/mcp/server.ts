@@ -5,6 +5,7 @@ import type { Handler } from 'hono';
 import { randomUUID } from 'node:crypto';
 import type { Identity } from '../auth/types.js';
 import type { Database } from '../db/index.js';
+import { getDefaultRegistryDb } from '../http/registry.js';
 import { resolveMcpPrincipal } from './auth.js';
 import { MCP_ERROR, McpToolError, mcpError } from './errors.js';
 import { createRateLimiter, type RateLimiter } from './rateLimit.js';
@@ -142,82 +143,91 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
   return server;
 }
 
-export const mcpHandler: Handler = async (c) => {
-  if (c.req.method === 'GET') {
-    const session = getSession(c.req.header('mcp-session-id'));
-    if (!session) {
-      return sessionNotFound(c);
-    }
-    return session.transport.handleRequest(c.req.raw, {
-      authInfo: authInfoFor(session.principal),
-    });
-  }
+export interface McpRouteOptions {
+  db?: Database;
+  reviewDecisionDeps?: ReviewDecisionDeps;
+}
 
-  if (c.req.method === 'DELETE') {
+export function createMcpRoute(options: McpRouteOptions = {}): Handler {
+  return async (c) => {
+    if (c.req.method === 'GET') {
+      const session = getSession(c.req.header('mcp-session-id'));
+      if (!session) {
+        return sessionNotFound(c);
+      }
+      return session.transport.handleRequest(c.req.raw, {
+        authInfo: authInfoFor(session.principal),
+      });
+    }
+
+    if (c.req.method === 'DELETE') {
+      const sessionId = c.req.header('mcp-session-id');
+      const session = getSession(sessionId);
+      if (!session) {
+        return sessionNotFound(c);
+      }
+      const response = await session.transport.handleRequest(c.req.raw, {
+        authInfo: authInfoFor(session.principal),
+      });
+      if (response.ok && sessionId) {
+        sessions.delete(sessionId);
+      }
+      return response;
+    }
+
+    if (c.req.method !== 'POST') {
+      return c.json(jsonRpcError(-32000, 'Method not allowed', null), 405, {
+        Allow: 'GET, POST, DELETE',
+      });
+    }
+
+    const body = await readJson(c.req.raw);
+    if (body === undefined) {
+      return c.json(jsonRpcError(-32700, 'Parse error', null), 400);
+    }
+
     const sessionId = c.req.header('mcp-session-id');
-    const session = getSession(sessionId);
-    if (!session) {
-      return sessionNotFound(c);
+    if (sessionId) {
+      const session = sessions.get(sessionId);
+      if (!session) {
+        return c.json(jsonRpcError(-32000, 'MCP session not found', extractId(body)), 404);
+      }
+      return session.transport.handleRequest(c.req.raw, {
+        parsedBody: body,
+        authInfo: authInfoFor(session.principal),
+      });
     }
-    const response = await session.transport.handleRequest(c.req.raw, {
-      authInfo: authInfoFor(session.principal),
-    });
-    if (response.ok && sessionId) {
-      sessions.delete(sessionId);
+
+    if (!isInitializeRequest(body)) {
+      return c.json(jsonRpcError(-32000, 'MCP session not found', extractId(body)), 400);
     }
-    return response;
-  }
 
-  if (c.req.method !== 'POST') {
-    return c.json(jsonRpcError(-32000, 'Method not allowed', null), 405, {
-      Allow: 'GET, POST, DELETE',
-    });
-  }
-
-  const body = await readJson(c.req.raw);
-  if (body === undefined) {
-    return c.json(jsonRpcError(-32700, 'Parse error', null), 400);
-  }
-
-  const sessionId = c.req.header('mcp-session-id');
-  if (sessionId) {
-    const session = sessions.get(sessionId);
-    if (!session) {
-      return c.json(jsonRpcError(-32000, 'MCP session not found', extractId(body)), 404);
+    let principal: Identity;
+    try {
+      principal = await resolveMcpPrincipal(c.req.raw);
+    } catch (err) {
+      if (err instanceof McpToolError) {
+        return c.json(
+          {
+            jsonrpc: '2.0',
+            error: mcpError(err.code, err.message, err.data),
+            id: extractId(body),
+          },
+          401,
+        );
+      }
+      throw err;
     }
-    return session.transport.handleRequest(c.req.raw, {
+
+    const transport = await createTransportForInitialize(principal, options);
+    return transport.handleRequest(c.req.raw, {
       parsedBody: body,
-      authInfo: authInfoFor(session.principal),
+      authInfo: authInfoFor(principal),
     });
-  }
+  };
+}
 
-  if (!isInitializeRequest(body)) {
-    return c.json(jsonRpcError(-32000, 'MCP session not found', extractId(body)), 400);
-  }
-
-  let principal: Identity;
-  try {
-    principal = await resolveMcpPrincipal(c.req.raw);
-  } catch (err) {
-    if (err instanceof McpToolError) {
-      return c.json(
-        {
-          jsonrpc: '2.0',
-          error: mcpError(err.code, err.message, err.data),
-          id: extractId(body),
-        },
-        401,
-      );
-    }
-    throw err;
-  }
-
-  const transport = await createTransportForInitialize(principal);
-  return transport.handleRequest(c.req.raw, {
-    parsedBody: body,
-    authInfo: authInfoFor(principal),
-  });
-};
+export const mcpHandler: Handler = createMcpRoute();
 
 function getSession(sessionId: string | undefined): McpSession | undefined {
   return sessionId ? sessions.get(sessionId) : undefined;
@@ -229,6 +239,7 @@ function sessionNotFound(c: Parameters<Handler>[0]): Response {
 
 async function createTransportForInitialize(
   principal: Identity,
+  options: McpRouteOptions = {},
 ): Promise<WebStandardStreamableHTTPServerTransport> {
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,
@@ -243,7 +254,11 @@ async function createTransportForInitialize(
     }
   };
 
-  await createMcpServer().connect(transport);
+  const db = options.db ?? getDefaultRegistryDb();
+  await createMcpServer({
+    db,
+    reviewDecisionDeps: options.reviewDecisionDeps,
+  }).connect(transport);
   return transport;
 }
 
