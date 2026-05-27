@@ -24,6 +24,7 @@ vi.mock('ora', () => ({
 import { getSkillDetail, searchSkills } from './registry-client.js';
 import { registerSearch } from './commands/search.js';
 import { registerInfo } from './commands/info.js';
+import { registerVersions } from './commands/versions.js';
 
 const searchMock = vi.mocked(searchSkills);
 const getSkillDetailMock = vi.mocked(getSkillDetail);
@@ -158,5 +159,126 @@ describe('info command', () => {
     expect(printed).toContain('v1.2.3');
     expect(printed).toContain('Reviews code with security focus');
     expect(printed).toContain('medium');
+  });
+});
+
+function versionsProgram(): Command {
+  const program = new Command();
+  program.name('asr');
+  program.exitOverride();
+  registerVersions(program);
+  return program;
+}
+
+describe('versions command', () => {
+  let log: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    getSkillDetailMock.mockReset();
+  });
+
+  afterEach(() => {
+    log.mockRestore();
+  });
+
+  it('marks yanked versions and tags the latest non-yanked version', async () => {
+    const detail: SkillDetail = {
+      owner: 'owner',
+      name: 'code-review',
+      latestVersion: '1.2.0',
+      description: 'Reviews code',
+      tags: [],
+      kind: 'skill',
+      publishedAt: '2026-05-23T10:00:00Z',
+      downloadCount: 0,
+      riskAssessmentLatest: 'low',
+      manifestLatest: {
+        name: 'code-review',
+        version: '1.2.0',
+        author: 'owner',
+        description: 'Reviews code',
+        tags: [],
+        kind: 'skill',
+        permissions: {
+          network: false,
+          filesystem: 'none',
+          subprocess: false,
+          environment: [],
+        },
+      },
+      versions: [
+        {
+          owner: 'owner',
+          name: 'code-review',
+          version: '1.0.0',
+          contentHash: 'sha256:a',
+          publishedAt: '2026-05-20T10:00:00Z',
+          publishedBy: 'owner',
+          approvedBy: 'admin',
+          prNumber: 1,
+          mergeCommit: 'aaa',
+          yanked: false,
+          riskAssessment: 'low',
+        },
+        {
+          owner: 'owner',
+          name: 'code-review',
+          version: '1.1.0',
+          contentHash: 'sha256:b',
+          publishedAt: '2026-05-21T10:00:00Z',
+          publishedBy: 'owner',
+          approvedBy: 'admin',
+          prNumber: 2,
+          mergeCommit: 'bbb',
+          yanked: true,
+          yankedAt: '2026-05-22T00:00:00Z',
+          yankReason: 'security issue',
+          riskAssessment: 'low',
+        },
+        {
+          owner: 'owner',
+          name: 'code-review',
+          version: '1.2.0',
+          contentHash: 'sha256:c',
+          publishedAt: '2026-05-23T10:00:00Z',
+          publishedBy: 'owner',
+          approvedBy: 'admin',
+          prNumber: 3,
+          mergeCommit: 'ccc',
+          yanked: false,
+          riskAssessment: 'low',
+        },
+      ],
+    };
+    getSkillDetailMock.mockResolvedValueOnce(detail);
+
+    const program = versionsProgram();
+    await program.parseAsync(['node', 'asr', 'versions', 'owner/code-review']);
+
+    expect(getSkillDetailMock).toHaveBeenCalledWith('owner', 'code-review', {});
+
+    const lines = log.mock.calls.map((args: unknown[]) => String(args[0]));
+    const printed = lines.join('\n');
+
+    expect(printed).toContain('1.1.0');
+    expect(printed).toContain('yanked: security issue');
+    expect(printed).toContain('1.2.0');
+    expect(printed).toContain('<- latest');
+
+    const latestLine = lines.find((l) => l.includes('1.2.0'));
+    expect(latestLine).toBeDefined();
+    expect(latestLine).toContain('<- latest');
+    expect(latestLine).not.toContain('yanked:');
+
+    const yankedLine = lines.find((l) => l.includes('1.1.0'));
+    expect(yankedLine).toBeDefined();
+    expect(yankedLine).toContain('yanked: security issue');
+    expect(yankedLine).not.toContain('<- latest');
+
+    const firstLine = lines[0];
+    expect(firstLine).toContain('1.2.0');
+    const lastLine = lines[lines.length - 1];
+    expect(lastLine).toContain('1.0.0');
   });
 });

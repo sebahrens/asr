@@ -11,6 +11,7 @@ import {
 import { registerLogin, registerLogout, registerWhoami } from './commands/auth.js';
 import { registerSearch } from './commands/search.js';
 import { registerInfo } from './commands/info.js';
+import { registerVersions } from './commands/versions.js';
 import { getConfig, setConfig, getTargetDir } from './config.js';
 import { recordInstall, removeFromLock, getAllInstalled } from './lockfile.js';
 
@@ -93,6 +94,7 @@ registerWhoami(program);
 registerLogout(program);
 registerSearch(program);
 registerInfo(program);
+registerVersions(program);
 
 program
   .command('browse')
