@@ -37,7 +37,7 @@ export function registryInfoHandler(
   extra: unknown,
 ): {
   content: Array<{ type: 'text'; text: string }>;
-  structuredContent: SkillDetail;
+  structuredContent: { skill: SkillDetail };
 } {
   const principal = principalFromExtra(extra);
   requireToolRole(principal, 'Submitter');
@@ -53,7 +53,7 @@ export function registryInfoHandler(
 
   return {
     content: [{ type: 'text', text: JSON.stringify(detail, null, 2) }],
-    structuredContent: detail,
+    structuredContent: { skill: detail },
   };
 }
 

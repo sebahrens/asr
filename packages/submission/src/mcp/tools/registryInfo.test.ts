@@ -107,11 +107,11 @@ describe('registryInfoHandler', () => {
       extraFor({ sub: 'p1', roles: ['Submitter'] }),
     );
 
-    expect(result.structuredContent.owner).toBe('acme');
-    expect(result.structuredContent.name).toBe('x');
-    expect(result.structuredContent.latestVersion).toBe('1.1.0');
-    expect(result.structuredContent.versions).toHaveLength(2);
-    expect(result.structuredContent.versions.map((v) => v.version)).toEqual([
+    expect(result.structuredContent.skill.owner).toBe('acme');
+    expect(result.structuredContent.skill.name).toBe('x');
+    expect(result.structuredContent.skill.latestVersion).toBe('1.1.0');
+    expect(result.structuredContent.skill.versions).toHaveLength(2);
+    expect(result.structuredContent.skill.versions.map((v) => v.version)).toEqual([
       '1.1.0',
       '1.0.0',
     ]);
@@ -142,7 +142,7 @@ describe('registryInfoHandler', () => {
       extraFor({ sub: 'p1', roles: ['Submitter'] }),
     );
 
-    const v100 = result.structuredContent.versions.find(
+    const v100 = result.structuredContent.skill.versions.find(
       (v) => v.version === '1.0.0',
     );
     expect(v100?.yanked).toBe(true);
