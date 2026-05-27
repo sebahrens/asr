@@ -25,6 +25,7 @@ export interface ApiErrorExtra {
   details?: Record<string, string>;
   required?: string;
   retryAfterSeconds?: number;
+  brokenAt?: string;
 }
 
 export function apiError(
