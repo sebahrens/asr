@@ -14,6 +14,7 @@ import {
   type ReviewDecisionDeps,
 } from './tools/reviewDecision.js';
 import { registerReviewQueue } from './tools/reviewQueue.js';
+import { registerSubmissionsMine } from './tools/submissionsMine.js';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SERVER_VERSION = '0.1.0';
@@ -127,6 +128,7 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
     .disable();
   if (opts.db) {
     registerReviewQueue(server, opts.db, deps);
+    registerSubmissionsMine(server, opts.db, deps);
     if (opts.reviewDecisionDeps) {
       registerReviewDecision(server, opts.db, opts.reviewDecisionDeps, deps);
     }
