@@ -3,6 +3,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import App from './App';
 import { RequireRole } from './auth/RequireRole';
 import { SessionProvider } from './auth/SessionProvider';
+import { ReviewDetail } from './routes/ReviewDetail';
 import { ReviewQueue } from './routes/ReviewQueue';
 
 function ErrorPage() {
@@ -21,6 +22,17 @@ export const routes: RouteObject[] = [
       <SessionProvider>
         <RequireRole allowed={['Compliance', 'Admin']}>
           <ReviewQueue />
+        </RequireRole>
+      </SessionProvider>
+    ),
+    errorElement: <ErrorPage />,
+  },
+  {
+    path: '/review/:id',
+    element: (
+      <SessionProvider>
+        <RequireRole allowed={['Compliance', 'Admin']}>
+          <ReviewDetail />
         </RequireRole>
       </SessionProvider>
     ),

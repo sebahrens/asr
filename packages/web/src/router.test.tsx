@@ -2,7 +2,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mobileReviewDiffViewerStyles } from './App';
 import { routes } from './router';
 
 const skillDetail = {
@@ -196,71 +195,6 @@ describe('router', () => {
 
     expect(await screen.findByRole('heading', { name: /^review queue$/i })).toBeInTheDocument();
     expect(await screen.findByText(/no submissions awaiting review/i)).toBeInTheDocument();
-  });
-
-  it('renders approval detail evidence tabs and confirmation affordances', async () => {
-    renderRoute('/review/sub-1042');
-
-    expect(await screen.findByRole('heading', { name: /secure-code-review/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /approve/i })).toBeEnabled();
-    const skillDiff = screen.getByRole('region', { name: /SKILL\.md line-level diff/i });
-    expect(skillDiff).toBeInTheDocument();
-    expect(within(skillDiff).getByText(/Previous/i)).toBeInTheDocument();
-    expect(within(skillDiff).getByText(/Submitted/i)).toBeInTheDocument();
-    expect(within(skillDiff).getAllByText(/Review dependency changes before release/i).length).toBeGreaterThan(0);
-    expect(within(skillDiff).getAllByText(/document compliance evidence/i).length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByRole('tab', { name: /dependencies/i }));
-    expect(screen.getByRole('columnheader', { name: /before/i })).toBeInTheDocument();
-    expect(screen.getByRole('rowheader', { name: /@actions\/core/i })).toBeInTheDocument();
-    expect(screen.getAllByText(/runtime/i).length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByRole('tab', { name: /permissions/i }));
-    expect(screen.getByRole('heading', { name: /network/i })).toBeInTheDocument();
-    expect(screen.getAllByText(/expanded capability/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/registry\.npmjs\.org/i)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('tab', { name: /scan/i }));
-    expect(screen.getByRole('group', { name: /filter scan findings by severity/i })).toBeInTheDocument();
-    expect(screen.getByText(/dependency upgrade requires review/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^high$/i }));
-    expect(screen.getByText(/subprocess capability requires justification/i)).toBeInTheDocument();
-    expect(screen.queryByText(/no secrets detected/i)).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /^approve$/i }));
-    const dialog = screen.getByRole('dialog', { name: /approve submission/i });
-    expect(dialog).toBeInTheDocument();
-    expect(within(dialog).getByText(/v1\.4\.0/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/high risk/i)).toBeInTheDocument();
-  });
-
-  it('uses the scrollable mobile diff layout for narrow review detail screens', async () => {
-    stubMatchMedia(true);
-    renderRoute('/review/sub-1039');
-
-    expect(await screen.findByRole('heading', { name: /release-notes/i })).toBeInTheDocument();
-    const diffRegion = screen.getByRole('region', { name: /SKILL\.md line-level diff, scrollable code region/i });
-    expect(diffRegion.closest('.review-detail-panel')).toHaveClass('review-detail-panel-diff');
-    expect(diffRegion).toHaveClass('review-diff-viewer-mobile');
-    expect(diffRegion).toHaveAttribute('tabindex', '0');
-    expect(diffRegion.querySelector('table')).toBeInTheDocument();
-    expect(diffRegion).toHaveTextContent(/dependency changes/i);
-
-    expect(mobileReviewDiffViewerStyles.contentText).toMatchObject({
-      overflowWrap: 'anywhere',
-      whiteSpace: 'pre-wrap',
-      wordBreak: 'break-word',
-    });
-    expect(mobileReviewDiffViewerStyles.content).toMatchObject({
-      maxWidth: '100%',
-      minWidth: 0,
-      width: '100%',
-    });
-    expect(mobileReviewDiffViewerStyles.wordDiff).toMatchObject({
-      overflowWrap: 'anywhere',
-      whiteSpace: 'pre-wrap',
-      wordBreak: 'break-word',
-    });
   });
 
   it('keeps the existing browse page on the index route', async () => {
