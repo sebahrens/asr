@@ -1,9 +1,30 @@
 import { isPermissionsExpanded } from './permissions.js';
 import type { RiskAssessment, SkillManifest, VersionDiff } from './types.js';
 
+export type ApprovalPath = 'auto-approve' | 'full-review' | 'rescan-conditional';
+
 function isMarkdownPath(path: string): boolean {
   const lower = path.toLowerCase();
   return lower.endsWith('.md') || lower.endsWith('.markdown');
+}
+
+export function selectApprovalPath(diff: VersionDiff): ApprovalPath {
+  if (diff.permissionsExpanded) return 'full-review';
+  if (diff.manifestKindChanged) return 'full-review';
+  if (Object.keys(diff.dependenciesAdded).length > 0) return 'full-review';
+  if (diff.filesAdded.some((p) => !isMarkdownPath(p))) return 'full-review';
+  if (diff.filesModified.some((p) => !isMarkdownPath(p))) return 'full-review';
+
+  if (Object.keys(diff.dependenciesChanged).length > 0) return 'rescan-conditional';
+  if (
+    diff.permissionsBefore !== null &&
+    !diff.permissionsExpanded &&
+    isPermissionsExpanded(diff.permissionsAfter, diff.permissionsBefore)
+  ) {
+    return 'rescan-conditional';
+  }
+
+  return 'auto-approve';
 }
 
 export function assessRisk(diff: VersionDiff): RiskAssessment {

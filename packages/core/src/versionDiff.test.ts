@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { assessRisk, computeVersionDiff, type VersionSnapshot } from './versionDiff.js';
+import {
+  assessRisk,
+  computeVersionDiff,
+  selectApprovalPath,
+  type VersionSnapshot,
+} from './versionDiff.js';
 import type { PermissionsManifest, SkillManifest, VersionDiff } from './types.js';
 
 function basePermissions(overrides: Partial<PermissionsManifest> = {}): PermissionsManifest {
@@ -112,6 +117,81 @@ describe('assessRisk', () => {
         }),
       ),
     ).toBe('high');
+  });
+});
+
+describe('selectApprovalPath', () => {
+  it('returns auto-approve for a markdown-only modification with no dep/permission changes', () => {
+    expect(selectApprovalPath(baseDiff({ filesModified: ['SKILL.md'] }))).toBe('auto-approve');
+  });
+
+  it('returns auto-approve for markdown-only additions', () => {
+    expect(selectApprovalPath(baseDiff({ filesAdded: ['docs/INTRO.md'] }))).toBe('auto-approve');
+  });
+
+  it('returns full-review when a non-markdown file is added', () => {
+    expect(selectApprovalPath(baseDiff({ filesAdded: ['run.py'] }))).toBe('full-review');
+  });
+
+  it('returns full-review when a non-markdown file is modified', () => {
+    expect(selectApprovalPath(baseDiff({ filesModified: ['src/run.ts'] }))).toBe('full-review');
+  });
+
+  it('returns full-review when a dependency is added', () => {
+    expect(selectApprovalPath(baseDiff({ dependenciesAdded: { 'left-pad': '^1' } }))).toBe(
+      'full-review',
+    );
+  });
+
+  it('returns full-review when permissions are expanded', () => {
+    expect(selectApprovalPath(baseDiff({ permissionsExpanded: true }))).toBe('full-review');
+  });
+
+  it('returns full-review when manifest kind changed', () => {
+    expect(selectApprovalPath(baseDiff({ manifestKindChanged: true }))).toBe('full-review');
+  });
+
+  it('returns rescan-conditional for a dependency patch bump only', () => {
+    expect(
+      selectApprovalPath(
+        baseDiff({ dependenciesChanged: { x: { from: '1.0.0', to: '1.0.1' } } }),
+      ),
+    ).toBe('rescan-conditional');
+  });
+
+  it('returns rescan-conditional when permissions are narrowed', () => {
+    expect(
+      selectApprovalPath(
+        baseDiff({
+          permissionsBefore: basePermissions({ network: true }),
+          permissionsAfter: basePermissions({ network: false }),
+          permissionsExpanded: false,
+        }),
+      ),
+    ).toBe('rescan-conditional');
+  });
+
+  it('prefers full-review over rescan-conditional when both signals fire', () => {
+    expect(
+      selectApprovalPath(
+        baseDiff({
+          dependenciesChanged: { x: { from: '1.0.0', to: '1.0.1' } },
+          permissionsExpanded: true,
+        }),
+      ),
+    ).toBe('full-review');
+  });
+
+  it('treats unchanged permissions (same before and after) as not narrowed', () => {
+    expect(
+      selectApprovalPath(
+        baseDiff({
+          permissionsBefore: basePermissions(),
+          permissionsAfter: basePermissions(),
+          permissionsExpanded: false,
+        }),
+      ),
+    ).toBe('auto-approve');
   });
 });
 
