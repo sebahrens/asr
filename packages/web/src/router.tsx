@@ -1,6 +1,9 @@
 import type { RouteObject } from 'react-router-dom';
 import { createBrowserRouter } from 'react-router-dom';
 import App from './App';
+import { RequireRole } from './auth/RequireRole';
+import { SessionProvider } from './auth/SessionProvider';
+import { ReviewQueue } from './routes/ReviewQueue';
 
 function ErrorPage() {
   return (
@@ -12,6 +15,17 @@ function ErrorPage() {
 }
 
 export const routes: RouteObject[] = [
+  {
+    path: '/review',
+    element: (
+      <SessionProvider>
+        <RequireRole allowed={['Compliance', 'Admin']}>
+          <ReviewQueue />
+        </RequireRole>
+      </SessionProvider>
+    ),
+    errorElement: <ErrorPage />,
+  },
   {
     path: '*',
     element: <App />,

@@ -191,15 +191,11 @@ afterEach(() => {
 });
 
 describe('router', () => {
-  it('routes review through the approval dashboard queue', async () => {
+  it('routes /review to the review queue with an empty state when the API returns no submissions', async () => {
     renderRoute('/review');
 
-    expect(await screen.findByRole('heading', { name: /approval dashboard/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /secure-code-review/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /release-notes/i })).toBeInTheDocument();
-    expect(screen.getAllByText(/pending review/i)).toHaveLength(2);
-    expect(screen.getAllByRole('button', { name: /^approve$/i })).toHaveLength(2);
-    expect(screen.getAllByRole('button', { name: /^reject$/i })).toHaveLength(2);
+    expect(await screen.findByRole('heading', { name: /^review queue$/i })).toBeInTheDocument();
+    expect(await screen.findByText(/no submissions awaiting review/i)).toBeInTheDocument();
   });
 
   it('renders approval detail evidence tabs and confirmation affordances', async () => {
