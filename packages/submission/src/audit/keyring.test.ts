@@ -65,4 +65,26 @@ describe('loadKeyRing', () => {
     const ring = loadKeyRing(env);
     expect(ring.get('k1')?.equals(Buffer.from(active, 'base64'))).toBe(true);
   });
+
+  it('setActive switches the active id to a known key', () => {
+    const env = {
+      AUDIT_HMAC_KEY_ID: 'k1',
+      AUDIT_HMAC_KEY_BYTES: keyB64(0x11),
+    };
+    const ring = loadKeyRing(env);
+    ring.addKey('k2', Buffer.alloc(32, 0x22));
+
+    ring.setActive('k2');
+    expect(ring.activeId).toBe('k2');
+  });
+
+  it('setActive rejects an unknown key id', () => {
+    const env = {
+      AUDIT_HMAC_KEY_ID: 'k1',
+      AUDIT_HMAC_KEY_BYTES: keyB64(0x11),
+    };
+    const ring = loadKeyRing(env);
+    expect(() => ring.setActive('nope')).toThrow(/unknown key id 'nope'/);
+    expect(ring.activeId).toBe('k1');
+  });
 });

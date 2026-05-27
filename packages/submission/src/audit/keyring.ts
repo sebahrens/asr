@@ -4,6 +4,7 @@ export interface KeyRing {
   readonly activeId: string;
   get(id: string): Buffer | undefined;
   addKey(id: string, bytes: Buffer): void;
+  setActive(id: string): void;
 }
 
 const PREVIOUS_KEY_PREFIX = 'AUDIT_HMAC_KEY_BYTES_';
@@ -37,13 +38,23 @@ export function loadKeyRing(
     keys.set(id, Buffer.from(value, 'base64'));
   }
 
+  let currentActiveId = activeId;
+
   return {
-    activeId,
+    get activeId(): string {
+      return currentActiveId;
+    },
     get(id: string): Buffer | undefined {
       return keys.get(id);
     },
     addKey(id: string, bytes: Buffer): void {
       keys.set(id, bytes);
+    },
+    setActive(id: string): void {
+      if (!keys.has(id)) {
+        throw new Error(`cannot set active key: unknown key id '${id}'`);
+      }
+      currentActiveId = id;
     },
   };
 }

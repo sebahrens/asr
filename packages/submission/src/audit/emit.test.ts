@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../db/migrations/index.js';
 import { computeHash } from './hash.js';
 import { emitAudit } from './emit.js';
+import { loadKeyRing } from './keyring.js';
 
 const HMAC_KEY_BYTES = Buffer.alloc(32, 0x42);
 const HMAC_KEY_B64 = HMAC_KEY_BYTES.toString('base64');
@@ -230,5 +232,107 @@ describe('emitAudit', () => {
       .pluck()
       .get() as number;
     expect(rowCount).toBe(0);
+  });
+
+  it('signs with the KeyRing active key and stamps its id on the row', () => {
+    const database = db!;
+
+    const k2Bytes = Buffer.alloc(32, 0x22);
+    const keys = loadKeyRing({
+      AUDIT_HMAC_KEY_ID: 'k2',
+      AUDIT_HMAC_KEY_BYTES: k2Bytes.toString('base64'),
+    });
+
+    const event = emitAudit(
+      database,
+      {
+        action: 'submission.created',
+        submissionId: 'sub_1',
+        actor: 'submitter@example.com',
+        actorType: 'user',
+        detail: { source: 'cli' },
+      },
+      keys,
+    );
+
+    expect(event.hmacKeyId).toBe('k2');
+    const { hash, ...unsigned } = event;
+    expect(hash).toBe(computeHash(unsigned, k2Bytes));
+  });
+
+  it('picks up a rotated active key id on the next emit', () => {
+    const database = db!;
+
+    const k2Bytes = Buffer.alloc(32, 0x22);
+    const k3Bytes = Buffer.alloc(32, 0x33);
+    const keys = loadKeyRing({
+      AUDIT_HMAC_KEY_ID: 'k2',
+      AUDIT_HMAC_KEY_BYTES: k2Bytes.toString('base64'),
+    });
+
+    const first = emitAudit(
+      database,
+      {
+        action: 'submission.created',
+        submissionId: 'sub_1',
+        actor: 'submitter@example.com',
+        actorType: 'user',
+        detail: {},
+      },
+      keys,
+    );
+    expect(first.hmacKeyId).toBe('k2');
+
+    keys.addKey('k3', k3Bytes);
+    keys.setActive('k3');
+
+    const second = emitAudit(
+      database,
+      {
+        action: 'submission.classified',
+        submissionId: 'sub_1',
+        actor: 'system',
+        actorType: 'system',
+        detail: { classification: 'md-only' },
+      },
+      keys,
+    );
+
+    expect(second.hmacKeyId).toBe('k3');
+    const { hash, ...unsigned } = second;
+    expect(hash).toBe(computeHash(unsigned, k3Bytes));
+  });
+
+  it('throws when the KeyRing has no bytes for its active id', () => {
+    const database = db!;
+
+    const keys = loadKeyRing({
+      AUDIT_HMAC_KEY_ID: 'k1',
+      AUDIT_HMAC_KEY_BYTES: Buffer.alloc(32, 0x11).toString('base64'),
+    });
+    // Force a mismatch by mutating the underlying map via addKey on a
+    // different id and overriding activeId would require setActive on an
+    // unknown id (rejected). Instead, simulate via a hand-rolled KeyRing:
+    const broken = {
+      activeId: 'missing',
+      get: () => undefined,
+      addKey: () => {},
+      setActive: () => {},
+    };
+
+    expect(() =>
+      emitAudit(
+        database,
+        {
+          action: 'submission.created',
+          submissionId: 'sub_1',
+          actor: 'submitter@example.com',
+          actorType: 'user',
+          detail: {},
+        },
+        broken,
+      ),
+    ).toThrow(/no bytes for active key id 'missing'/);
+    void keys;
   });
 });

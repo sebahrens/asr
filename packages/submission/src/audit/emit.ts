@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { ulid } from 'ulid';
 import { AUDIT_ACTIONS, type AuditAction, type AuditEvent } from '@asr/core';
 import { computeHash } from './hash.js';
+import { loadKeyRing, type KeyRing } from './keyring.js';
 
 export interface EmitAuditInput {
   action: AuditAction;
@@ -44,6 +45,7 @@ function assertNoPii(detail: Record<string, unknown>): void {
 export function emitAudit(
   db: Database.Database,
   input: EmitAuditInput,
+  keys: KeyRing = loadKeyRing(),
 ): AuditEvent {
   if (!(AUDIT_ACTIONS as readonly string[]).includes(input.action)) {
     throw new Error(`unknown audit action: ${input.action}`);
@@ -51,14 +53,13 @@ export function emitAudit(
 
   assertNoPii(input.detail);
 
-  const keyId = process.env.AUDIT_HMAC_KEY_ID;
-  const keyBytesB64 = process.env.AUDIT_HMAC_KEY_BYTES;
-  if (!keyId || !keyBytesB64) {
+  const keyId = keys.activeId;
+  const hmacKey = keys.get(keyId);
+  if (!hmacKey) {
     throw new Error(
-      'AUDIT_HMAC_KEY_ID and AUDIT_HMAC_KEY_BYTES must be set to emit audit events',
+      `audit KeyRing has no bytes for active key id '${keyId}'`,
     );
   }
-  const hmacKey = Buffer.from(keyBytesB64, 'base64');
 
   const id = ulid();
   const timestamp = new Date().toISOString();
