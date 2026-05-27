@@ -66,7 +66,55 @@ describe('runScanner', () => {
 
     await expect(runScanner(input, runContainer)).rejects.toThrow(/signature is invalid/);
   });
+
+  it('veracode env pass-through', async () => {
+    vi.stubEnv('SCANNER_IMAGE', 'asr-scanner:test');
+    vi.stubEnv('SCAN_SIGNING_KEY', 'test-signing-key');
+
+    vi.stubEnv('VERACODE_API_KEY_ID', '');
+    vi.stubEnv('VERACODE_API_KEY_SECRET', '');
+    vi.stubEnv('VERACODE_POLICY', '');
+
+    const report = signedReport(
+      buildReport({ verdict: 'pass', findings: [] }),
+      'test-signing-key',
+    );
+    const unsetRun = vi.fn<RunContainer>(async () => ({ stdout: JSON.stringify(report) }));
+
+    const unsetResult = await runScanner(input, unsetRun);
+    expect(unsetResult.verdict).toBeDefined();
+    expect(unsetResult.toolResults.veracode?.skipped).toBe(true);
+
+    const unsetArgs = unsetRun.mock.calls[0]?.[1] ?? [];
+    expect(unsetArgs).not.toContain('VERACODE_API_KEY_ID');
+    expect(unsetArgs).not.toContain('VERACODE_API_KEY_SECRET');
+    expect(unsetArgs).not.toContain('VERACODE_POLICY');
+
+    vi.stubEnv('VERACODE_API_KEY_ID', 'id-value');
+    vi.stubEnv('VERACODE_API_KEY_SECRET', 'secret-value');
+    vi.stubEnv('VERACODE_POLICY', 'Anthropic-Default');
+
+    const setRun = vi.fn<RunContainer>(async () => ({ stdout: JSON.stringify(report) }));
+    await runScanner(input, setRun);
+
+    const setArgs = setRun.mock.calls[0]?.[1] ?? [];
+    expect(adjacentPairs(setArgs)).toEqual(
+      expect.arrayContaining([
+        ['--env', 'VERACODE_API_KEY_ID'],
+        ['--env', 'VERACODE_API_KEY_SECRET'],
+        ['--env', 'VERACODE_POLICY'],
+      ]),
+    );
+  });
 });
+
+function adjacentPairs(args: string[]): Array<[string, string]> {
+  const pairs: Array<[string, string]> = [];
+  for (let i = 0; i < args.length - 1; i += 1) {
+    pairs.push([args[i]!, args[i + 1]!]);
+  }
+  return pairs;
+}
 
 function buildReport(overrides: Partial<ScanReport> = {}): ScanReport {
   return {

@@ -89,8 +89,14 @@ export async function runScanner(
   }
 }
 
+const veracodeEnvNames = [
+  'VERACODE_API_KEY_ID',
+  'VERACODE_API_KEY_SECRET',
+  'VERACODE_POLICY',
+] as const;
+
 function buildDockerArgs(input: RunScannerInput, outputDir: string, scannerImage: string): string[] {
-  return [
+  const args = [
     'run',
     '--rm',
     '-v',
@@ -109,12 +115,16 @@ function buildDockerArgs(input: RunScannerInput, outputDir: string, scannerImage
     'SCAN_TIMEOUT_SECONDS',
     '--env',
     'SCAN_SIGNING_KEY',
-    '--env',
-    'VERACODE_API_KEY_ID',
-    '--env',
-    'VERACODE_API_KEY_SECRET',
-    scannerImage,
   ];
+
+  for (const name of veracodeEnvNames) {
+    if (process.env[name]) {
+      args.push('--env', name);
+    }
+  }
+
+  args.push(scannerImage);
+  return args;
 }
 
 function buildContainerEnv(
@@ -131,8 +141,6 @@ function buildContainerEnv(
     SCAN_SEVERITY_THRESHOLD: severityThreshold,
     SCAN_TIMEOUT_SECONDS: String(timeoutSeconds),
     SCAN_SIGNING_KEY: process.env.SCAN_SIGNING_KEY ?? '',
-    VERACODE_API_KEY_ID: process.env.VERACODE_API_KEY_ID ?? '',
-    VERACODE_API_KEY_SECRET: process.env.VERACODE_API_KEY_SECRET ?? '',
   };
 }
 
