@@ -10,8 +10,10 @@ import { resolveMcpPrincipal } from './auth.js';
 import { MCP_ERROR, McpToolError, mcpError } from './errors.js';
 import { createRateLimiter, type RateLimiter } from './rateLimit.js';
 import { baseLogger, logInvocation, type InvocationLogger } from './telemetry.js';
+import { registerRegistryInfo } from './tools/registryInfo.js';
 import { registerRegistryList } from './tools/registryList.js';
 import { registerRegistrySearch } from './tools/registrySearch.js';
+import { registerRegistryVersions } from './tools/registryVersions.js';
 import {
   registerReviewDecision,
   type ReviewDecisionDeps,
@@ -133,6 +135,8 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
   if (opts.db) {
     registerRegistrySearch(server, opts.db, deps);
     registerRegistryList(server, opts.db, deps);
+    registerRegistryInfo(server, opts.db, deps);
+    registerRegistryVersions(server, opts.db, deps);
     registerReviewQueue(server, opts.db, deps);
     registerSubmissionsMine(server, opts.db, deps);
     registerSubmissionStatus(server, opts.db, deps);
