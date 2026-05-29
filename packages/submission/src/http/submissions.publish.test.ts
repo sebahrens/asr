@@ -148,9 +148,10 @@ describe('POST /api/v1/submissions (Flowcraft pipeline)', () => {
     runMigrations(db);
 
     const forgejo = new FakeForgejoClient();
-    const dependencies = makeDependencies(forgejo, makeScanReport('pass'));
+    const auditCalls: Array<{ action: AuditAction; detail: Record<string, unknown> }> = [];
+    const dependencies = makeDependencies(forgejo, makeScanReport('pass'), auditCalls);
     const app = new Hono<{ Variables: AuthVariables }>();
-    let identity: Identity = { sub: 'alice', roles: ['Submitter'] };
+    let identity: Identity = { sub: 'alice-entra-sub', roles: ['Submitter'] };
     app.use('*', async (c, next) => {
       c.set('identity', identity);
       await next();
@@ -199,6 +200,16 @@ describe('POST /api/v1/submissions (Flowcraft pipeline)', () => {
     const workflowRun = getWorkflowRun(db, created.id);
     expect(workflowRun?.context.scanReport).toMatchObject({ verdict: 'pass' });
     expect(workflowRun?.context.status).toBe('user-confirmation-pending');
+    expect(workflowRun?.submittedBy).toBe('alice-entra-sub');
+    expect(auditCalls[0]).toEqual({
+      action: 'submission.created',
+      detail: {
+        actor: 'alice-entra-sub',
+        submissionId: created.id,
+        skillName: 'demo-skill',
+        version: '1.0.0',
+      },
+    });
 
     const confirmRes = await app.request(`/api/v1/submissions/${created.id}/confirm`, {
       method: 'POST',
@@ -219,6 +230,68 @@ describe('POST /api/v1/submissions (Flowcraft pipeline)', () => {
       version: '1.0.0',
       approved_by: 'reviewer-1',
     });
+  });
+
+  it('rejects approval when the authenticated submitter is also the Compliance reviewer', async () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    const forgejo = new FakeForgejoClient();
+    const dependencies = makeDependencies(forgejo, makeScanReport('pass'));
+    const app = new Hono<{ Variables: AuthVariables }>();
+    const identity: Identity = { sub: 'same-principal', roles: ['Submitter', 'Compliance'] };
+    app.use('*', async (c, next) => {
+      c.set('identity', identity);
+      await next();
+    });
+    app.route(
+      '/api/v1/submissions',
+      createSubmissionRoutes({
+        db,
+        forgejo: forgejo as unknown as ForgejoClient,
+        workflowDependencies: dependencies,
+      }),
+    );
+    app.route('/api/v1/submissions', createWorkflowRoutes({ db, dependencies }));
+
+    const zipBytes = await buildZip([
+      {
+        path: 'SKILL.md',
+        contents: skillMdFixture({ name: 'demo-skill', version: '1.0.0', author: 'alice' }),
+      },
+      { path: 'run.py', contents: 'print("hi")\n' },
+    ]);
+    const formData = new FormData();
+    formData.set(
+      'file',
+      new Blob([new Uint8Array(zipBytes)], { type: 'application/zip' }),
+      'skill.zip',
+    );
+
+    const createdRes = await app.request('/api/v1/submissions', {
+      method: 'POST',
+      body: formData,
+    });
+    expect(createdRes.status).toBe(201);
+    const created = (await createdRes.json()) as { id: string };
+
+    await app.request(`/api/v1/submissions/${created.id}/questionnaire`, {
+      method: 'POST',
+      body: JSON.stringify({ responses: [{ questionId: 'network', answer: false }] }),
+      headers: { 'content-type': 'application/json' },
+    });
+    await app.request(`/api/v1/submissions/${created.id}/confirm`, { method: 'POST' });
+
+    const approveRes = await app.request(`/api/v1/submissions/${created.id}/approve`, {
+      method: 'POST',
+    });
+
+    expect(approveRes.status).toBe(403);
+    await expect(approveRes.json()).resolves.toEqual({
+      error: 'separation_of_duties_violation',
+    });
+    expect(forgejo.mergeCalls).toEqual([]);
+    expect(forgejo.publishCalls).toHaveLength(0);
   });
 });
 
@@ -266,6 +339,7 @@ class FakeForgejoClient {
 function makeDependencies(
   forgejo: FakeForgejoClient,
   scanReport: ScanReport,
+  auditCalls: Array<{ action: AuditAction; detail: Record<string, unknown> }> = [],
 ): ApprovalPipelineDependencies {
   return {
     svc(token) {
@@ -274,7 +348,9 @@ function makeDependencies(
       }
       throw new Error('unexpected service token');
     },
-    audit(_action: AuditAction, _detail: Record<string, unknown>) {},
+    audit(action: AuditAction, detail: Record<string, unknown>) {
+      auditCalls.push({ action, detail });
+    },
     async runScanner() {
       return scanReport;
     },

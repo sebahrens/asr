@@ -220,7 +220,11 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
       const id = generateId();
       const createdAt = now().toISOString();
       const status: SubmissionStatus = { phase: 'uploaded' };
-      const submittedBy = c.get('identity')?.sub ?? process.env.MOCK_USER_SUB ?? '';
+      const identity = c.get('identity');
+      if (!identity) {
+        return apiError(c, 401, 'authentication_required');
+      }
+      const submittedBy = identity.sub;
 
       const statusJsonPayload =
         approvalPath !== undefined ? { ...status, approvalPath } : status;
@@ -270,6 +274,15 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
       };
 
       if (db) {
+        const workflowDependencies =
+          options.workflowDependencies ?? defaultWorkflowDependencies(options, manifest.name);
+        await workflowDependencies.audit('submission.created', {
+          actor: submittedBy,
+          submissionId: id,
+          skillName: manifest.name,
+          version: manifest.version,
+        });
+
         try {
           const result = await runApprovalPipeline(
             {
@@ -286,7 +299,7 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
               classification,
               ...(versionDiff !== undefined ? { versionDiff } : {}),
             },
-            options.workflowDependencies ?? defaultWorkflowDependencies(options, manifest.name),
+            workflowDependencies,
           );
           if (result.status === 'failed') {
             throw new Error(result.errors?.[0]?.message ?? 'approval pipeline failed');
