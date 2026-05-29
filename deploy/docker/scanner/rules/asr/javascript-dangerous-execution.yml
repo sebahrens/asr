@@ -1,0 +1,82 @@
+rules:
+  - id: asr.javascript.child-process-exec
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      child_process exec-style APIs invoke a shell. Use spawn/execFile with
+      fixed argv arrays and validated arguments instead.
+    metadata:
+      confidence: HIGH
+      category: security
+      cwe: "CWE-78"
+      license: "ASR-authored"
+    pattern-either:
+      - pattern: child_process.exec(...)
+      - pattern: child_process.execSync(...)
+      - pattern: exec(...)
+      - pattern: execSync(...)
+
+  - id: asr.javascript.spawn-shell-true
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      child_process spawn/execFile is configured with shell: true, which
+      reintroduces shell interpretation.
+    metadata:
+      confidence: HIGH
+      category: security
+      cwe: "CWE-78"
+      license: "ASR-authored"
+    pattern-either:
+      - pattern: 'spawn(..., { ..., shell: true, ... })'
+      - pattern: 'spawnSync(..., { ..., shell: true, ... })'
+      - pattern: 'execFile(..., { ..., shell: true, ... })'
+      - pattern: 'execFileSync(..., { ..., shell: true, ... })'
+
+  - id: asr.javascript.eval-function-constructor
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Dynamic JavaScript execution through eval or Function is not acceptable
+      in submitted skills without a dedicated security review.
+    metadata:
+      confidence: HIGH
+      category: security
+      cwe: "CWE-94"
+      license: "ASR-authored"
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+      - pattern: Function(...)
+
+  - id: asr.javascript.dynamic-import
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Dynamic imports make skill behavior harder to review and can hide
+      optional payload loading. Prefer static imports.
+    metadata:
+      confidence: MEDIUM
+      category: security
+      cwe: "CWE-470"
+      license: "ASR-authored"
+    pattern: import(...)
+
+  - id: asr.javascript-raw-network-modules
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Raw network module usage can bypass higher-level request controls and
+      should be reviewed against the skill's declared permissions.
+    metadata:
+      confidence: MEDIUM
+      category: security
+      cwe: "CWE-918"
+      license: "ASR-authored"
+    pattern-either:
+      - pattern: require("net")
+      - pattern: require("tls")
+      - pattern: require("dgram")
+      - pattern: import net from "node:net"
+      - pattern: import tls from "node:tls"
+      - pattern: import dgram from "node:dgram"

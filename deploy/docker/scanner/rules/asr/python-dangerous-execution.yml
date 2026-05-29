@@ -1,0 +1,79 @@
+rules:
+  - id: asr.python.subprocess-shell-true
+    languages: [python]
+    severity: ERROR
+    message: >
+      Subprocess invocation uses shell=True. Skills should pass argv arrays
+      directly and avoid shell interpretation of untrusted input.
+    metadata:
+      confidence: HIGH
+      category: security
+      cwe: "CWE-78"
+      license: "ASR-authored"
+    pattern-either:
+      - pattern: subprocess.run(..., shell=True, ...)
+      - pattern: subprocess.call(..., shell=True, ...)
+      - pattern: subprocess.check_call(..., shell=True, ...)
+      - pattern: subprocess.check_output(..., shell=True, ...)
+      - pattern: subprocess.Popen(..., shell=True, ...)
+
+  - id: asr.python.os-system
+    languages: [python]
+    severity: ERROR
+    message: >
+      os.system executes through a shell. Use subprocess with explicit argv
+      arrays and validated arguments instead.
+    metadata:
+      confidence: HIGH
+      category: security
+      cwe: "CWE-78"
+      license: "ASR-authored"
+    pattern-either:
+      - pattern: os.system(...)
+      - pattern: os.popen(...)
+
+  - id: asr.python.eval-exec
+    languages: [python]
+    severity: ERROR
+    message: >
+      Dynamic code execution through eval, exec, or compile is not acceptable
+      in submitted skills without a dedicated security review.
+    metadata:
+      confidence: HIGH
+      category: security
+      cwe: "CWE-94"
+      license: "ASR-authored"
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+      - pattern: compile(...)
+
+  - id: asr.python.dynamic-import
+    languages: [python]
+    severity: WARNING
+    message: >
+      Dynamic imports make skill behavior harder to review and can hide
+      optional payload loading. Prefer static imports.
+    metadata:
+      confidence: MEDIUM
+      category: security
+      cwe: "CWE-470"
+      license: "ASR-authored"
+    pattern-either:
+      - pattern: importlib.import_module(...)
+      - pattern: __import__(...)
+
+  - id: asr.python.raw-socket
+    languages: [python]
+    severity: WARNING
+    message: >
+      Raw socket usage can bypass normal HTTP allowlists and should be reviewed
+      against the skill's declared network permissions.
+    metadata:
+      confidence: MEDIUM
+      category: security
+      cwe: "CWE-918"
+      license: "ASR-authored"
+    pattern-either:
+      - pattern: socket.socket(...)
+      - pattern: socket.create_connection(...)

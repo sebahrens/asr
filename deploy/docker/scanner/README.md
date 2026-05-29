@@ -19,6 +19,25 @@ Every pin is parameterised by a Dockerfile `ARG` so future bumps are explicit
 and auditable. `grep -REn ':latest|@latest|releases/latest'
 deploy/docker/scanner/Dockerfile` must return no matches.
 
+## Opengrep rules
+
+The scanner image copies `deploy/docker/scanner/rules/` to `/opt/scan/rules/`,
+which is the default `OPENGREP_RULES_DIR`. The checked-in ruleset currently
+contains ASR-authored Opengrep-compatible rules for:
+
+- Python subprocess calls with `shell=True`, `os.system`, dynamic code
+  execution, dynamic imports, and raw sockets
+- JavaScript/TypeScript shell-backed child process APIs, dynamic code execution,
+  dynamic imports, and raw network modules
+- Generic bearer-token egress, embedded API keys, and `LD_PRELOAD`
+  runtime-linker manipulation
+
+Rule provenance and import policy are documented in
+`deploy/docker/scanner/rules/README.md`. The short version: ASR-authored rules
+are project-owned; future community-rule imports must come from
+`opengrep/opengrep-rules` with source path, commit, and LGPL-2.1 provenance
+recorded. Do not vendor rules from `semgrep/semgrep-rules`.
+
 ## Build check
 
 ```bash
