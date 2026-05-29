@@ -136,6 +136,7 @@ describe('syncMarketplaceRepo', () => {
     expect(openSubmissionPR).toHaveBeenCalledWith(
       expect.objectContaining({
         autoApprove: true,
+        idempotent: true,
         branch: expect.stringMatching(/^marketplace-sync\//),
         pathPrefix: '',
         files: expect.arrayContaining([
@@ -219,7 +220,7 @@ describe('runMarketplaceSync', () => {
     expect(pager).toHaveBeenCalledTimes(2);
   });
 
-  it('returns the sync result and does not emit or page on success', async () => {
+  it('returns the sync result, emits success, and does not page on success', async () => {
     const emitAudit = vi.fn();
     const pager = vi.fn();
     const openSubmissionPR = vi.fn().mockResolvedValue({
@@ -239,7 +240,14 @@ describe('runMarketplaceSync', () => {
     const result = await runMarketplaceSync('summarizer', deps);
 
     expect(result).toEqual({ prNumber: 42, merged: true });
-    expect(emitAudit).not.toHaveBeenCalled();
+    expect(emitAudit).toHaveBeenCalledTimes(1);
+    expect(emitAudit).toHaveBeenCalledWith({
+      action: 'marketplace_sync.succeeded',
+      skillName: 'summarizer',
+      actor: 'system',
+      actorType: 'system',
+      detail: { skillName: 'summarizer', prNumber: 42 },
+    });
     expect(pager).not.toHaveBeenCalled();
   });
 });

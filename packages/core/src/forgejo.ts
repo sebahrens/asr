@@ -26,6 +26,9 @@ interface ForgejoContentsPutResponse {
 interface ForgejoPullResponse {
   number: number;
   mergeable?: boolean | null;
+  head?: {
+    ref?: string;
+  };
 }
 
 interface ForgejoGitTagResponse {
@@ -117,10 +120,18 @@ export class ForgejoClient {
     title?: string;
     body?: string;
     labels?: string[];
+    idempotent?: boolean;
   }): Promise<{ branch: string; prNumber: number; headSha: string }> {
     const { owner, repo } = this.cfg;
     const branch = input.branch ?? `submit/${input.submissionId}`;
     const pathPrefix = input.pathPrefix ?? `skills/${input.manifest.author}/${input.manifest.name}`;
+    if (input.idempotent) {
+      const existing = await this.findPullRequestByHead(branch);
+      if (existing) {
+        return { branch, prNumber: existing.number, headSha: await this.getBranchHeadShaOrDefault(branch) };
+      }
+    }
+
     let headSha = await this.createOrGetBranch(branch);
 
     for (const file of input.files) {
@@ -132,20 +143,57 @@ export class ForgejoClient {
       );
     }
 
-    const { data } = await this.upload.request('POST /repos/{owner}/{repo}/pulls', {
-      owner,
-      repo,
-      title: input.title ?? `[Skill] ${input.manifest.name}@${input.manifest.version}`,
-      head: branch,
-      base: this.cfg.defaultBranch ?? 'main',
-      body: input.body ?? prBody(input.manifest, input.submissionId, input.autoApprove),
-      labels: input.labels ?? (input.autoApprove ? ['auto-approve'] : ['needs-review']),
-    });
+    let data: unknown;
+    try {
+      const response = await this.upload.request('POST /repos/{owner}/{repo}/pulls', {
+        owner,
+        repo,
+        title: input.title ?? `[Skill] ${input.manifest.name}@${input.manifest.version}`,
+        head: branch,
+        base: this.cfg.defaultBranch ?? 'main',
+        body: input.body ?? prBody(input.manifest, input.submissionId, input.autoApprove),
+        labels: input.labels ?? (input.autoApprove ? ['auto-approve'] : ['needs-review']),
+      });
+      data = response.data;
+    } catch (err) {
+      if (!input.idempotent || !isOctokitStatus(err, 409)) {
+        throw err;
+      }
+      const existing = await this.findPullRequestByHead(branch);
+      if (!existing) {
+        throw err;
+      }
+      data = existing;
+    }
     const pr = forgejoPull(data);
 
     await this.waitMergeable(pr.number);
 
     return { branch, prNumber: pr.number, headSha };
+  }
+
+  private async getBranchHeadShaOrDefault(branch: string): Promise<string> {
+    try {
+      return await this.getBranchHeadSha(branch);
+    } catch (err) {
+      if (!isOctokitStatus(err, 404)) {
+        throw err;
+      }
+      return this.getDefaultBranchHeadSha();
+    }
+  }
+
+  private async findPullRequestByHead(branch: string): Promise<ForgejoPullResponse | undefined> {
+    const { owner, repo } = this.cfg;
+    const { data } = await this.upload.request('GET /repos/{owner}/{repo}/pulls', {
+      owner,
+      repo,
+      state: 'all',
+      per_page: 50,
+    });
+    const pulls = data as ForgejoPullResponse[];
+
+    return pulls.find((pull) => pull.head?.ref === branch);
   }
 
   private async waitMergeable(prNumber: number): Promise<void> {

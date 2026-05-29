@@ -9,7 +9,7 @@ import {
   __resetMarketplaceSyncPagerState,
   runMarketplaceSync,
   type MarketplaceSkillInput,
-  type SyncMarketplaceRepoDeps,
+  type RunMarketplaceSyncDeps,
 } from '../../src/jobs/marketplaceSync.js';
 
 // Story-level acceptance signal for asr-3d8: end-to-end proof that the marketplace
@@ -132,6 +132,67 @@ describe('marketplace sync integration', () => {
     expect(afterYankPaths).toContain(`plugins/${SKILL_Y}/skills/${SKILL_Y}/SKILL.md`);
   });
 
+  it('reuses the content-addressed marketplace PR for identical published skill sets', async () => {
+    seedPublishedVersion(db!, {
+      author: ACME,
+      name: SKILL_X,
+      version: VERSION,
+      description: 'Acme x',
+      skillMd: X_SKILL_MD,
+    });
+
+    const deps = makeDeps(db!, forgejo!);
+    const first = await runMarketplaceSync(SKILL_X, deps);
+    const second = await runMarketplaceSync(SKILL_X, deps);
+
+    expect(second).toEqual(first);
+    expect(forgejo!.openCalls).toHaveLength(1);
+    expect(forgejo!.mergeCalls).toEqual([1, 1]);
+  });
+
+  it('recovers on retry without a second PR after a merge failure', async () => {
+    seedPublishedVersion(db!, {
+      author: ACME,
+      name: SKILL_X,
+      version: VERSION,
+      description: 'Acme x',
+      skillMd: X_SKILL_MD,
+    });
+
+    forgejo!.failNextMerge = new Error('merge interrupted');
+
+    await expect(runMarketplaceSync(SKILL_X, makeDeps(db!, forgejo!))).rejects.toThrow(
+      'merge interrupted',
+    );
+    const retry = await runMarketplaceSync(SKILL_X, makeDeps(db!, forgejo!));
+
+    expect(retry).toEqual({ prNumber: 1, merged: true });
+    expect(forgejo!.openCalls).toHaveLength(1);
+    expect(forgejo!.mergeCalls).toEqual([1, 1]);
+  });
+
+  it('serializes concurrent marketplace sync invocations through publish_locks', async () => {
+    seedPublishedVersion(db!, {
+      author: ACME,
+      name: SKILL_X,
+      version: VERSION,
+      description: 'Acme x',
+      skillMd: X_SKILL_MD,
+    });
+
+    forgejo!.openDelayMs = 10;
+
+    const [first, second] = await Promise.all([
+      runMarketplaceSync(SKILL_X, makeDeps(db!, forgejo!)),
+      runMarketplaceSync(SKILL_X, makeDeps(db!, forgejo!)),
+    ]);
+
+    expect(first).toEqual({ prNumber: 1, merged: true });
+    expect(second).toEqual({ prNumber: 1, merged: true });
+    expect(forgejo!.openCalls).toHaveLength(1);
+    expect(forgejo!.maxActiveOpens).toBe(1);
+  });
+
   it('emits marketplace_sync.failed and pages exactly once per skill per hour on forced failure', async () => {
     seedPublishedVersion(db!, {
       author: ACME,
@@ -233,11 +294,12 @@ function seedPublishedVersion(db: Database.Database, input: SeedInput): void {
   });
 }
 
-function makeDeps(db: Database.Database, forgejo: FakeForgejoClient): SyncMarketplaceRepoDeps & {
+function makeDeps(db: Database.Database, forgejo: FakeForgejoClient): RunMarketplaceSyncDeps & {
   emitAudit: ReturnType<typeof vi.fn>;
   pager: ReturnType<typeof vi.fn>;
 } {
   return {
+    db,
     client: forgejo as unknown as Pick<ForgejoClient, 'openSubmissionPR' | 'mergePR'>,
     readPublishedSkills: async () => readNonYankedPublishedSkills(db),
     emitAudit: vi.fn(),
@@ -288,29 +350,62 @@ interface OpenPRCall {
   labels?: string[];
   files: Array<{ path: string; content: Buffer }>;
   autoApprove: boolean;
+  idempotent?: boolean;
 }
 
 class FakeForgejoClient {
   openCalls: OpenPRCall[] = [];
   mergeCalls: number[] = [];
+  failNextMerge: Error | undefined;
+  openDelayMs = 0;
+  activeOpens = 0;
+  maxActiveOpens = 0;
+  private readonly prsByBranch = new Map<string, { prNumber: number; branch: string; headSha: string }>();
 
   constructor(private readonly opts: { failOpen?: Error } = {}) {}
 
   async openSubmissionPR(input: OpenPRCall): Promise<{ branch: string; prNumber: number; headSha: string }> {
-    this.openCalls.push(input);
-    if (this.opts.failOpen) {
-      throw this.opts.failOpen;
+    const branch = input.branch ?? `submit/${input.submissionId}`;
+    const existing = this.prsByBranch.get(branch);
+    if (input.idempotent && existing) {
+      return {
+        branch: existing.branch,
+        prNumber: existing.prNumber,
+        headSha: existing.headSha,
+      };
     }
-    const prNumber = this.openCalls.length;
-    return {
-      branch: input.branch ?? `submit/${input.submissionId}`,
-      prNumber,
-      headSha: `head-${prNumber}`,
-    };
+
+    this.activeOpens += 1;
+    this.maxActiveOpens = Math.max(this.maxActiveOpens, this.activeOpens);
+    if (this.openDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.openDelayMs));
+    }
+
+    this.openCalls.push(input);
+    try {
+      if (this.opts.failOpen) {
+        throw this.opts.failOpen;
+      }
+      const prNumber = this.openCalls.length;
+      const result = {
+        branch,
+        prNumber,
+        headSha: `head-${prNumber}`,
+      };
+      this.prsByBranch.set(branch, result);
+      return result;
+    } finally {
+      this.activeOpens -= 1;
+    }
   }
 
   async mergePR(prNumber: number): Promise<{ sha: string }> {
     this.mergeCalls.push(prNumber);
+    if (this.failNextMerge) {
+      const error = this.failNextMerge;
+      this.failNextMerge = undefined;
+      throw error;
+    }
     return { sha: `merge-${prNumber}` };
   }
 }

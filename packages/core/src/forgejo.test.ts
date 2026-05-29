@@ -279,6 +279,58 @@ describe('ForgejoClient', () => {
     });
   });
 
+  it('reuses an existing PR for idempotent submission branches', async () => {
+    const client = new ForgejoClient(cfg);
+    const uploadRequest = vi
+      .spyOn(internals(client).upload, 'request')
+      .mockResolvedValueOnce({
+        data: [{ number: 38, head: { ref: 'marketplace-sync/hash' } }],
+      } as never)
+      .mockResolvedValueOnce({ data: { commit: { id: 'existing-head-sha' } } } as never);
+
+    await expect(
+      client.openSubmissionPR({
+        submissionId: 'marketplace-sync-hash',
+        manifest: {
+          name: 'skill-marketplace',
+          version: '1',
+          author: 'asr',
+          description: 'Generated marketplace sync.',
+          tags: ['marketplace'],
+          kind: 'skill',
+          permissions: {
+            network: false,
+            filesystem: 'none',
+            subprocess: false,
+            environment: [],
+          },
+        },
+        branch: 'marketplace-sync/hash',
+        pathPrefix: '',
+        files: [{ path: 'marketplace.json', content: Buffer.from('{}\n') }],
+        autoApprove: true,
+        idempotent: true,
+      }),
+    ).resolves.toEqual({
+      branch: 'marketplace-sync/hash',
+      prNumber: 38,
+      headSha: 'existing-head-sha',
+    });
+
+    expect(uploadRequest).toHaveBeenCalledTimes(2);
+    expect(uploadRequest).toHaveBeenNthCalledWith(1, 'GET /repos/{owner}/{repo}/pulls', {
+      owner: 'asr',
+      repo: 'skills',
+      state: 'all',
+      per_page: 50,
+    });
+    expect(uploadRequest).toHaveBeenNthCalledWith(2, 'GET /repos/{owner}/{repo}/branches/{branch}', {
+      owner: 'asr',
+      repo: 'skills',
+      branch: 'marketplace-sync/hash',
+    });
+  });
+
   it('uploads a generic package artifact with the upload token', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 201 }));
     vi.stubGlobal('fetch', fetch);
