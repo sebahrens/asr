@@ -5,6 +5,7 @@ import { Hono } from 'hono';
 import { runMigrations } from '../db/migrations/index.js';
 import { getPublishedSkill, getPublishedSkillVersion, listPublishedSkills } from '../db/repositories/skills.js';
 import {
+  insertSkillVersion,
   listVersions,
   resolveLatestVersion,
   type SkillVersionRow,
@@ -427,6 +428,21 @@ function createDefaultRegistryDb(): Database.Database {
           riskAssessment: version.riskAssessment,
           skillMd: version.version === skill.latestVersion ? skill.skillMd : undefined,
         }),
+      });
+      insertSkillVersion(db, {
+        skill_name: skill.name,
+        version: version.version,
+        content_hash: version.contentHash,
+        submission_id: `${skill.owner}-${skill.name}-${version.version}`,
+        published_at: version.publishedAt,
+        published_by: version.publishedBy,
+        approved_by: version.approvedBy,
+        pr_number: version.prNumber,
+        merge_commit: version.mergeCommit,
+        scan_report_id: null,
+        yanked_at: version.yanked ? version.publishedAt : null,
+        yanked_by: version.yanked ? version.publishedBy : null,
+        yank_reason: version.yankReason ?? null,
       });
     }
   }

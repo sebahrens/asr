@@ -41,6 +41,7 @@ export interface WorkflowRouteOptions {
   db?: Database.Database;
   dependencies?: ApprovalPipelineDependencies;
   now?: () => Date;
+  regenerateRegistryIndex?: () => Promise<void> | void;
 }
 
 class MemoryWorkflowSubmissionStore implements WorkflowSubmissionStore {
@@ -117,7 +118,7 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       return apiError(c, 400, 'invalid_manifest', { message: 'responses must be an array' });
     }
 
-    const result = await resumeAndSave(options.db, store, record, 'questionnaire', {
+    const result = await resumeAndSave(options, store, record, 'questionnaire', {
       actor: identity.sub,
       responses: body.responses,
     }, dependencies, now);
@@ -174,7 +175,7 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       return terminalStateError(c, record);
     }
 
-    await resumeAndSave(options.db, store, record, 'confirmation', {
+    await resumeAndSave(options, store, record, 'confirmation', {
       actor: identity.sub,
       confirmed: true,
     }, dependencies, now);
@@ -201,7 +202,7 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       });
     }
 
-    const result = await resumeAndSave(options.db, store, record, 'review', {
+    const result = await resumeAndSave(options, store, record, 'review', {
       actor: identity.sub,
       decision: 'approved',
     }, dependencies, now);
@@ -237,7 +238,7 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       return apiError(c, 400, 'invalid_manifest', { message: 'reason must be 10-500 characters' });
     }
 
-    await resumeAndSave(options.db, store, record, 'review', {
+    await resumeAndSave(options, store, record, 'review', {
       actor: identity.sub,
       decision: 'rejected',
       reason: body.reason,
@@ -300,7 +301,7 @@ function toRisk(risk: VersionDiff['riskAssessment'] | undefined, findings: numbe
 }
 
 async function resumeAndSave(
-  db: Database.Database | undefined,
+  options: WorkflowRouteOptions,
   store: WorkflowSubmissionStore,
   record: WorkflowSubmissionRecord,
   nodeId: WorkflowNodeId,
@@ -323,10 +324,12 @@ async function resumeAndSave(
     serializedContext: result.serializedContext,
     context,
   });
-  if (db) {
+  if (options.db) {
+    const db = options.db;
     updatePersistedSubmissionStatus(db, record.id, status);
     if (status.phase === 'published') {
       persistPublishedVersion(db, record.id, record.submittedBy, context, status);
+      await options.regenerateRegistryIndex?.();
     }
   }
   return { ...result, context };

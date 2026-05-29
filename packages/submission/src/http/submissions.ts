@@ -275,7 +275,7 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
 
       if (db) {
         const workflowDependencies =
-          options.workflowDependencies ?? defaultWorkflowDependencies(options, manifest.name);
+          options.workflowDependencies ?? defaultWorkflowDependencies(options);
         await workflowDependencies.audit('submission.created', {
           actor: submittedBy,
           submissionId: id,
@@ -341,6 +341,9 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
             statusJson: JSON.stringify(statusJsonWithApprovalPath(workflowStatus, approvalPath)),
           });
           submission.status = workflowStatus;
+          if (workflowStatus.phase === 'published' && options.triggerMarketplaceSync) {
+            await options.triggerMarketplaceSync(manifest.name);
+          }
         } catch (error) {
           releasePendingVersion(db, manifest.name, manifest.version);
           return apiError(c, 500, 'internal_error', {
@@ -455,10 +458,7 @@ function statusFromWorkflowResult(
   return { phase: 'uploaded' };
 }
 
-function defaultWorkflowDependencies(
-  options: SubmissionRouteOptions,
-  skillName: string,
-): ApprovalPipelineDependencies {
+function defaultWorkflowDependencies(options: SubmissionRouteOptions): ApprovalPipelineDependencies {
   return {
     svc(token) {
       if (token !== ForgejoClient) {
@@ -467,11 +467,6 @@ function defaultWorkflowDependencies(
       return (options.forgejo ?? forgejoFromEnv()) as never;
     },
     audit() {},
-    async regenerateRegistryIndex() {
-      if (options.triggerMarketplaceSync) {
-        await options.triggerMarketplaceSync(skillName);
-      }
-    },
   };
 }
 

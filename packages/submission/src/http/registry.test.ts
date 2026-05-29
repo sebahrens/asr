@@ -1,18 +1,25 @@
 import type { SkillKind, SkillManifest } from '@asr/core';
 import Database from 'better-sqlite3';
 import { Hono } from 'hono';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../db/migrations/index.js';
 import { insertSkillVersion } from '../db/repositories/skillVersions.js';
 import { insertSubmission } from '../db/repositories/submissions.js';
+import { regenerateRegistryIndex } from '../jobs/registryIndex.js';
+import { registryIndexHandler } from './registryIndex.js';
 import { createRegistryRoutes } from './registry.js';
 
 describe('registryRoutes', () => {
   let db: Database.Database | undefined;
+  const tempRoots: string[] = [];
 
-  afterEach(() => {
+  afterEach(async () => {
     db?.close();
     db = undefined;
+    await Promise.all(tempRoots.splice(0).map((path) => rm(path, { recursive: true, force: true })));
   });
 
   it('lists published skills with cache headers and cursor pagination', async () => {
@@ -273,6 +280,84 @@ describe('registryRoutes', () => {
 
     expect(res.status).toBe(404);
     await expect(res.json()).resolves.toEqual({ error: 'submission_not_found' });
+  });
+
+  it('serves disk-backed registry.json with cache validators and excludes yanked versions', async () => {
+    const app = makeApp();
+    const tempRoot = await mkdtemp(join(tmpdir(), 'asr-registry-index-'));
+    tempRoots.push(tempRoot);
+    const indexPath = join(tempRoot, 'registry.json');
+    insertPublishedSubmission(db!, {
+      id: 'submission-x-100',
+      name: 'x',
+      version: '1.0.0',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+    });
+    insertSkillVersion(db!, {
+      skill_name: 'x',
+      version: '1.0.0',
+      content_hash: 'sha256:x-100',
+      submission_id: 'submission-x-100',
+      published_at: '2026-05-24T10:05:00.000Z',
+      published_by: 'submitter@example.com',
+      approved_by: 'reviewer@example.com',
+      pr_number: 1,
+      merge_commit: 'merge-100',
+      scan_report_id: null,
+      yanked_at: null,
+      yanked_by: null,
+      yank_reason: null,
+    });
+    insertPublishedSubmission(db!, {
+      id: 'submission-x-110',
+      name: 'x',
+      version: '1.1.0',
+      publishedAt: '2026-05-25T10:05:00.000Z',
+    });
+    insertSkillVersion(db!, {
+      skill_name: 'x',
+      version: '1.1.0',
+      content_hash: 'sha256:x-110',
+      submission_id: 'submission-x-110',
+      published_at: '2026-05-25T10:05:00.000Z',
+      published_by: 'submitter@example.com',
+      approved_by: 'reviewer@example.com',
+      pr_number: 2,
+      merge_commit: 'merge-110',
+      scan_report_id: null,
+      yanked_at: '2026-05-26T10:00:00.000Z',
+      yanked_by: 'compliance@example.com',
+      yank_reason: 'security incident',
+    });
+    await regenerateRegistryIndex(db!, {
+      path: indexPath,
+      now: () => new Date('2026-05-27T10:00:00.000Z'),
+    });
+
+    app.get('/registry.json', (c) => registryIndexHandler(c, { db, path: indexPath }));
+    const res = await app.request('/registry.json');
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=60');
+    expect(res.headers.get('ETag')).toMatch(/^"[a-f0-9]{64}"$/);
+    expect(res.headers.get('Last-Modified')).toBeTruthy();
+    await expect(res.json()).resolves.toEqual({
+      generatedAt: '2026-05-27T10:00:00.000Z',
+      specVersion: '1',
+      skills: [
+        expect.objectContaining({
+          owner: 'acme',
+          name: 'x',
+          latestVersion: '1.0.0',
+          publishedAt: '2026-05-24T10:05:00.000Z',
+        }),
+      ],
+    });
+
+    const notModified = await app.request('/registry.json', {
+      headers: { 'If-None-Match': res.headers.get('ETag')! },
+    });
+    expect(notModified.status).toBe(304);
   });
 
   function makeApp(): Hono {

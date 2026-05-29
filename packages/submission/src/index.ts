@@ -8,10 +8,12 @@ import type { AuthVariables } from './auth/types.js';
 import { getEnv } from './env.js';
 import { createAuditRoutes, type AuditRouteOptions } from './http/audit.js';
 import { healthRoutes } from './http/health.js';
-import { createRegistryRoutes, type RegistryRouteOptions } from './http/registry.js';
+import { registryIndexHandler, type RegistryIndexRouteOptions } from './http/registryIndex.js';
+import { createRegistryRoutes, getDefaultRegistryDb, type RegistryRouteOptions } from './http/registry.js';
 import { createSubmissionRoutes, type SubmissionRouteOptions } from './http/submissions.js';
 import { createWorkflowRoutes, type WorkflowRouteOptions } from './http/workflow.js';
 import { createYankRoutes, type YankRouteOptions } from './http/yank.js';
+import { regenerateRegistryIndex } from './jobs/registryIndex.js';
 import { createMcpRoute, type McpRouteOptions } from './mcp/server.js';
 
 assertAuthModeAllowed();
@@ -25,24 +27,64 @@ export interface CreateAppOptions {
   mcp?: McpRouteOptions;
   audit?: AuditRouteOptions;
   yank?: YankRouteOptions;
+  registryIndex?: RegistryIndexRouteOptions;
 }
 
 export function createApp(options: CreateAppOptions = {}) {
   const app = new Hono<{ Variables: AuthVariables }>();
+  const registryIndexOptions = {
+    ...options.registryIndex,
+    db:
+      options.registryIndex?.db ??
+      options.registry?.db ??
+      options.submissions?.db ??
+      options.workflow?.db ??
+      options.yank?.db ??
+      getDefaultRegistryDb(),
+  };
+  const regenerateIndex = registryIndexOptions.db
+    ? async () => {
+        await regenerateRegistryIndex(registryIndexOptions.db!, registryIndexOptions);
+      }
+    : undefined;
+  const submissionOptions = regenerateIndex
+    ? {
+        ...options.submissions,
+        triggerMarketplaceSync: async (skillName: string) => {
+          await options.submissions?.triggerMarketplaceSync?.(skillName);
+          await regenerateIndex();
+        },
+      }
+    : options.submissions;
   const workflowOptions =
     (options.workflow ?? options.submissions?.db)
-      ? { ...options.workflow, db: options.workflow?.db ?? options.submissions?.db }
+      ? {
+          ...options.workflow,
+          db: options.workflow?.db ?? options.submissions?.db,
+          regenerateRegistryIndex: options.workflow?.regenerateRegistryIndex ?? regenerateIndex,
+        }
       : undefined;
+  const yankOptions = regenerateIndex
+    ? {
+        ...options.yank,
+        triggerMarketplaceSync: async (skillName: string) => {
+          await options.yank?.triggerMarketplaceSync?.(skillName);
+          await regenerateIndex();
+        },
+      }
+    : options.yank;
 
   app.use('*', devCorsMiddleware);
   app.route('/health', healthRoutes);
   app.route('/api/health', healthRoutes);
+  app.get('/registry.json', (c) => registryIndexHandler(c, registryIndexOptions));
+  app.get('/api/v1/registry.json', (c) => registryIndexHandler(c, registryIndexOptions));
   app.route('/api/v1/skills', createRegistryRoutes(options.registry));
   app.all('/mcp', createMcpRoute(options.mcp));
   app.use('*', authMiddleware({ authMode: env.AUTH_MODE }));
-  app.route('/api/v1/submissions', createSubmissionRoutes(options.submissions));
+  app.route('/api/v1/submissions', createSubmissionRoutes(submissionOptions));
   app.route('/api/v1/submissions', createWorkflowRoutes(workflowOptions));
-  app.route('/api/v1/skills', createYankRoutes(options.yank));
+  app.route('/api/v1/skills', createYankRoutes(yankOptions));
   app.route('/api/v1/audit', createAuditRoutes(options.audit));
 
   return app;
