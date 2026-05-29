@@ -1,4 +1,4 @@
-import type { ScanReport, Submission, VersionDiff } from '@asr/core';
+import type { ScanFinding, ScanReport, ScanSeverity, ScanTool, Submission, VersionDiff } from '@asr/core';
 import { useQuery } from '@tanstack/react-query';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
@@ -112,12 +112,60 @@ function buildDiffFiles(diff: VersionDiff): DiffFile[] {
   ];
 }
 
+function formatScanDuration(durationMs: number): string {
+  if (!Number.isFinite(durationMs) || durationMs < 0) return 'Unknown';
+  if (durationMs < 1000) return `${Math.round(durationMs)} ms`;
+  const seconds = durationMs / 1000;
+  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)} s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
+function formatScanTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+function sortFindingsBySeverity(findings: ScanFinding[]): ScanFinding[] {
+  return [...findings].sort((a, b) => {
+    const severityDelta = severityRank[a.severity] - severityRank[b.severity];
+    if (severityDelta !== 0) return severityDelta;
+    return a.file.localeCompare(b.file) || a.line - b.line || a.ruleId.localeCompare(b.ruleId);
+  });
+}
+
+function groupFindingsByTool(findings: ScanFinding[]): Array<{ tool: ScanTool; findings: ScanFinding[] }> {
+  return scanTools
+    .map((tool) => ({ tool, findings: sortFindingsBySeverity(findings.filter((finding) => finding.tool === tool)) }))
+    .filter((group) => group.findings.length > 0);
+}
+
 type TabId = 'diff' | 'scan';
 
 const evidenceTabs: { id: TabId; label: string }[] = [
   { id: 'diff', label: 'Diff' },
   { id: 'scan', label: 'Scan' },
 ];
+
+const scanTools: ScanTool[] = ['gitleaks', 'trivy', 'foxguard', 'opengrep', 'veracode'];
+
+const severityRank: Record<ScanSeverity, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
+const verdictLabels: Record<ScanReport['verdict'], string> = {
+  pass: 'Pass',
+  review_required: 'Review required',
+  block: 'Block',
+};
 
 function getEvidenceTabId(tab: TabId): string {
   return `review-detail-tab-${tab}`;
@@ -457,18 +505,92 @@ function DiffPanelContent({ diff }: { diff: VersionDiff }) {
 }
 
 function ScanPanelContent({ scan }: { scan: ScanReport }) {
-  if (scan.findings.length === 0) {
-    return <p className="review-detail-empty">No findings reported.</p>;
-  }
+  const groupedFindings = groupFindingsByTool(scan.findings);
+
   return (
-    <ul className="review-detail-scan-findings">
-      {scan.findings.map((finding, idx) => (
-        <li key={`${finding.tool}-${finding.ruleId}-${idx}`}>
-          <span className={`severity-tag severity-${finding.severity}`}>{finding.severity}</span>
-          <span className="finding-message">{finding.message}</span>
-          <span className="finding-location">{finding.file}:{finding.line}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="review-scan-report">
+      <section
+        className={`scan-verdict-banner scan-verdict-${scan.verdict}`}
+        aria-label={`Scan verdict: ${verdictLabels[scan.verdict]}`}
+      >
+        <span>Verdict</span>
+        <strong>{verdictLabels[scan.verdict]}</strong>
+      </section>
+
+      <dl className="scan-report-meta" aria-label="Scan report metadata">
+        <div>
+          <dt>Scanner image</dt>
+          <dd>{scan.scannerImage}</dd>
+        </div>
+        <div>
+          <dt>Duration</dt>
+          <dd>{formatScanDuration(scan.durationMs)}</dd>
+        </div>
+        <div>
+          <dt>Completed</dt>
+          <dd>{formatScanTimestamp(scan.completedAt)}</dd>
+        </div>
+      </dl>
+
+      <section className="scan-tool-summary" aria-labelledby="scan-tool-summary-heading">
+        <h2 id="scan-tool-summary-heading">Tool results</h2>
+        <div className="scan-tool-grid">
+          {scanTools.map((tool) => {
+            const result = scan.toolResults[tool];
+            const skipped = result?.skipped === true;
+            const exitCode = result?.exitCode;
+            const hasNonZeroExit = typeof exitCode === 'number' && exitCode !== 0;
+            return (
+              <article className="scan-tool-card" key={tool} aria-label={`${tool} result`}>
+                <header>
+                  <strong>{tool}</strong>
+                  <span className={`tool-state ${skipped ? 'tool-state-skipped' : 'tool-state-ran'}`}>
+                    {skipped ? 'skipped' : 'ran'}
+                  </span>
+                </header>
+                <p>{result?.findingCount ?? 0} findings</p>
+                <span className={hasNonZeroExit ? 'tool-exit tool-exit-nonzero' : 'tool-exit'}>
+                  exit {exitCode ?? 'n/a'}
+                </span>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      {groupedFindings.length === 0 ? (
+        <p className="review-detail-empty">No findings reported.</p>
+      ) : (
+        <div className="review-detail-scan-groups">
+          {groupedFindings.map((group) => (
+            <section className="review-detail-scan-group" key={group.tool} aria-labelledby={`scan-findings-${group.tool}`}>
+              <h2 id={`scan-findings-${group.tool}`}>{group.tool}</h2>
+              <ul className="review-detail-scan-findings">
+                {group.findings.map((finding, idx) => (
+                  <li key={`${finding.tool}-${finding.ruleId}-${finding.file}-${finding.line}-${idx}`}>
+                    <details>
+                      <summary>
+                        <span className={`severity-tag severity-${finding.severity}`}>{finding.severity}</span>
+                        <span className="finding-message">{finding.message}</span>
+                        <span className="finding-location">{finding.file}:{finding.line}</span>
+                      </summary>
+                      <div className="scan-finding-detail">
+                        <dl>
+                          <div>
+                            <dt>Rule</dt>
+                            <dd>{finding.ruleId}</dd>
+                          </div>
+                        </dl>
+                        {finding.snippet ? <pre>{finding.snippet}</pre> : null}
+                      </div>
+                    </details>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

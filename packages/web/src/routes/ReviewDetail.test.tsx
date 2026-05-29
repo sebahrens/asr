@@ -53,19 +53,39 @@ const scanReport: ScanReport = {
   completedAt: '2026-05-23T12:01:00.000Z',
   durationMs: 30000,
   verdict: 'review_required',
-  findings: [{
-    tool: 'opengrep',
-    ruleId: 'unsafe-import',
-    severity: 'high',
-    file: 'SKILL.md',
-    line: 12,
-    message: 'High-severity issue found',
-  }],
+  findings: [
+    {
+      tool: 'opengrep',
+      ruleId: 'medium-policy',
+      severity: 'medium',
+      file: 'README.md',
+      line: 4,
+      message: 'Medium-severity issue found',
+    },
+    {
+      tool: 'opengrep',
+      ruleId: 'unsafe-import',
+      severity: 'high',
+      file: 'SKILL.md',
+      line: 12,
+      message: 'High-severity issue found',
+      snippet: 'import subprocess\nsubprocess.run(input)',
+    },
+    {
+      tool: 'gitleaks',
+      ruleId: 'generic-api-key',
+      severity: 'critical',
+      file: 'config.env',
+      line: 1,
+      message: 'Critical secret found',
+      snippet: 'API_KEY=redacted',
+    },
+  ],
   toolResults: {
-    gitleaks: { exitCode: 0, findingCount: 0 },
+    gitleaks: { exitCode: 1, findingCount: 1 },
     trivy: { exitCode: 0, findingCount: 0 },
     foxguard: { exitCode: 0, findingCount: 0 },
-    opengrep: { exitCode: 0, findingCount: 1 },
+    opengrep: { exitCode: 0, findingCount: 2 },
     veracode: { exitCode: 0, findingCount: 0, skipped: true },
   },
 };
@@ -143,7 +163,7 @@ describe('ReviewDetail', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 
-  it('renders the submission header version, Diff tab modified file path, and Scan tab high finding message', async () => {
+  it('renders the submission header version, Diff tab modified file path, and detailed Scan report', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input);
       let body: unknown;
@@ -176,16 +196,72 @@ describe('ReviewDetail', () => {
     expect(diffPanel).toHaveTextContent('SKILL.md');
     expect(diffPanel).toHaveTextContent(/permissions expanded/i);
 
-    // Switch to Scan tab — finding message at severity high
+    // Switch to Scan tab — verdict, metadata, tool results, and grouped findings
     fireEvent.click(screen.getByRole('tab', { name: /^scan$/i }));
     const scanPanel = screen.getByRole('tabpanel', { name: /scan/i });
+    expect(screen.getByLabelText(/scan verdict: review required/i)).toBeInTheDocument();
+    expect(scanPanel).toHaveTextContent(/asr-scanner:1\.0/i);
+    expect(scanPanel).toHaveTextContent(/30 s/i);
+    expect(screen.getByRole('article', { name: /gitleaks result/i })).toHaveTextContent(/1 findings/i);
+    expect(screen.getByRole('article', { name: /gitleaks result/i })).toHaveTextContent(/exit 1/i);
+    expect(screen.getByRole('article', { name: /veracode result/i })).toHaveTextContent(/skipped/i);
+    expect(scanPanel).toHaveTextContent(/critical secret found/i);
     expect(scanPanel).toHaveTextContent(/high-severity issue found/i);
-    expect(scanPanel).toHaveTextContent(/high/i);
+    expect(scanPanel).toHaveTextContent(/unsafe-import/i);
+    expect(scanPanel).toHaveTextContent(/import subprocess/i);
+
+    const scanText = scanPanel.textContent ?? '';
+    expect(scanText.indexOf('High-severity issue found')).toBeLessThan(
+      scanText.indexOf('Medium-severity issue found'),
+    );
 
     // Sticky decision panel is mounted with Approve + Reject controls
     const decisionSlot = screen.getByRole('complementary', { name: /decision panel/i });
     expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^approve$/i }));
     expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^reject$/i }));
+  });
+
+  it('preserves scan metadata and tool results when no findings are reported', async () => {
+    const cleanScanReport: ScanReport = {
+      ...scanReport,
+      verdict: 'pass',
+      findings: [],
+      toolResults: {
+        gitleaks: { exitCode: 0, findingCount: 0 },
+        trivy: { exitCode: 0, findingCount: 0 },
+        foxguard: { exitCode: 0, findingCount: 0 },
+        opengrep: { exitCode: 0, findingCount: 0 },
+        veracode: { exitCode: 0, findingCount: 0, skipped: true },
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      let body: unknown;
+      if (url.endsWith('/api/v1/submissions/sub-test')) {
+        body = submission;
+      } else if (url.endsWith('/api/v1/submissions/sub-test/diff')) {
+        body = versionDiff;
+      } else if (url.endsWith('/api/v1/submissions/sub-test/scan')) {
+        body = cleanScanReport;
+      } else {
+        throw new Error(`unexpected fetch url ${url}`);
+      }
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderRoute('sub-test');
+
+    expect(await screen.findByRole('heading', { name: /example-skill/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /^scan$/i }));
+
+    const scanPanel = screen.getByRole('tabpanel', { name: /scan/i });
+    expect(screen.getByLabelText(/scan verdict: pass/i)).toBeInTheDocument();
+    expect(scanPanel).toHaveTextContent(/asr-scanner:1\.0/i);
+    expect(screen.getByRole('article', { name: /opengrep result/i })).toHaveTextContent(/0 findings/i);
+    expect(scanPanel).toHaveTextContent(/no findings reported/i);
   });
 
   it('wires evidence tabs to their panels and supports arrow-key activation', async () => {
