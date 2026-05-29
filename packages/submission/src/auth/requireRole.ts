@@ -7,7 +7,6 @@ export const EXEMPT_PATHS = ['/health', '/api/health', '/version'] as const;
 export function isExemptPath(path: string): boolean {
   return (
     EXEMPT_PATHS.includes(path as (typeof EXEMPT_PATHS)[number]) ||
-    path.startsWith('/api/v1/skills') ||
     path.startsWith('/webhooks/')
   );
 }

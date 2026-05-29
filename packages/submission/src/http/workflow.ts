@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { apiError } from './errors.js';
 import { requireRole } from '../auth/requireRole.js';
+import { SeparationOfDutiesError, assertSeparation } from '../auth/separation.js';
 import type { AuthVariables, Identity } from '../auth/types.js';
 import { getSkillVersion, insertSkillVersion } from '../db/repositories/skillVersions.js';
 import { getSubmissionById, updateSubmissionStatus } from '../db/repositories/submissions.js';
@@ -190,8 +191,13 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
     if (!record) {
       return apiError(c, 404, 'submission_not_found');
     }
-    if (record.submittedBy === identity.sub) {
-      return apiError(c, 403, 'separation_of_duties_violation');
+    try {
+      assertSeparation(record.submittedBy, identity.sub);
+    } catch (err) {
+      if (err instanceof SeparationOfDutiesError) {
+        return apiError(c, 403, 'separation_of_duties_violation');
+      }
+      throw err;
     }
     if (isTerminalWorkflowRecord(record)) {
       return terminalStateError(c, record);
@@ -227,8 +233,13 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
     if (!record) {
       return apiError(c, 404, 'submission_not_found');
     }
-    if (record.submittedBy === identity.sub) {
-      return apiError(c, 403, 'separation_of_duties_violation');
+    try {
+      assertSeparation(record.submittedBy, identity.sub);
+    } catch (err) {
+      if (err instanceof SeparationOfDutiesError) {
+        return apiError(c, 403, 'separation_of_duties_violation');
+      }
+      throw err;
     }
     if (isTerminalWorkflowRecord(record)) {
       return terminalStateError(c, record);
@@ -610,7 +621,7 @@ function canView(record: WorkflowSubmissionRecord, identity: Identity): boolean 
 }
 
 function isSubmitter(record: WorkflowSubmissionRecord, identity: Identity): boolean {
-  return record.submittedBy === identity.sub;
+  return identity.sub === record.submittedBy;
 }
 
 function currentWorkflowPhase(record: WorkflowSubmissionRecord): string | undefined {

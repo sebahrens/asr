@@ -1,6 +1,7 @@
 import type { ForgejoClient } from '@asr/core';
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
+import { SeparationOfDutiesError, assertSeparation } from '../auth/separation.js';
 import type { AuthVariables } from '../auth/types.js';
 import { emitAudit } from '../audit/emit.js';
 import {
@@ -57,8 +58,13 @@ export function createYankRoutes(options: YankRouteOptions = {}) {
       return apiError(c, 404, 'submission_not_found');
     }
 
-    if (identity.sub === row.published_by) {
-      return apiError(c, 403, 'separation_of_duties_violation');
+    try {
+      assertSeparation(row.published_by, identity.sub);
+    } catch (err) {
+      if (err instanceof SeparationOfDutiesError) {
+        return apiError(c, 403, 'separation_of_duties_violation');
+      }
+      throw err;
     }
 
     if (row.yanked_at !== null) {

@@ -1,6 +1,7 @@
 import type { AuditAction, Submission } from '@asr/core';
 import type Database from 'better-sqlite3';
 import type { Hono } from 'hono';
+import { SeparationOfDutiesError, assertSeparation } from '../../auth/separation.js';
 import type { AuthVariables } from '../../auth/types.js';
 import { getSubmissionById, rowToSubmission } from '../../db/repositories/submissions.js';
 import { apiError } from '../errors.js';
@@ -60,8 +61,13 @@ export function registerRejectRoute(
     }
 
     const identity = c.get('identity');
-    if (submission.submittedBy === identity.sub) {
-      return apiError(c, 403, 'separation_of_duties_violation');
+    try {
+      assertSeparation(submission.submittedBy, identity.sub);
+    } catch (err) {
+      if (err instanceof SeparationOfDutiesError) {
+        return apiError(c, 403, 'separation_of_duties_violation');
+      }
+      throw err;
     }
 
     const result = await deliverReviewRejection({
