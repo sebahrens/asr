@@ -1,5 +1,5 @@
 import {
-  canonicalHash,
+  canonicalHashFromDigests,
   computeVersionDiff,
   parseSkillManifest,
   selectApprovalPath,
@@ -13,9 +13,14 @@ import {
 } from '@asr/core';
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { ulid } from 'ulid';
 import type { AuthVariables } from '../auth/types.js';
 import {
@@ -72,7 +77,14 @@ export interface SubmissionRouteOptions {
 
 interface UploadedFile {
   arrayBuffer(): Promise<ArrayBuffer>;
+  stream?: () => NodeReadableStream<Uint8Array>;
   size: number;
+}
+
+interface FileDigestEntry {
+  path: string;
+  size: number;
+  sha256: Buffer;
 }
 
 class PendingVersionContentionError extends Error {
@@ -127,8 +139,7 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
     const extractedDir = join(tempRoot, 'extracted');
 
     try {
-      const zipBytes = Buffer.from(await file.arrayBuffer());
-      await writeFile(zipPath, zipBytes);
+      await writeUploadedFile(file, zipPath);
 
       let files: string[];
       try {
@@ -158,13 +169,8 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
         });
       }
 
-      const fileEntries = await Promise.all(
-        files.map(async (relPath) => ({
-          path: relPath,
-          content: await readFile(join(extractedDir, relPath)),
-        })),
-      );
-      const contentHash = canonicalHash(fileEntries);
+      const fileDigests = await hashExtractedFiles(files, extractedDir);
+      const contentHash = canonicalHashFromDigests(fileDigests);
 
       const db = options.db;
       let currentVersion: string | undefined;
@@ -218,7 +224,7 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
           const incomingSnapshot: VersionSnapshot = {
             version: manifest.version,
             contentHash,
-            files: filesAsRecord(fileEntries),
+            files: fileDigestsAsRecord(fileDigests),
             manifest,
           };
           versionDiff = computeVersionDiff(priorSnapshot, incomingSnapshot);
@@ -293,13 +299,10 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
               submissionId: id,
               submission,
               manifest,
-              files: fileEntries.map((file) => ({
-                path: file.path,
-                contentBase64: file.content.toString('base64'),
-              })),
+              files: await buildWorkflowFiles(files, extractedDir),
               contentHash,
               extractedDir,
-              zipBufferBase64: zipBytes.toString('base64'),
+              zipBufferBase64: (await readFile(zipPath)).toString('base64'),
               classification,
               ...(versionDiff !== undefined ? { versionDiff } : {}),
             },
@@ -387,12 +390,59 @@ function statusJsonWithApprovalPath(
   return approvalPath !== undefined ? { ...status, approvalPath } : status;
 }
 
-function filesAsRecord(
+async function writeUploadedFile(file: UploadedFile, destination: string): Promise<void> {
+  if (file.stream) {
+    await pipeline(Readable.fromWeb(file.stream()), createWriteStream(destination));
+    return;
+  }
+
+  await writeFile(destination, Buffer.from(await file.arrayBuffer()));
+}
+
+async function hashExtractedFiles(files: string[], extractedDir: string): Promise<FileDigestEntry[]> {
+  const entries: FileDigestEntry[] = [];
+  for (const relPath of files) {
+    const absolutePath = join(extractedDir, relPath);
+    const fileStat = await stat(absolutePath);
+    const hash = createHash('sha256');
+    await pipeline(createReadStream(absolutePath), hash);
+    entries.push({
+      path: relPath,
+      size: fileStat.size,
+      sha256: hash.digest(),
+    });
+  }
+  return entries;
+}
+
+async function buildWorkflowFiles(
+  files: string[],
+  extractedDir: string,
+): Promise<Array<{ path: string; contentBase64: string }>> {
+  const entries: Array<{ path: string; contentBase64: string }> = [];
+  for (const relPath of files) {
+    entries.push({
+      path: relPath,
+      contentBase64: (await readFile(join(extractedDir, relPath))).toString('base64'),
+    });
+  }
+  return entries;
+}
+
+function fileDigestsAsRecord(entries: FileDigestEntry[]): Record<string, string> {
+  const record: Record<string, string> = {};
+  for (const entry of entries) {
+    record[entry.path] = entry.sha256.toString('hex');
+  }
+  return record;
+}
+
+function buffersAsDigestRecord(
   entries: Array<{ path: string; content: Buffer }>,
 ): Record<string, string> {
   const record: Record<string, string> = {};
   for (const entry of entries) {
-    record[entry.path] = entry.content.toString('base64');
+    record[entry.path] = createHash('sha256').update(entry.content).digest('hex');
   }
   return record;
 }
@@ -425,7 +475,7 @@ async function buildPriorSnapshot(
   return {
     version: versionRow.version,
     contentHash: versionRow.content_hash,
-    files: priorFiles ? filesAsRecord(priorFiles) : {},
+    files: priorFiles ? buffersAsDigestRecord(priorFiles) : {},
     manifest: priorManifest,
   };
 }

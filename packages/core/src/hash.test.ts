@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 
-import { canonicalHash, type CanonicalFile, isCanonicalExcluded } from './hash.js';
+import {
+  canonicalHash,
+  canonicalHashFromDigests,
+  type CanonicalFile,
+  isCanonicalExcluded,
+} from './hash.js';
 
 describe('isCanonicalExcluded', () => {
   it('excludes OS cruft and VCS metadata paths', () => {
@@ -50,5 +56,17 @@ describe('canonicalHash', () => {
     changed[0] = { ...changed[0], content: encoder.encode('# Skill!\n') };
 
     expect(canonicalHash(changed)).not.toBe(canonicalHash(base));
+  });
+
+  it('matches the digest-based canonical hash', () => {
+    const base = files();
+    const digests = base.map((file) => ({
+      path: file.path,
+      size: file.content.length,
+      sha256: createHash('sha256').update(file.content).digest(),
+      executable: file.executable,
+    }));
+
+    expect(canonicalHashFromDigests(digests)).toBe(canonicalHash(base));
   });
 });

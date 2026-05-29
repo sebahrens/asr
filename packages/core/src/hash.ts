@@ -35,6 +35,13 @@ export interface CanonicalFile {
   executable?: boolean;
 }
 
+export interface CanonicalFileDigest {
+  path: string;
+  size: number | bigint;
+  sha256: Uint8Array;
+  executable?: boolean;
+}
+
 export function isCanonicalExcluded(path: string): boolean {
   return path
     .split('/')
@@ -47,6 +54,17 @@ export function isCanonicalExcluded(path: string): boolean {
 }
 
 export function canonicalHash(files: CanonicalFile[]): string {
+  return canonicalHashFromDigests(
+    files.map((file) => ({
+      path: file.path,
+      size: file.content.length,
+      sha256: createSha256().update(file.content).digest(),
+      executable: file.executable,
+    })),
+  );
+}
+
+export function canonicalHashFromDigests(files: CanonicalFileDigest[]): string {
   const includedFiles = files
     .filter((file) => !isCanonicalExcluded(file.path))
     .map((file) => ({
@@ -61,11 +79,11 @@ export function canonicalHash(files: CanonicalFile[]): string {
     const metadata = Buffer.alloc(20);
     metadata.writeUInt32BE(file.executable ? EXECUTABLE_MODE : FILE_MODE, 0);
     metadata.writeBigUInt64BE(CANONICAL_MTIME_SECONDS, 4);
-    metadata.writeBigUInt64BE(BigInt(file.content.length), 12);
+    metadata.writeBigUInt64BE(BigInt(file.size), 12);
 
     hash.update(pathBytes);
     hash.update(metadata);
-    hash.update(createSha256().update(file.content).digest());
+    hash.update(file.sha256);
   }
 
   return hash.digest('hex');
