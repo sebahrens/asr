@@ -6,6 +6,7 @@ import { requireRole } from '../auth/requireRole.js';
 import type { AuthVariables, Identity } from '../auth/types.js';
 import {
   resumeApprovalPipeline,
+  runApprovalPipeline,
   type ApprovalPipelineContext,
   type ApprovalPipelineDependencies,
   type HitlSignal,
@@ -100,14 +101,19 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       contentHash,
       extractedDir: `/tmp/${id}`,
       zipBufferBase64: Buffer.from('dev archive').toString('base64'),
+      classification: 'code-containing',
       status: 'compliance-review',
     };
+    const result = await runApprovalPipeline(context, dependencies);
 
     await store.save({
       id,
       submittedBy: submission.submittedBy,
-      serializedContext: '{}',
-      context,
+      serializedContext: result.serializedContext,
+      context: {
+        ...result.context,
+        status: 'compliance-review',
+      },
     });
 
     return c.json({ id, manifest, status: submission.status }, 201);
@@ -213,17 +219,8 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
     }
 
     if (record.serializedContext === '{}') {
-      record.context.status = 'approved';
-      await store.save(record);
-      return c.json({
-        submission: { id: record.id, status: 'approved' },
-        status: {
-          phase: 'published',
-          publishedAt: now().toISOString(),
-          mergeCommit: '',
-        } satisfies SubmissionStatus,
-        publishedVersion: record.context.manifest.version,
-        registryUrl: `/skills/${record.context.manifest.author}/${record.context.manifest.name}`,
+      return apiError(c, 409, 'submission_not_ready', {
+        message: 'submission has not entered the approval pipeline',
       });
     }
 

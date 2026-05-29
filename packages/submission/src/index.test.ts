@@ -135,7 +135,9 @@ describe('app', () => {
 
   it('creates a dev submission from skill markdown and queues it for review', async () => {
     const store = new TestWorkflowStore();
-    const submissionApp = createApp({ workflow: { store, now: fixedNow } });
+    const forgejo = new FakeForgejoClient();
+    const dependencies = makeDependencies(forgejo, makeScanReport('pass'));
+    const submissionApp = createApp({ workflow: { store, dependencies, now: fixedNow } });
 
     vi.stubEnv('MOCK_USER_SUB', 'submitter-1');
     vi.stubEnv('MOCK_USER_ROLES', 'Submitter');
@@ -173,8 +175,13 @@ tags:
       id: data.id,
       context: {
         status: 'compliance-review',
+        branchName: expect.stringMatching(/^submit\/sub-/),
+        prNumber: 42,
       },
     });
+    expect(queued.serializedContext).not.toBe('{}');
+    expect(forgejo.openedSubmissionPRs).toBe(1);
+    expect(forgejo.publishedArtifact).toBeUndefined();
   });
 
   it('drives questionnaire, scan, confirm, and approve endpoints', async () => {
@@ -251,6 +258,38 @@ tags:
     expect(forgejo.publishedArtifact).toMatchObject({ owner: 'alice', name: 'demo-skill', version: '1.0.0' });
   });
 
+  it('does not report placeholder workflow records as published on approval', async () => {
+    const store = new TestWorkflowStore();
+    const forgejo = new FakeForgejoClient();
+    const dependencies = makeDependencies(forgejo, makeScanReport('pass'));
+    const submissionApp = createApp({ workflow: { store, dependencies, now: fixedNow } });
+    await store.save({
+      id: 'sub-placeholder',
+      submittedBy: 'submitter-1',
+      serializedContext: '{}',
+      context: {
+        ...makeContext(),
+        submissionId: 'sub-placeholder',
+        status: 'compliance-review',
+      },
+    });
+
+    vi.stubEnv('MOCK_USER_SUB', 'reviewer-1');
+    vi.stubEnv('MOCK_USER_ROLES', 'Compliance');
+    const approve = await submissionApp.request('/api/v1/submissions/sub-placeholder/approve', {
+      method: 'POST',
+      body: JSON.stringify({ comment: 'approved from review dashboard' }),
+      headers: { 'content-type': 'application/json' },
+    });
+
+    expect(approve.status).toBe(409);
+    await expect(approve.json()).resolves.toEqual({
+      error: 'submission_not_ready',
+      message: 'submission has not entered the approval pipeline',
+    });
+    expect(forgejo.publishedArtifact).toBeUndefined();
+  });
+
   it('serves submission diff evidence on the versioned API route used by the web dashboard', async () => {
     const store = new TestWorkflowStore();
     const dependencies = makeDependencies(new FakeForgejoClient(), makeScanReport('pass'));
@@ -321,6 +360,7 @@ class TestWorkflowStore implements WorkflowSubmissionStore {
 }
 
 class FakeForgejoClient {
+  openedSubmissionPRs = 0;
   publishedArtifact?: {
     owner: string;
     name: string;
@@ -334,6 +374,7 @@ class FakeForgejoClient {
     files: Array<{ path: string; content: Buffer }>;
     autoApprove: boolean;
   }) {
+    this.openedSubmissionPRs += 1;
     return { branch: `submit/${input.submissionId}`, prNumber: 42, headSha: 'head-sha' };
   }
 
