@@ -201,7 +201,7 @@ describe('DecisionPanel', () => {
     });
   });
 
-  it('invalidates the pending submissions query after a successful approve', async () => {
+  it('invalidates queue and submission detail queries after a successful approve', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({}), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -222,6 +222,9 @@ describe('DecisionPanel', () => {
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['submissions', 'pending'] });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['submission', 'sub-1'] });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['submission', 'sub-1', 'diff'] });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['submission', 'sub-1', 'scan'] });
     });
   });
 

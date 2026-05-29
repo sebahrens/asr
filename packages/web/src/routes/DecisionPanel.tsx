@@ -88,6 +88,13 @@ function formatDecisionError(error: unknown): string {
   return 'Unable to record the decision. Check your connection and try again.';
 }
 
+function invalidateDecisionQueries(queryClient: ReturnType<typeof useQueryClient>, submissionId: string) {
+  void queryClient.invalidateQueries({ queryKey: ['submissions', 'pending'] });
+  void queryClient.invalidateQueries({ queryKey: ['submission', submissionId] });
+  void queryClient.invalidateQueries({ queryKey: ['submission', submissionId, 'diff'] });
+  void queryClient.invalidateQueries({ queryKey: ['submission', submissionId, 'scan'] });
+}
+
 function getFocusableElements(container: HTMLElement): HTMLElement[] {
   const focusableSelector = [
     'button:not([disabled])',
@@ -123,7 +130,10 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
         undefined,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['submissions', 'pending'] });
+      invalidateDecisionQueries(queryClient, submission.id);
+    },
+    onError: () => {
+      setDecisionStatus(null);
     },
   });
 
@@ -134,7 +144,10 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
         { reason: rejectReason },
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['submissions', 'pending'] });
+      invalidateDecisionQueries(queryClient, submission.id);
+    },
+    onError: () => {
+      setDecisionStatus(null);
     },
   });
 
