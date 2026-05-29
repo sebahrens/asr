@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import { ulid } from 'ulid';
 import { AUDIT_ACTIONS, type AuditAction, type AuditEvent } from '@asr/core';
-import { computeHash } from './hash.js';
+import { AUDIT_HASH_FORMAT_VERSION, computeHash } from './hash.js';
 import { loadKeyRing, type KeyRing } from './keyring.js';
 
 export interface EmitAuditInput {
@@ -84,7 +84,10 @@ export function emitAudit(
     hmacKeyId: keyId,
   };
 
-  const hash = computeHash(unsigned, hmacKey);
+  const hash = computeHash(
+    { ...unsigned, hashVersion: AUDIT_HASH_FORMAT_VERSION },
+    hmacKey,
+  );
 
   db.prepare(
     `
@@ -100,7 +103,8 @@ export function emitAudit(
         detail,
         prev_hash,
         hash,
-        hmac_key_id
+        hmac_key_id,
+        hash_version
       ) VALUES (
         @id,
         @submissionId,
@@ -113,7 +117,8 @@ export function emitAudit(
         @detail,
         @prevHash,
         @hash,
-        @hmacKeyId
+        @hmacKeyId,
+        @hashVersion
       )
     `,
   ).run({
@@ -129,6 +134,7 @@ export function emitAudit(
     prevHash,
     hash,
     hmacKeyId: keyId,
+    hashVersion: AUDIT_HASH_FORMAT_VERSION,
   });
 
   return { ...unsigned, hash };

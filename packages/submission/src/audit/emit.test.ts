@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../db/migrations/index.js';
-import { computeHash } from './hash.js';
+import { AUDIT_HASH_FORMAT_VERSION, computeHash } from './hash.js';
 import { emitAudit } from './emit.js';
 import { loadKeyRing } from './keyring.js';
 
@@ -105,7 +105,12 @@ describe('emitAudit', () => {
 
     for (const event of [event1, event2]) {
       const { hash, ...unsigned } = event;
-      expect(hash).toBe(computeHash(unsigned, HMAC_KEY_BYTES));
+      expect(hash).toBe(
+        computeHash(
+          { ...unsigned, hashVersion: AUDIT_HASH_FORMAT_VERSION },
+          HMAC_KEY_BYTES,
+        ),
+      );
     }
 
     const rowCount = database
@@ -257,7 +262,12 @@ describe('emitAudit', () => {
 
     expect(event.hmacKeyId).toBe('k2');
     const { hash, ...unsigned } = event;
-    expect(hash).toBe(computeHash(unsigned, k2Bytes));
+    expect(hash).toBe(
+      computeHash(
+        { ...unsigned, hashVersion: AUDIT_HASH_FORMAT_VERSION },
+        k2Bytes,
+      ),
+    );
   });
 
   it('picks up a rotated active key id on the next emit', () => {
@@ -300,7 +310,12 @@ describe('emitAudit', () => {
 
     expect(second.hmacKeyId).toBe('k3');
     const { hash, ...unsigned } = second;
-    expect(hash).toBe(computeHash(unsigned, k3Bytes));
+    expect(hash).toBe(
+      computeHash(
+        { ...unsigned, hashVersion: AUDIT_HASH_FORMAT_VERSION },
+        k3Bytes,
+      ),
+    );
   });
 
   it('throws when the KeyRing has no bytes for its active id', () => {

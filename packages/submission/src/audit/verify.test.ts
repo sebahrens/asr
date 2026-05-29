@@ -158,6 +158,48 @@ describe('verifyChain', () => {
     });
   });
 
+  it('flags hash mismatch when actor_type is tampered with after insertion', () => {
+    const database = db!;
+    const { e2 } = emitThree(database);
+
+    database
+      .prepare('UPDATE audit_events SET actor_type = ? WHERE id = ?')
+      .run('compliance', e2.id);
+
+    const keys = loadKeyRing();
+    const result = verifyChain(database, keys);
+
+    expect(result).toEqual({
+      valid: false,
+      brokenAt: e2.id,
+      reason: 'hash mismatch',
+    });
+  });
+
+  it('flags hash mismatch when hmac_key_id is swapped to another retained key', () => {
+    const database = db!;
+    const { e2 } = emitThree(database);
+    const otherKeyId = 'k-retained';
+    const otherKeyBytes = Buffer.alloc(32, 0x99).toString('base64');
+
+    database
+      .prepare('UPDATE audit_events SET hmac_key_id = ? WHERE id = ?')
+      .run(otherKeyId, e2.id);
+
+    const keys = loadKeyRing({
+      AUDIT_HMAC_KEY_ID: HMAC_KEY_ID,
+      AUDIT_HMAC_KEY_BYTES: HMAC_KEY_B64,
+      [`AUDIT_HMAC_KEY_BYTES_${otherKeyId}`]: otherKeyBytes,
+    });
+    const result = verifyChain(database, keys);
+
+    expect(result).toEqual({
+      valid: false,
+      brokenAt: e2.id,
+      reason: 'hash mismatch',
+    });
+  });
+
   it('flags prev_hash mismatch when a row prev_hash is rewritten', () => {
     const database = db!;
     const { e2 } = emitThree(database);
@@ -173,6 +215,24 @@ describe('verifyChain', () => {
       valid: false,
       brokenAt: e2.id,
       reason: 'prev_hash mismatch',
+    });
+  });
+
+  it('detects rows using the legacy hash format version', () => {
+    const database = db!;
+    const { e1 } = emitThree(database);
+
+    database
+      .prepare('UPDATE audit_events SET hash_version = 1 WHERE id = ?')
+      .run(e1.id);
+
+    const keys = loadKeyRing();
+    const result = verifyChain(database, keys);
+
+    expect(result).toEqual({
+      valid: false,
+      brokenAt: e1.id,
+      reason: 'legacy hash version',
     });
   });
 

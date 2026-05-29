@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { AuditEvent } from '@asr/core';
-import { computeHash } from './hash.js';
+import { AUDIT_HASH_FORMAT_VERSION, computeHash } from './hash.js';
 import type { KeyRing } from './keyring.js';
 
 export type VerifyResult =
@@ -13,7 +13,11 @@ export type VerifyResult =
   | {
       valid: false;
       brokenAt: string;
-      reason: 'prev_hash mismatch' | 'unknown key' | 'hash mismatch';
+      reason:
+        | 'prev_hash mismatch'
+        | 'unknown key'
+        | 'hash mismatch'
+        | 'legacy hash version';
     };
 
 interface AuditEventRow {
@@ -29,9 +33,12 @@ interface AuditEventRow {
   prev_hash: string;
   hash: string;
   hmac_key_id: string;
+  hash_version: number;
 }
 
-function rowToUnsignedEvent(row: AuditEventRow): Omit<AuditEvent, 'hash'> {
+function rowToUnsignedEvent(
+  row: AuditEventRow,
+): Omit<AuditEvent, 'hash'> & { hashVersion: number } {
   return {
     id: row.id,
     submissionId: row.submission_id,
@@ -44,6 +51,7 @@ function rowToUnsignedEvent(row: AuditEventRow): Omit<AuditEvent, 'hash'> {
     detail: JSON.parse(row.detail) as Record<string, unknown>,
     prevHash: row.prev_hash,
     hmacKeyId: row.hmac_key_id,
+    hashVersion: row.hash_version,
   };
 }
 
@@ -62,6 +70,10 @@ export function verifyChain(
   for (const row of rows) {
     if (row.prev_hash !== expectedPrev) {
       return { valid: false, brokenAt: row.id, reason: 'prev_hash mismatch' };
+    }
+
+    if (row.hash_version !== AUDIT_HASH_FORMAT_VERSION) {
+      return { valid: false, brokenAt: row.id, reason: 'legacy hash version' };
     }
 
     const key = keys.get(row.hmac_key_id);

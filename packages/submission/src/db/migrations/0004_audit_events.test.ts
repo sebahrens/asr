@@ -85,6 +85,7 @@ describe('migration0004AuditEvents', () => {
         'prev_hash',
         'hash',
         'hmac_key_id',
+        'hash_version',
       ]),
     );
 

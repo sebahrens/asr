@@ -24,6 +24,7 @@ CREATE TABLE audit_events (
   prev_hash       TEXT NOT NULL,
   hash            TEXT NOT NULL,
   hmac_key_id     TEXT NOT NULL,           -- which key generated `hash` — supports rotation
+  hash_version    INTEGER NOT NULL DEFAULT 2,
   FOREIGN KEY (submission_id) REFERENCES submissions(id)
 );
 
@@ -98,15 +99,18 @@ function computeHash(
   hmacKey: Buffer,
 ): string {
   const payload = [
+    `v${event.hashVersion}`,
     event.id,
     event.submissionId ?? '',
     event.skillName ?? '',
     event.version ?? '',
     event.timestamp,
     event.actor,
+    event.actorType,
     event.action,
     JSON.stringify(event.detail),
     event.prevHash,
+    event.hmacKeyId,
   ].join('|');
 
   return createHmac('sha256', hmacKey).update(payload).digest('hex');

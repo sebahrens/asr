@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../db/migrations/index.js';
-import { computeHash } from './hash.js';
+import { AUDIT_HASH_FORMAT_VERSION, computeHash } from './hash.js';
 import { emitAudit } from './emit.js';
 import {
   assertRetainedAuditKeys,
@@ -180,7 +180,12 @@ describe('rotateKey', () => {
     );
     expect(next.hmacKeyId).toBe('k2');
     const { hash: nextHash, ...nextUnsigned } = next;
-    expect(nextHash).toBe(computeHash(nextUnsigned, k2Bytes));
+    expect(nextHash).toBe(
+      computeHash(
+        { ...nextUnsigned, hashVersion: AUDIT_HASH_FORMAT_VERSION },
+        k2Bytes,
+      ),
+    );
 
     const firstRow = database
       .prepare(
@@ -222,6 +227,7 @@ describe('rotateKey', () => {
         detail: JSON.parse(firstRow!.detail),
         prevHash: firstRow!.prevHash,
         hmacKeyId: firstRow!.hmacKeyId,
+        hashVersion: AUDIT_HASH_FORMAT_VERSION,
       },
       firstK1!,
     );
