@@ -1,6 +1,7 @@
 import type { RiskAssessment, Submission } from '@asr/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSession } from '../auth/useSession';
 
 type DecisionAction = 'approve' | 'reject';
@@ -86,10 +87,29 @@ function formatDecisionError(error: unknown): string {
   return 'Unable to record the decision. Check your connection and try again.';
 }
 
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  const focusableSelector = [
+    'button:not([disabled])',
+    '[href]',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(',');
+
+  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+    (element) => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true',
+  );
+}
+
 export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
   const session = useSession();
   const queryClient = useQueryClient();
   const isSelf = submission.submittedBy === session.sub;
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const isSubmittingRef = useRef(false);
 
   const [reason, setReason] = useState('');
   const [pendingAction, setPendingAction] = useState<DecisionAction | null>(null);
@@ -127,14 +147,66 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
         ? rejectMutation.error
         : null;
 
+  useEffect(() => {
+    isSubmittingRef.current = isSubmitting;
+  }, [isSubmitting]);
+
+  useEffect(() => {
+    if (pendingAction === null) {
+      return;
+    }
+
+    confirmButtonRef.current?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !isSubmittingRef.current) {
+        event.preventDefault();
+        resetMutationErrors();
+        setPendingAction(null);
+        return;
+      }
+
+      if (event.key !== 'Tab' || dialogRef.current === null) {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(dialogRef.current);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+
+      const currentElement = document.activeElement;
+      const currentIndex = focusableElements.findIndex((element) => element === currentElement);
+      const nextIndex = event.shiftKey
+        ? currentIndex <= 0
+          ? focusableElements.length - 1
+          : currentIndex - 1
+        : currentIndex === -1 || currentIndex === focusableElements.length - 1
+          ? 0
+          : currentIndex + 1;
+
+      event.preventDefault();
+      focusableElements[nextIndex]?.focus();
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      triggerRef.current?.focus();
+    };
+  }, [pendingAction]);
+
   function resetMutationErrors() {
     approveMutation.reset();
     rejectMutation.reset();
   }
 
-  function openModal(action: DecisionAction) {
+  function openModal(action: DecisionAction, event: ReactMouseEvent<HTMLButtonElement>) {
     resetMutationErrors();
     setDecisionStatus(null);
+    triggerRef.current = event.currentTarget;
     setPendingAction(action);
   }
 
@@ -196,7 +268,7 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
           type="button"
           className="decision-panel-approve"
           disabled={isSelf}
-          onClick={() => openModal('approve')}
+          onClick={(event) => openModal('approve', event)}
         >
           Approve
         </button>
@@ -204,52 +276,60 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
           type="button"
           className="decision-panel-reject"
           disabled={rejectDisabled}
-          onClick={() => openModal('reject')}
+          onClick={(event) => openModal('reject', event)}
         >
           Reject
         </button>
       </div>
 
-      {pendingAction !== null ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={pendingAction === 'approve' ? 'Confirm approve' : 'Confirm reject'}
-          className="decision-panel-modal"
-        >
-          <h2 className="decision-panel-modal-title">
-            {pendingAction === 'approve' ? 'Approve submission' : 'Reject submission'}
-          </h2>
-          <p className="decision-panel-modal-version">
-            Version <strong>{submission.manifest.version}</strong>
-            {risk ? (
-              <>
-                {' '}— risk <strong className={`risk-${risk}`}>{risk}</strong>
-              </>
-            ) : null}
-          </p>
-          {pendingAction === 'reject' ? (
-            <p className="decision-panel-modal-reason">Reason: {reasonTrimmed}</p>
-          ) : null}
-          {activeError ? (
-            <p className="decision-panel-error" role="alert">
-              {formatDecisionError(activeError)}
-            </p>
-          ) : null}
-          <div className="decision-panel-modal-actions">
-            <button type="button" onClick={closeModal} disabled={isSubmitting}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={confirmDecision}
-              disabled={isSubmitting}
-            >
-              {pendingAction === 'approve' ? 'Confirm approve' : 'Confirm reject'}
-            </button>
-          </div>
-        </div>
-      ) : null}
+      {pendingAction !== null && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="decision-panel-modal-backdrop">
+              <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label={pendingAction === 'approve' ? 'Confirm approve' : 'Confirm reject'}
+                className="decision-panel-modal"
+                tabIndex={-1}
+              >
+                <h2 className="decision-panel-modal-title">
+                  {pendingAction === 'approve' ? 'Approve submission' : 'Reject submission'}
+                </h2>
+                <p className="decision-panel-modal-version">
+                  Version <strong>{submission.manifest.version}</strong>
+                  {risk ? (
+                    <>
+                      {' '}— risk <strong className={`risk-${risk}`}>{risk}</strong>
+                    </>
+                  ) : null}
+                </p>
+                {pendingAction === 'reject' ? (
+                  <p className="decision-panel-modal-reason">Reason: {reasonTrimmed}</p>
+                ) : null}
+                {activeError ? (
+                  <p className="decision-panel-error" role="alert">
+                    {formatDecisionError(activeError)}
+                  </p>
+                ) : null}
+                <div className="decision-panel-modal-actions">
+                  <button type="button" onClick={closeModal} disabled={isSubmitting}>
+                    Cancel
+                  </button>
+                  <button
+                    ref={confirmButtonRef}
+                    type="button"
+                    onClick={confirmDecision}
+                    disabled={isSubmitting}
+                  >
+                    {pendingAction === 'approve' ? 'Confirm approve' : 'Confirm reject'}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

@@ -107,6 +107,70 @@ describe('DecisionPanel', () => {
     });
   });
 
+  it('moves focus to the confirm button on open and restores focus to the trigger on close', async () => {
+    renderPanel({
+      submission: makeSubmission({ submittedBy: 'user-submitter' }),
+      session: { sub: 'compliance-officer', name: 'CO', roles: ['Compliance'] },
+    });
+
+    const approve = screen.getByRole('button', { name: /approve/i });
+    fireEvent.click(approve);
+
+    const confirm = await screen.findByRole('button', { name: /confirm approve/i });
+    await waitFor(() => {
+      expect(confirm).toHaveFocus();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(approve).toHaveFocus();
+    });
+  });
+
+  it('closes the modal when Escape is pressed before submitting', async () => {
+    renderPanel({
+      submission: makeSubmission({ submittedBy: 'user-submitter' }),
+      session: { sub: 'compliance-officer', name: 'CO', roles: ['Compliance'] },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /approve/i }));
+    await screen.findByRole('dialog');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('traps Tab focus inside the modal', async () => {
+    renderPanel({
+      submission: makeSubmission({ submittedBy: 'user-submitter' }),
+      session: { sub: 'compliance-officer', name: 'CO', roles: ['Compliance'] },
+    });
+
+    const reasonInput = screen.getByRole('textbox', { name: /reason/i });
+    fireEvent.click(screen.getByRole('button', { name: /approve/i }));
+
+    const confirm = await screen.findByRole('button', { name: /confirm approve/i });
+    const cancel = screen.getByRole('button', { name: /cancel/i });
+    await waitFor(() => {
+      expect(confirm).toHaveFocus();
+    });
+
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(cancel).toHaveFocus();
+    expect(reasonInput).not.toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(confirm).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(cancel).toHaveFocus();
+  });
+
   it('posts to /api/v1/submissions/<id>/reject with the reason body when Reject is confirmed', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({}), {
       status: 200,
