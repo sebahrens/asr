@@ -31,6 +31,7 @@ import {
 import { insertVersionDiff } from '../db/repositories/versionDiffs.js';
 import { findSubmissionIdByContentHash, getBlockedHash } from '../db/repositories/versions.js';
 import { forgejoFromEnv } from '../forgejo/index.js';
+import { requireRole } from '../auth/requireRole.js';
 import {
   acquirePendingVersion,
   releasePendingVersion,
@@ -95,7 +96,7 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
     return c.json(submission);
   });
 
-  routes.post('/', async (c, next) => {
+  routes.post('/', requireRole('Submitter', 'Admin'), async (c, next) => {
     if (!isMultipartContentType(c.req.header('content-type'))) {
       return next();
     }
@@ -362,4 +363,3 @@ function isUploadedFile(value: unknown): value is UploadedFile {
   const candidate = value as Partial<UploadedFile>;
   return typeof candidate.arrayBuffer === 'function' && typeof candidate.size === 'number';
 }
-

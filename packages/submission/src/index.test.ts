@@ -1,5 +1,6 @@
 import { ForgejoClient, type AuditAction, type ScanReport, type SkillManifest, type Submission, type VersionDiff } from '@asr/core';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
+import yazl from 'yazl';
 import type { app as App, createApp as CreateApp } from './index.js';
 import type { WorkflowSubmissionRecord, WorkflowSubmissionStore } from './http/workflow.js';
 import {
@@ -182,6 +183,51 @@ tags:
     expect(queued.serializedContext).not.toBe('{}');
     expect(forgejo.openedSubmissionPRs).toBe(1);
     expect(forgejo.publishedArtifact).toBeUndefined();
+  });
+
+  it('rejects multipart and skill markdown submissions when the caller has no submitter role', async () => {
+    const persistedRows: unknown[] = [];
+    const store = new TestWorkflowStore();
+    const dependencies = makeDependencies(new FakeForgejoClient(), makeScanReport('pass'));
+    const submissionApp = createApp({
+      submissions: {
+        persist: (row) => {
+          persistedRows.push(row);
+        },
+      },
+      workflow: { store, dependencies, now: fixedNow },
+    });
+
+    vi.stubEnv('MOCK_USER_SUB', 'viewer-1');
+    vi.stubEnv('MOCK_USER_ROLES', '');
+
+    const multipartBody = new FormData();
+    multipartBody.set(
+      'file',
+      new Blob([new Uint8Array(await buildZip([{ path: 'SKILL.md', contents: skillMdFixture() }]))], {
+        type: 'application/zip',
+      }),
+      'skill.zip',
+    );
+    const multipartRes = await submissionApp.request('/api/v1/submissions', {
+      method: 'POST',
+      body: multipartBody,
+    });
+
+    const markdownBody = new FormData();
+    markdownBody.set('owner', 'alice');
+    markdownBody.set('skillMd', skillMdFixture());
+    const markdownRes = await submissionApp.request('/api/v1/submissions', {
+      method: 'POST',
+      body: markdownBody,
+    });
+
+    expect(multipartRes.status).toBe(403);
+    expect(await multipartRes.json()).toMatchObject({ error: 'insufficient_permissions' });
+    expect(markdownRes.status).toBe(403);
+    expect(await markdownRes.json()).toMatchObject({ error: 'insufficient_permissions' });
+    expect(persistedRows).toHaveLength(0);
+    expect(store.list()).toHaveLength(0);
   });
 
   it('drives questionnaire, scan, confirm, and approve endpoints', async () => {
@@ -530,6 +576,36 @@ function makeVersionDiff(): VersionDiff {
 
 function fixedNow(): Date {
   return new Date('2026-05-24T00:00:00.000Z');
+}
+
+function skillMdFixture(): string {
+  return `---
+name: demo-skill
+version: 1.0.0
+description: Demo skill
+tags:
+  - demo
+---
+
+# demo-skill
+`;
+}
+
+async function buildZip(entries: Array<{ path: string; contents: string }>): Promise<Buffer> {
+  const zip = new yazl.ZipFile();
+  for (const entry of entries) {
+    zip.addBuffer(Buffer.from(entry.contents), entry.path);
+  }
+  zip.end();
+  return streamToBuffer(zip.outputStream);
+}
+
+async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as unknown as Uint8Array));
+  }
+  return Buffer.concat(chunks);
 }
 
 function b64(value: string): string {
