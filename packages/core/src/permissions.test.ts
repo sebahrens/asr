@@ -90,16 +90,25 @@ describe('isPermissionsExpanded', () => {
     expect(isPermissionsExpanded(null, base({ networkHosts: ['x.example'] }))).toBe(true);
   });
 
-  it('treats absent networkHosts as no hosts', () => {
+  it('returns false when unrestricted network remains unrestricted', () => {
     expect(
       isPermissionsExpanded(base({ network: true }), base({ network: true, networkHosts: [] })),
     ).toBe(false);
+  });
+
+  it('returns true when clearing a restricted network host allowlist', () => {
+    expect(
+      isPermissionsExpanded(
+        base({ network: true, networkHosts: ['a.example'] }),
+        base({ network: true, networkHosts: [] }),
+      ),
+    ).toBe(true);
     expect(
       isPermissionsExpanded(
         base({ network: true, networkHosts: ['a.example'] }),
         base({ network: true }),
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('returns false when removing an environment variable', () => {

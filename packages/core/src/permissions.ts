@@ -27,8 +27,14 @@ export function isPermissionsExpanded(
   if (!before.subprocess && after.subprocess) return true;
   if (FILESYSTEM_LEVEL[after.filesystem] > FILESYSTEM_LEVEL[before.filesystem]) return true;
 
-  const beforeHosts = new Set(before.networkHosts ?? []);
-  for (const host of after.networkHosts ?? []) {
+  const beforeNetworkHosts = before.networkHosts ?? [];
+  const afterNetworkHosts = after.networkHosts ?? [];
+  if (after.network && beforeNetworkHosts.length > 0 && afterNetworkHosts.length === 0) {
+    return true;
+  }
+
+  const beforeHosts = new Set(beforeNetworkHosts);
+  for (const host of afterNetworkHosts) {
     if (!beforeHosts.has(host)) return true;
   }
 
