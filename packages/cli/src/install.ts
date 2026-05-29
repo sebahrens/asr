@@ -115,6 +115,12 @@ function buildPersonaContent(
   return out;
 }
 
+const REGISTRY_SEGMENT_RE = /^[a-z0-9._-]+$/;
+
+function isValidRegistrySegment(value: string): boolean {
+  return value !== '.' && value !== '..' && REGISTRY_SEGMENT_RE.test(value);
+}
+
 function parseSlug(slug: string): { owner: string; name: string; version?: string } {
   const trimmed = slug.trim();
   const atIdx = trimmed.indexOf('@');
@@ -127,6 +133,15 @@ function parseSlug(slug: string): { owner: string; name: string; version?: strin
   }
   if (version === '') {
     throw new Error(`Invalid slug "${slug}". Empty version after '@'`);
+  }
+  if (
+    !isValidRegistrySegment(parts[0]) ||
+    !isValidRegistrySegment(parts[1]) ||
+    (version !== undefined && !isValidRegistrySegment(version))
+  ) {
+    throw new Error(
+      `Invalid slug "${slug}". Segments must use lowercase letters, numbers, dots, underscores, or hyphens`,
+    );
   }
   return { owner: parts[0], name: parts[1], version };
 }

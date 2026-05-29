@@ -36,6 +36,11 @@ export function agentSkillDir(
   name: string,
   opts: AgentSkillDirOptions = {}
 ): string {
+  if (name === '.' || name === '..' || !/^[a-z0-9._-]+$/.test(name)) {
+    throw new Error(
+      'Invalid skill name. Expected lowercase letters, numbers, dots, underscores, or hyphens',
+    );
+  }
   const root = opts.global ? homedir() : (opts.cwd ?? process.cwd());
   const agentDir = agent === 'claude' ? '.claude' : '.codex';
   return join(root, agentDir, 'skills', name);

@@ -86,4 +86,13 @@ describe('agentSkillDir', () => {
     const result = agentSkillDir('claude', 'x', { global: false, cwd: '/tmp/proj' });
     expect(result.endsWith(join('.claude', 'skills', 'x'))).toBe(true);
   });
+
+  it('rejects unsafe skill names before joining paths', () => {
+    expect(() => agentSkillDir('claude', '..', { global: false, cwd: '/tmp/proj' })).toThrow(
+      /Invalid skill name/,
+    );
+    expect(() =>
+      agentSkillDir('claude', 'nested/name', { global: false, cwd: '/tmp/proj' }),
+    ).toThrow(/Invalid skill name/);
+  });
 });

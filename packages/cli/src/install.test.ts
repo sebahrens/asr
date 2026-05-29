@@ -241,6 +241,11 @@ describe('installSkill', () => {
     await expect(installSkill('a/')).rejects.toThrow(/Invalid slug/);
     await expect(installSkill('/b')).rejects.toThrow(/Invalid slug/);
     await expect(installSkill('a/b@')).rejects.toThrow(/Invalid slug/);
+    await expect(installSkill('owner/..')).rejects.toThrow(/Invalid slug/);
+    await expect(installSkill('owner/.')).rejects.toThrow(/Invalid slug/);
+    await expect(installSkill('owner/demo@..')).rejects.toThrow(/Invalid slug/);
+    await expect(installSkill('own\ner/demo')).rejects.toThrow(/Invalid slug/);
+    expect(getSkillDetail).not.toHaveBeenCalled();
   });
 
   it('installs into every detected agent dir for explicit:both', async () => {
