@@ -194,7 +194,7 @@ describe('POST /api/v1/submissions (Flowcraft pipeline)', () => {
 
     expect(questionnaireRes.status).toBe(200);
     await expect(questionnaireRes.json()).resolves.toEqual({
-      status: { phase: 'scanning', scanJobId: `scan:${created.id}` },
+      status: { phase: 'user-confirmation-pending' },
     });
 
     const workflowRun = getWorkflowRun(db, created.id);
@@ -215,6 +215,9 @@ describe('POST /api/v1/submissions (Flowcraft pipeline)', () => {
       method: 'POST',
     });
     expect(confirmRes.status).toBe(200);
+    await expect(confirmRes.json()).resolves.toEqual({
+      status: { phase: 'compliance-review' },
+    });
 
     identity = { sub: 'reviewer-1', roles: ['Compliance'] };
     const approveRes = await app.request(`/api/v1/submissions/${created.id}/approve`, {

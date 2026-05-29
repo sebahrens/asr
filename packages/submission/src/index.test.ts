@@ -309,7 +309,7 @@ permissions:
     });
     expect(questionnaire.status).toBe(200);
     await expect(questionnaire.json()).resolves.toEqual({
-      status: { phase: 'scanning', scanJobId: 'scan:sub-1' },
+      status: { phase: 'user-confirmation-pending' },
     });
 
     const scan = await submissionApp.request('/api/v1/submissions/sub-1/scan');
@@ -338,6 +338,31 @@ permissions:
       registryUrl: '/skills/submitter-1/demo-skill',
     });
     expect(forgejo.publishedArtifact).toMatchObject({ owner: 'submitter-1', name: 'demo-skill', version: '1.0.0' });
+  });
+
+  it('returns the resumed terminal status when questionnaire scanning rejects the submission', async () => {
+    const store = new TestWorkflowStore();
+    const forgejo = new FakeForgejoClient();
+    const dependencies = makeDependencies(forgejo, makeScanReport('block'));
+    const submissionApp = createApp({ workflow: { store, dependencies, now: fixedNow } });
+    await store.save(await seedAwaitingQuestionnaire(dependencies));
+
+    vi.stubEnv('MOCK_USER_SUB', 'submitter-1');
+    vi.stubEnv('MOCK_USER_ROLES', 'Submitter');
+    const questionnaire = await submissionApp.request('/api/v1/submissions/sub-1/questionnaire', {
+      method: 'POST',
+      body: JSON.stringify({ responses: [{ questionId: 'network', answer: false }] }),
+      headers: { 'content-type': 'application/json' },
+    });
+
+    expect(questionnaire.status).toBe(200);
+    await expect(questionnaire.json()).resolves.toEqual({
+      status: {
+        phase: 'rejected',
+        rejectedAt: '2026-05-24T00:00:00.000Z',
+        reason: 'scan_block',
+      },
+    });
   });
 
   it('accepts approval decisions on the versioned API route used by the web dashboard', async () => {

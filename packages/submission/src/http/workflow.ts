@@ -128,12 +128,7 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       responses: body.responses,
     }, dependencies, now);
 
-    const report = result.context.scanReport;
-    if (report?.verdict === 'block') {
-      return c.json({ status: rejectedStatus(now(), 'scan_block') });
-    }
-
-    return c.json({ status: { phase: 'scanning', scanJobId: `scan:${record.id}` } satisfies SubmissionStatus });
+    return c.json({ status: result.context.submission.status });
   });
 
   routes.get('/:id/scan', async (c) => {
@@ -180,13 +175,13 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       return terminalStateError(c, record);
     }
 
-    await resumeAndSave(options, store, record, 'confirmation', {
+    const result = await resumeAndSave(options, store, record, 'confirmation', {
       actor: identity.sub,
       roles: identity.roles,
       confirmed: true,
     }, dependencies, now);
 
-    return c.json({ status: { phase: 'compliance-review' } satisfies SubmissionStatus });
+    return c.json({ status: result.context.submission.status });
   });
 
   routes.post('/:id/approve', requireRole('Compliance'), async (c) => {
