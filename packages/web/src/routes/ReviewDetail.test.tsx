@@ -187,4 +187,44 @@ describe('ReviewDetail', () => {
     expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^approve$/i }));
     expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^reject$/i }));
   });
+
+  it('keeps the review page usable when diff evidence is not available yet', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/api/v1/submissions/sub-test')) {
+        return new Response(JSON.stringify(submission), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.endsWith('/api/v1/submissions/sub-test/diff')) {
+        return new Response(JSON.stringify({ error: 'diff not ready' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.endsWith('/api/v1/submissions/sub-test/scan')) {
+        return new Response(JSON.stringify(scanReport), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected fetch url ${url}`);
+    }));
+
+    renderRoute('sub-test');
+
+    expect(await screen.findByRole('heading', { name: /example-skill/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /unable to load this submission/i })).not.toBeInTheDocument();
+
+    const diffPanel = screen.getByRole('tabpanel', { name: /diff/i });
+    expect(diffPanel).toHaveTextContent(/diff not available yet/i);
+
+    fireEvent.click(screen.getByRole('tab', { name: /^scan$/i }));
+    expect(screen.getByRole('tabpanel', { name: /scan/i })).toHaveTextContent(/high-severity issue found/i);
+
+    const decisionSlot = screen.getByRole('complementary', { name: /decision panel/i });
+    expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^approve$/i }));
+    expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^reject$/i }));
+  });
 });

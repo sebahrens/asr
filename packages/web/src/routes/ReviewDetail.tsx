@@ -1,5 +1,6 @@
 import type { ScanReport, Submission, VersionDiff } from '@asr/core';
 import { useQuery } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { DecisionPanel } from './DecisionPanel';
@@ -96,7 +97,7 @@ export function ReviewDetail() {
 
   const [activeTab, setActiveTab] = useState<TabId>('diff');
 
-  if (submissionQuery.isLoading || diffQuery.isLoading || scanQuery.isLoading) {
+  if (submissionQuery.isLoading) {
     return (
       <main className="review-detail review-detail-loading" aria-busy="true">
         <p role="status" aria-label="Loading submission detail">Loading submission…</p>
@@ -104,11 +105,11 @@ export function ReviewDetail() {
     );
   }
 
-  if (submissionQuery.isError || diffQuery.isError || scanQuery.isError) {
+  if (submissionQuery.isError) {
     return (
       <ReviewLookupState
         title="Unable to load this submission"
-        message={`We could not load review evidence for ${id || 'this submission'}. Return to the approval queue and choose another item, or retry.`}
+        message={`We could not load ${id || 'this submission'}. Return to the approval queue and choose another item, or retry.`}
       />
     );
   }
@@ -117,7 +118,7 @@ export function ReviewDetail() {
   const diff = diffQuery.data;
   const scan = scanQuery.data;
 
-  if (!submission || !diff || !scan) {
+  if (!submission) {
     return (
       <ReviewLookupState
         title="Submission not found"
@@ -131,12 +132,14 @@ export function ReviewDetail() {
       <header className="review-detail-header">
         <h1>{submission.manifest.name}</h1>
         <p className="review-detail-version">v{submission.manifest.version}</p>
-        <span
-          className={`risk-badge risk-${diff.riskAssessment}`}
-          aria-label={`${diff.riskAssessment} risk`}
-        >
-          {diff.riskAssessment} risk
-        </span>
+        {diff ? (
+          <span
+            className={`risk-badge risk-${diff.riskAssessment}`}
+            aria-label={`${diff.riskAssessment} risk`}
+          >
+            {diff.riskAssessment} risk
+          </span>
+        ) : null}
       </header>
 
       <nav role="tablist" aria-label="Submission evidence" className="review-detail-tabs">
@@ -167,7 +170,14 @@ export function ReviewDetail() {
           aria-label="Diff"
           className="review-detail-panel review-detail-panel-diff"
         >
-          <DiffPanelContent diff={diff} />
+          <EvidencePanelContent
+            isLoading={diffQuery.isLoading}
+            isError={diffQuery.isError}
+            unavailableTitle="Diff not available yet"
+            unavailableMessage="The submission record loaded, but the version diff is still being prepared or could not be fetched. You can review the other evidence and retry."
+          >
+            {diff ? <DiffPanelContent diff={diff} /> : null}
+          </EvidencePanelContent>
         </section>
       ) : (
         <section
@@ -176,12 +186,19 @@ export function ReviewDetail() {
           aria-label="Scan"
           className="review-detail-panel review-detail-panel-scan"
         >
-          <ScanPanelContent scan={scan} />
+          <EvidencePanelContent
+            isLoading={scanQuery.isLoading}
+            isError={scanQuery.isError}
+            unavailableTitle="Scan still running"
+            unavailableMessage="The submission record loaded, but security scan results are not ready yet or could not be fetched. You can review the other evidence and retry."
+          >
+            {scan ? <ScanPanelContent scan={scan} /> : null}
+          </EvidencePanelContent>
         </section>
       )}
 
       <aside className="review-detail-decision-slot" aria-label="Decision panel">
-        <DecisionPanel submission={submission} risk={diff.riskAssessment} />
+        <DecisionPanel submission={submission} risk={diff?.riskAssessment} />
       </aside>
     </main>
   );
@@ -212,6 +229,39 @@ function ReviewLookupState({ title, message }: { title: string; message: string 
       </section>
     </main>
   );
+}
+
+function EvidencePanelContent({
+  isLoading,
+  isError,
+  unavailableTitle,
+  unavailableMessage,
+  children,
+}: {
+  isLoading: boolean;
+  isError: boolean;
+  unavailableTitle: string;
+  unavailableMessage: string;
+  children: ReactNode;
+}) {
+  if (isLoading) {
+    return (
+      <p className="review-detail-empty" role="status" aria-live="polite">
+        {unavailableTitle}
+      </p>
+    );
+  }
+
+  if (isError || children === null) {
+    return (
+      <div className="review-detail-empty" role="status" aria-live="polite">
+        <strong>{unavailableTitle}</strong>
+        <span>{unavailableMessage}</span>
+      </div>
+    );
+  }
+
+  return children;
 }
 
 function DiffPanelContent({ diff }: { diff: VersionDiff }) {
