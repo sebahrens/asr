@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { recordInstall } from './lockfile.js';
+import { getAllInstalled, getLockFilePath, recordInstall } from './lockfile.js';
 
 let tempDir: string;
 let cwdSpy: ReturnType<typeof vi.spyOn>;
@@ -53,5 +53,28 @@ describe('recordInstall', () => {
     expect(lock.skills['plain-skill'].source).toBe('github:owner/repo/plain-skill');
     expect(lock.skills['plain-skill'].contentHash).toBeUndefined();
     expect(lock.skills['plain-skill'].sourceUrl).toBeUndefined();
+  });
+
+  it('uses a scope-only lockfile regardless of legacy target argument', async () => {
+    await recordInstall(
+      'claude',
+      false,
+      'agent-skill',
+      'registry:owner/agent-skill',
+      '1.0.0',
+    );
+
+    await expect(readFile(join(tempDir, '.claude', 'asr.lock.json'), 'utf-8')).rejects.toThrow();
+    await expect(readFile(join(tempDir, '.codex', 'asr.lock.json'), 'utf-8')).rejects.toThrow();
+
+    expect(await getLockFilePath('project', false)).toBe(join(tempDir, '.agent', 'asr.lock.json'));
+    expect(await getLockFilePath('claude', false)).toBe(join(tempDir, '.agent', 'asr.lock.json'));
+    expect(await getAllInstalled('claude', false)).toMatchObject({
+      'agent-skill': {
+        name: 'agent-skill',
+        source: 'registry:owner/agent-skill',
+        version: '1.0.0',
+      },
+    });
   });
 });

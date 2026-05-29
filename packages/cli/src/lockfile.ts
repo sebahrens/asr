@@ -1,13 +1,14 @@
-import { readFile, writeFile } from 'fs/promises';
-import { join, dirname } from 'path';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { homedir } from 'os';
+import { dirname, join } from 'path';
 import type { LockFile, InstalledSkill } from '@asr/core';
-import { getTargetDir } from './config.js';
 
 const LOCK_FILE = 'asr.lock.json';
+type LegacyLockTarget = 'cursor' | 'claude' | 'project';
 
-export async function getLockFilePath(target: 'cursor' | 'claude' | 'project', global: boolean): Promise<string> {
-  const skillsDir = dirname(getTargetDir(target, 'dummy', global));
-  return join(dirname(skillsDir), LOCK_FILE);
+export async function getLockFilePath(_target: LegacyLockTarget, global: boolean): Promise<string> {
+  const root = global ? homedir() : process.cwd();
+  return join(root, '.agent', LOCK_FILE);
 }
 
 export async function readLockFile(lockPath: string): Promise<LockFile> {
@@ -20,11 +21,12 @@ export async function readLockFile(lockPath: string): Promise<LockFile> {
 }
 
 export async function writeLockFile(lockPath: string, lock: LockFile): Promise<void> {
+  await mkdir(dirname(lockPath), { recursive: true });
   await writeFile(lockPath, JSON.stringify(lock, null, 2));
 }
 
 export async function recordInstall(
-  target: 'cursor' | 'claude' | 'project',
+  target: LegacyLockTarget,
   global: boolean,
   skillName: string,
   source: string,
@@ -53,7 +55,7 @@ export async function recordInstall(
 }
 
 export async function removeFromLock(
-  target: 'cursor' | 'claude' | 'project',
+  target: LegacyLockTarget,
   global: boolean,
   skillName: string
 ): Promise<void> {
@@ -64,7 +66,7 @@ export async function removeFromLock(
 }
 
 export async function getInstalledSkill(
-  target: 'cursor' | 'claude' | 'project',
+  target: LegacyLockTarget,
   global: boolean,
   skillName: string
 ): Promise<InstalledSkill | undefined> {
@@ -74,7 +76,7 @@ export async function getInstalledSkill(
 }
 
 export async function getAllInstalled(
-  target: 'cursor' | 'claude' | 'project',
+  target: LegacyLockTarget,
   global: boolean
 ): Promise<Record<string, InstalledSkill>> {
   const lockPath = await getLockFilePath(target, global);
