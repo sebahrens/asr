@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import yazl from 'yazl';
-import { PathTraversalError, extractZip } from './extract.js';
+import { buildMaliciousZip, type MaliciousZipKind } from '../../submission/test/fixtures/zip/buildMaliciousZips.js';
+import { LIMITS, PathTraversalError, extractZip, type ExtractLimits } from './extract.js';
 
 let tempDir: string;
 let destDir: string;
@@ -49,7 +50,38 @@ describe('extractZip', () => {
 
     await expect(extractZip(patched, destDir)).rejects.toBeInstanceOf(PathTraversalError);
   });
+
+  it('rejects excessive directory nesting fixture with max depth', async () => {
+    await expectRejects('maxDepth', /max depth/);
+  });
+
+  it('rejects symlink fixture with symlink rejected', async () => {
+    await expectRejects('symlink', /symlink rejected/);
+  });
+
+  it('rejects streamed uncompressed bytes over the limit', async () => {
+    await expectRejects('uncompressedSize', /uncompressed size limit/, { maxUncompressedBytes: 20 });
+  });
+
+  it('rejects excessive file-count fixture with max files', async () => {
+    await expectRejects('maxFiles', /max files/, { maxFiles: 2 });
+  });
+
+  it('rejects excessive filename length fixture with path too long', async () => {
+    await expectRejects('maxPathLen', /path too long/, { maxPathLen: 12 });
+  });
 });
+
+async function expectRejects(
+  kind: MaliciousZipKind,
+  error: RegExp,
+  limitOverrides: Partial<ExtractLimits> = {},
+): Promise<void> {
+  const zipPath = join(tempDir, `${kind}.zip`);
+  await buildMaliciousZip(kind, zipPath);
+  const buf = await readFile(zipPath);
+  await expect(extractZip(buf, destDir, limits(limitOverrides))).rejects.toThrow(error);
+}
 
 function buildZip(entries: Array<{ path: string; contents: string }>): Promise<Buffer> {
   return new Promise((resolveBuf, rejectBuf) => {
@@ -79,4 +111,11 @@ function replaceBytes(buf: Buffer, from: string, to: string): Buffer {
     offset = out.indexOf(fromBuf, offset + toBuf.length);
   }
   return out;
+}
+
+function limits(overrides: Partial<ExtractLimits>): ExtractLimits {
+  return {
+    ...LIMITS,
+    ...overrides,
+  };
 }
