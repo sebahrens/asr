@@ -20,12 +20,9 @@ export interface DownloadOptions {
 export async function downloadAndVerify(
   url: string,
   expectedHash: string,
-  opts: DownloadOptions = {},
+  _opts: DownloadOptions = {},
 ): Promise<Buffer> {
-  const headers: Record<string, string> = {};
-  if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
-
-  const res = await fetch(url, { headers, redirect: 'follow' });
+  const res = await fetch(url, { headers: {}, redirect: 'follow' });
   if (!res.ok) {
     throw new Error(`Download failed: ${res.status} ${res.statusText}`);
   }

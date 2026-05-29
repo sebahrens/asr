@@ -175,7 +175,7 @@ describe('installSkill', () => {
       { agent: 'claude', dir: join(tempDir, '.claude', 'skills', 'demo'), files: ['SKILL.md'] },
     ]);
 
-    expect(downloadAndVerify).toHaveBeenCalledWith(DOWNLOAD_URL, HASH, {});
+    expect(downloadAndVerify).toHaveBeenCalledWith(DOWNLOAD_URL, HASH);
     expect(extractZip).toHaveBeenCalledWith(
       ZIP_BUF,
       join(tempDir, '.claude', 'skills', 'demo'),
@@ -305,7 +305,7 @@ describe('installSkill', () => {
     await expect(readFile(join(tempDir, '.agent', 'asr.lock.json'), 'utf-8')).rejects.toThrow();
   });
 
-  it('propagates Bearer token to all collaborators when opts.token is set', async () => {
+  it('uses Bearer token for registry API calls but not artifact downloads', async () => {
     getSkillDetail.mockResolvedValueOnce(detail());
     resolveDownload.mockResolvedValueOnce({ url: DOWNLOAD_URL, yanked: false });
     downloadAndVerify.mockResolvedValueOnce(ZIP_BUF);
@@ -314,7 +314,7 @@ describe('installSkill', () => {
 
     expect(getSkillDetail).toHaveBeenCalledWith('acme', 'demo', { token: 't0k' });
     expect(resolveDownload).toHaveBeenCalledWith('acme', 'demo', '1.2.3', { token: 't0k' });
-    expect(downloadAndVerify).toHaveBeenCalledWith(DOWNLOAD_URL, HASH, { token: 't0k' });
+    expect(downloadAndVerify).toHaveBeenCalledWith(DOWNLOAD_URL, HASH);
   });
 
   it('writes a generated SKILL.md with when_to_use: always for an inject persona', async () => {

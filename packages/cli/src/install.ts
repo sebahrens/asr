@@ -155,7 +155,7 @@ export async function installSkill(
     throw new Error(formatYankRefusal(owner, name, targetVersion, versionEntry.yankReason));
   }
 
-  const buf = await downloadAndVerify(url, expectedHash, fetchOpts);
+  const buf = await downloadAndVerify(url, expectedHash);
 
   const global = opts.global ?? false;
   const agents = detectAgents({ explicit: opts.agent });

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HashMismatchError, downloadAndVerify } from './download.js';
 
@@ -73,13 +74,14 @@ describe('downloadAndVerify', () => {
     }
   });
 
-  it('attaches Bearer authorization only when token is supplied', async () => {
+  it('does not attach Bearer authorization to artifact downloads when token is supplied', async () => {
     fetchSpy.mockResolvedValueOnce(bytesResponse(BODY));
 
     await downloadAndVerify(URL_, hashOf(BODY), { token: 't0k' });
 
     const [, init] = fetchSpy.mock.calls[0];
-    expect((init as RequestInit).headers).toMatchObject({ Authorization: 'Bearer t0k' });
+    const headers = (init as RequestInit).headers as Record<string, string>;
+    expect(headers.Authorization).toBeUndefined();
   });
 
   it('omits Authorization header when no token', async () => {
@@ -101,9 +103,54 @@ describe('downloadAndVerify', () => {
     expect((init as RequestInit).redirect).toBe('follow');
   });
 
+  it('does not leak Bearer authorization to a cross-origin redirect target', async () => {
+    vi.unstubAllGlobals();
+    let redirectedAuthorization: string | undefined;
+
+    const target = await listen((req, res) => {
+      redirectedAuthorization = req.headers.authorization;
+      res.writeHead(200, { 'Content-Type': 'application/zip' });
+      res.end(BODY);
+    });
+
+    const registry = await listen((_req, res) => {
+      res.writeHead(302, { Location: target.url });
+      res.end();
+    });
+
+    try {
+      const result = await downloadAndVerify(registry.url, hashOf(BODY), { token: 't0k' });
+
+      expect(result.equals(BODY)).toBe(true);
+      expect(redirectedAuthorization).toBeUndefined();
+    } finally {
+      await Promise.all([registry.close(), target.close()]);
+    }
+  });
+
   it('throws on non-2xx response', async () => {
     fetchSpy.mockResolvedValueOnce(new Response('not found', { status: 404 }));
 
     await expect(downloadAndVerify(URL_, hashOf(BODY))).rejects.toThrow(/404/);
   });
 });
+
+async function listen(
+  handler: (req: IncomingMessage, res: ServerResponse) => void,
+): Promise<{ url: string; close: () => Promise<void> }> {
+  const server = createServer(handler);
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Expected HTTP server to listen on a TCP port');
+  }
+  return {
+    url: `http://127.0.0.1:${address.port}/download`,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      }),
+  };
+}
