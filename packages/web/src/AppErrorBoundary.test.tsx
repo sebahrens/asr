@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppErrorBoundary } from './AppErrorBoundary';
 
-function ThrowingChild() {
+function ThrowingChild(): never {
   throw new Error('render failed');
 }
 
