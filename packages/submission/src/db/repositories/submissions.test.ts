@@ -100,6 +100,26 @@ describe('submissions repository', () => {
     expect(hydrated.status).toEqual({ phase: 'pushing-to-forgejo' });
   });
 
+  it('refuses to insert a submission with empty submittedBy', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    expect(() =>
+      insertSubmission(db!, {
+        id: 'submission-empty-sub',
+        manifestJson: '{}',
+        classification: 'md-only',
+        contentHash: 'sha256:empty-sub',
+        submittedAt: '2026-05-24T10:00:00.000Z',
+        submittedBy: '   ',
+        statusPhase: 'uploaded',
+        statusJson: '{"phase":"uploaded"}',
+      }),
+    ).toThrow('submitted_by_required');
+
+    expect(getSubmissionById(db, 'submission-empty-sub')).toBeUndefined();
+  });
+
   it('returns undefined when no submission matches the id', () => {
     db = new Database(':memory:');
     runMigrations(db);

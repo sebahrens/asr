@@ -225,6 +225,9 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
         return apiError(c, 401, 'authentication_required');
       }
       const submittedBy = identity.sub;
+      if (submittedBy.trim() === '') {
+        return apiError(c, 401, 'authentication_required');
+      }
 
       const statusJsonPayload =
         approvalPath !== undefined ? { ...status, approvalPath } : status;

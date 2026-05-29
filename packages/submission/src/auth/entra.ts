@@ -75,9 +75,12 @@ export async function verifyBearer(token: string, options: VerifyBearerOptions =
   if (!hasAccessAsUserScope(payload)) {
     throw new Error('missing_access_as_user_scope');
   }
-  const sub = typeof payload.sub === 'string' ? payload.sub : '';
+  if (typeof payload.sub !== 'string' || payload.sub.trim() === '') {
+    throw new Error('missing_subject');
+  }
+
   return {
-    sub,
+    sub: payload.sub,
     roles: rolesFromPayload(payload.roles),
   };
 }

@@ -34,6 +34,10 @@ export interface SubmissionRow {
 }
 
 export function insertSubmission(db: Database.Database, row: SubmissionInsertRow): void {
+  if (row.submittedBy.trim() === '') {
+    throw new Error('submitted_by_required');
+  }
+
   db.prepare(`
     INSERT INTO submissions (
       id,

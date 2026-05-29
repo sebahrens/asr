@@ -94,6 +94,31 @@ describe('POST /api/v1/submissions/:id/approve', () => {
     expect(auditCalls).toEqual([]);
   });
 
+  it('returns 403 for an empty-sub SoD attempt against an empty-sub submission', async () => {
+    const reviewCalls: ApproveReviewInput[] = [];
+    const app = makeApp({
+      identity: { sub: '', roles: ['Compliance'] },
+      loadSubmission: (id) =>
+        id === 'sub-empty-sod' ? buildSubmission({ id, submittedBy: '' }) : undefined,
+      deliverReviewApproval: (input) => {
+        reviewCalls.push(input);
+        return { publishedAt: '2026-05-26T10:00:00.000Z', mergeCommit: 'never' };
+      },
+    });
+
+    const res = await app.request('/api/v1/submissions/sub-empty-sod/approve', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({
+      error: 'separation_of_duties_violation',
+    });
+    expect(reviewCalls).toEqual([]);
+  });
+
   it('returns submission_not_found when the submission id is unknown', async () => {
     const app = makeApp({
       identity: { sub: 'reviewer-1', roles: ['Compliance'] },

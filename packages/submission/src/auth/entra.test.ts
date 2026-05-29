@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type KeyLike } from 'jose';
 import { describe, expect, it } from 'vitest';
 import { entraAuth, verifyBearer } from './entra.js';
 import type { AuthVariables, Identity } from './types.js';
@@ -11,7 +11,8 @@ async function signedToken(
     expirationTime?: string;
     includeScp?: boolean;
     issuer?: string;
-    signingKey?: CryptoKey;
+    signingKey?: CryptoKey | KeyLike;
+    subject?: string | null;
   } = {},
 ) {
   const tenantId = 'tenant-1';
@@ -29,14 +30,16 @@ async function signedToken(
     claims.scp = 'access_as_user';
   }
 
-  const token = await new SignJWT(claims)
+  const builder = new SignJWT(claims)
     .setProtectedHeader({ alg: 'RS256', kid })
-    .setSubject('user-1')
     .setAudience(options.audience ?? clientId)
     .setIssuer(options.issuer ?? issuer)
     .setIssuedAt()
-    .setExpirationTime(options.expirationTime ?? '5m')
-    .sign(options.signingKey ?? privateKey);
+    .setExpirationTime(options.expirationTime ?? '5m');
+  if (options.subject !== null) {
+    builder.setSubject(options.subject ?? 'user-1');
+  }
+  const token = await builder.sign(options.signingKey ?? privateKey);
 
   return { tenantId, clientId, jwks, token };
 }
@@ -88,6 +91,18 @@ describe('entraAuth', () => {
       sub: 'user-1',
       roles: ['Compliance'],
     });
+  });
+
+  it.each([
+    { name: 'missing sub', tokenOptions: { subject: null } },
+    { name: 'empty sub', tokenOptions: { claims: { sub: '' }, subject: null } },
+    { name: 'non-string sub', tokenOptions: { claims: { sub: 42 }, subject: null } },
+  ])('throws for a verified token with $name', async ({ tokenOptions }) => {
+    const { tenantId, clientId, jwks, token } = await signedToken(tokenOptions);
+
+    await expect(verifyBearer(token, { tenantId, clientId, jwks })).rejects.toThrow(
+      'missing_subject',
+    );
   });
 
   it('returns 401 when Authorization is missing', async () => {

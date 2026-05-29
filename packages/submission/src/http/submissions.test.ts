@@ -110,6 +110,33 @@ describe('POST /api/v1/submissions (zip upload)', () => {
     expect(persisted).toHaveLength(0);
   });
 
+  it('refuses to persist a submission for an empty-sub identity', async () => {
+    const persisted: SubmissionInsertRow[] = [];
+    const app = makeApp({
+      identity: { sub: '', roles: ['Submitter'] },
+      persist: (row) => {
+        persisted.push(row);
+      },
+    });
+    const zipBytes = await buildZip([
+      {
+        path: 'SKILL.md',
+        contents: skillMdFixture({ name: 'demo-skill', version: '1.0.0', author: 'alice' }),
+      },
+    ]);
+    const formData = new FormData();
+    formData.set('file', new Blob([new Uint8Array(zipBytes)], { type: 'application/zip' }), 'skill.zip');
+
+    const res = await app.request('/api/v1/submissions', {
+      method: 'POST',
+      body: formData,
+    });
+
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({ error: 'authentication_required' });
+    expect(persisted).toHaveLength(0);
+  });
+
   function makeApp(options: {
     persist: SubmissionPersist;
     lookup?: SubmissionLookup;
