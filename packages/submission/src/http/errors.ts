@@ -7,6 +7,7 @@ export type ApiError =
   | 'separation_of_duties_violation'
   | 'skill_not_found'
   | 'submission_not_found'
+  | 'submission_not_in_expected_state'
   | 'submission_not_ready'
   | 'version_diff_not_found'
   | 'submission_in_progress'

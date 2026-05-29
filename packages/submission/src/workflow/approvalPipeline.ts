@@ -264,6 +264,10 @@ async function autoApproveNode({ dependencies }: PipelineNodeContext) {
 }
 
 async function publishNode({ context, dependencies }: PipelineNodeContext) {
+  if (await context.get('status') === 'published') {
+    return { action: 'published' };
+  }
+
   const review = await context.get('review') as HitlSignal | undefined;
   const submissionId = required(await context.get('submissionId'), 'submissionId');
   if (review?.decision === 'rejected') {

@@ -221,6 +221,47 @@ describe('POST /api/v1/submissions (Flowcraft pipeline)', () => {
       method: 'POST',
     });
     expect(approveRes.status).toBe(200);
+    expect(forgejo.mergeCalls).toEqual([1]);
+    expect(forgejo.publishCalls).toHaveLength(1);
+
+    const secondApproveRes = await app.request(`/api/v1/submissions/${created.id}/approve`, {
+      method: 'POST',
+    });
+    expect(secondApproveRes.status).toBe(409);
+    await expect(secondApproveRes.json()).resolves.toMatchObject({
+      error: 'submission_not_in_expected_state',
+    });
+
+    const rejectRes = await app.request(`/api/v1/submissions/${created.id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'terminal submissions cannot be rejected again' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(rejectRes.status).toBe(409);
+    await expect(rejectRes.json()).resolves.toMatchObject({
+      error: 'submission_not_in_expected_state',
+    });
+
+    identity = { sub: 'alice-entra-sub', roles: ['Submitter'] };
+    const confirmResAfterPublish = await app.request(`/api/v1/submissions/${created.id}/confirm`, {
+      method: 'POST',
+    });
+    expect(confirmResAfterPublish.status).toBe(409);
+    await expect(confirmResAfterPublish.json()).resolves.toMatchObject({
+      error: 'submission_not_in_expected_state',
+    });
+
+    const questionnaireResAfterPublish = await app.request(`/api/v1/submissions/${created.id}/questionnaire`, {
+      method: 'POST',
+      body: JSON.stringify({ responses: [{ questionId: 'network', answer: false }] }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(questionnaireResAfterPublish.status).toBe(409);
+    await expect(questionnaireResAfterPublish.json()).resolves.toMatchObject({
+      error: 'submission_not_in_expected_state',
+    });
+    expect(forgejo.mergeCalls).toEqual([1]);
+    expect(forgejo.publishCalls).toHaveLength(1);
 
     const versionRow = db
       .prepare('SELECT skill_name, version, approved_by FROM skill_versions WHERE submission_id = ?')

@@ -63,6 +63,8 @@ describe('approvalPipeline', () => {
     expect(published.context.status).toBe('published');
     expect(published.context.mergeCommit).toBe('merge-sha');
     expect(forgejo.opened).toMatchObject({ autoApprove: false });
+    expect(forgejo.mergeCalls).toBe(1);
+    expect(forgejo.publishCalls).toBe(1);
     expect(forgejo.publishedArtifact).toMatchObject({
       owner: 'alice',
       name: 'demo-skill',
@@ -77,6 +79,30 @@ describe('approvalPipeline', () => {
       'workflow.confirmation.received',
       'workflow.review.approved',
       'workflow.published',
+    ]);
+  });
+
+  it('does not merge or publish again when the publish node sees an already-published context', async () => {
+    const forgejo = new FakeForgejoClient();
+    const audit: Array<{ action: AuditAction; detail: Record<string, unknown> }> = [];
+    const dependencies = makeDependencies(forgejo, audit, makeScanReport('pass'));
+
+    const result = await runApprovalPipeline(makeContext({
+      classification: 'md-only',
+      branchName: 'submit/sub-1',
+      prNumber: 42,
+      status: 'published',
+      mergeCommit: 'merge-sha',
+      files: [{ path: 'SKILL.md', contentBase64: b64('# test') }],
+    }), dependencies);
+
+    expect(result.status).toBe('completed');
+    expect(result.context.status).toBe('published');
+    expect(forgejo.opened).toBeUndefined();
+    expect(forgejo.mergeCalls).toBe(0);
+    expect(forgejo.publishCalls).toBe(0);
+    expect(audit.map((entry) => entry.action)).toEqual([
+      'workflow.review.approved',
     ]);
   });
 
@@ -197,6 +223,9 @@ describe('approvalPipeline', () => {
 });
 
 class FakeForgejoClient {
+  mergeCalls = 0;
+  publishCalls = 0;
+
   opened?: {
     submissionId: string;
     manifest: SkillManifest;
@@ -224,6 +253,7 @@ class FakeForgejoClient {
   }
 
   async mergePR() {
+    this.mergeCalls += 1;
     return { sha: 'merge-sha' };
   }
 
@@ -233,6 +263,7 @@ class FakeForgejoClient {
     version: string;
     zipBuffer: Buffer;
   }) {
+    this.publishCalls += 1;
     this.publishedArtifact = input;
     return 'https://forgejo.example/api/packages/alice/generic/demo-skill/1.0.0/skill.zip';
   }

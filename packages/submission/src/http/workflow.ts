@@ -21,6 +21,8 @@ import {
 
 type WorkflowNodeId = 'questionnaire' | 'confirmation' | 'review';
 
+const terminalWorkflowPhases = new Set<string>(['published', 'rejected', 'error']);
+
 export interface WorkflowSubmissionRecord {
   id: string;
   submittedBy: string;
@@ -106,6 +108,9 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
     if (!isSubmitter(record, identity)) {
       return apiError(c, 403, 'insufficient_permissions');
     }
+    if (isTerminalWorkflowRecord(record)) {
+      return terminalStateError(c, record);
+    }
 
     const body = await readJson(c.req.raw);
     if (!isQuestionnaireBody(body)) {
@@ -165,6 +170,9 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
     if (!isSubmitter(record, identity)) {
       return apiError(c, 403, 'insufficient_permissions');
     }
+    if (isTerminalWorkflowRecord(record)) {
+      return terminalStateError(c, record);
+    }
 
     await resumeAndSave(options.db, store, record, 'confirmation', {
       actor: identity.sub,
@@ -182,6 +190,9 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
     }
     if (record.submittedBy === identity.sub) {
       return apiError(c, 403, 'separation_of_duties_violation');
+    }
+    if (isTerminalWorkflowRecord(record)) {
+      return terminalStateError(c, record);
     }
 
     if (record.serializedContext === '{}') {
@@ -216,6 +227,9 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
     }
     if (record.submittedBy === identity.sub) {
       return apiError(c, 403, 'separation_of_duties_violation');
+    }
+    if (isTerminalWorkflowRecord(record)) {
+      return terminalStateError(c, record);
     }
 
     const body = await readJson(c.req.raw);
@@ -583,6 +597,22 @@ function canView(record: WorkflowSubmissionRecord, identity: Identity): boolean 
 
 function isSubmitter(record: WorkflowSubmissionRecord, identity: Identity): boolean {
   return record.submittedBy === identity.sub;
+}
+
+function currentWorkflowPhase(record: WorkflowSubmissionRecord): string | undefined {
+  return record.context.status ?? record.context.submission.status.phase;
+}
+
+function isTerminalWorkflowRecord(record: WorkflowSubmissionRecord): boolean {
+  const phase = currentWorkflowPhase(record);
+  return phase !== undefined && terminalWorkflowPhases.has(phase);
+}
+
+function terminalStateError(c: Parameters<typeof apiError>[0], record: WorkflowSubmissionRecord): Response {
+  const phase = currentWorkflowPhase(record) ?? 'unknown';
+  return apiError(c, 409, 'submission_not_in_expected_state', {
+    message: `submission is already ${phase}`,
+  });
 }
 
 async function readJson(request: Request): Promise<unknown> {
