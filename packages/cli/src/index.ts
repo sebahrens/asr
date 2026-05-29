@@ -1,8 +1,8 @@
 import { Command } from 'commander';
 import pc from 'picocolors';
 import ora from 'ora';
-import { mkdir, writeFile, readdir, readFile, stat } from 'fs/promises';
-import { join, dirname } from 'path';
+import { readdir, readFile, stat, writeFile } from 'fs/promises';
+import { dirname, join } from 'path';
 import { createInterface } from 'readline';
 import {
   generateAgentsMd,
@@ -20,6 +20,8 @@ import { getConfig, setConfig, getTargetDir } from './config.js';
 import { recordInstall } from './lockfile.js';
 import { installSkill, removeSkill, updateSkill } from './install.js';
 import { registerYank } from './yank.js';
+import { InvalidFileMapError, parseFileMapResponse, writeValidatedFileMap } from './file-map.js';
+import { PathTraversalError } from './extract.js';
 
 interface RegistrySkill {
   id?: string;
@@ -151,17 +153,11 @@ async function installFromRegistry(
     const res = await fetch(`${config.registry}/api/download/${owner}/${repo}/${skillName}`, { headers });
     if (!res.ok) return false;
 
-    const data = await res.json() as { files: Record<string, string> };
-    if (!data.files || Object.keys(data.files).length === 0) return false;
+    const files = parseFileMapResponse(await res.json());
+    if (Object.keys(files).length === 0) return false;
 
     const targetDir = getTargetDir(target, skillName, global);
-    await mkdir(targetDir, { recursive: true });
-
-    for (const [path, content] of Object.entries(data.files)) {
-      const fullPath = join(targetDir, path);
-      await mkdir(dirname(fullPath), { recursive: true });
-      await writeFile(fullPath, content);
-    }
+    await writeValidatedFileMap(targetDir, files);
 
     await recordInstall(target, global, skillName, `registry:${owner}/${repo}/${skillName}`);
 
@@ -171,7 +167,10 @@ async function installFromRegistry(
     });
     
     return true;
-  } catch {
+  } catch (err) {
+    if (err instanceof PathTraversalError || err instanceof InvalidFileMapError) {
+      throw err;
+    }
     return false;
   }
 }
@@ -187,12 +186,7 @@ async function installFromGitHub(
   const files = await downloadSkillFiles(repo, skillName, skillsPath, token);
   const targetDir = getTargetDir(target, skillName, global);
 
-  await mkdir(targetDir, { recursive: true });
-  for (const [path, content] of Object.entries(files)) {
-    const fullPath = join(targetDir, path);
-    await mkdir(dirname(fullPath), { recursive: true });
-    await writeFile(fullPath, content);
-  }
+  await writeValidatedFileMap(targetDir, files);
 
   const skillMdPath = join(targetDir, 'SKILL.md');
   try {
@@ -310,12 +304,7 @@ program
           const repoName = fullRepo.split('/').pop()!;
           const targetDir = getTargetDir(target, repoName, options.global);
 
-          await mkdir(targetDir, { recursive: true });
-          for (const [path, content] of Object.entries(files)) {
-            const fullPath = join(targetDir, path);
-            await mkdir(dirname(fullPath), { recursive: true });
-            await writeFile(fullPath, content);
-          }
+          await writeValidatedFileMap(targetDir, files);
           await recordInstall(target, options.global, repoName, fullRepo);
           spinner.succeed(`Installed ${pc.green(repoName)} from GitHub to ${pc.dim(targetDir)}`);
         } else {
