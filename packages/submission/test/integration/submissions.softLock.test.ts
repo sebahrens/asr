@@ -14,7 +14,7 @@ describe('POST /api/v1/submissions per-version soft lock', () => {
     db = undefined;
   });
 
-  it('accepts the first submission for name@version and writes a pending_versions row', async () => {
+  it('releases the pending version row when publishing fails', async () => {
     db = new Database(':memory:');
     runMigrations(db);
 
@@ -44,7 +44,7 @@ describe('POST /api/v1/submissions per-version soft lock', () => {
     expect(pendingRow).toBeUndefined();
   });
 
-  it('rejects a second submission that targets an already-published name@version with 409', async () => {
+  it('releases the pending version row after publishing name@version', async () => {
     db = new Database(':memory:');
     runMigrations(db);
 
@@ -65,7 +65,7 @@ describe('POST /api/v1/submissions per-version soft lock', () => {
         'SELECT skill_name, version FROM pending_versions WHERE skill_name = ? AND version = ?',
       )
       .get('demo', '1.0.0') as { skill_name: string; version: string } | undefined;
-    expect(pendingRow).toEqual({ skill_name: 'demo', version: '1.0.0' });
+    expect(pendingRow).toBeUndefined();
 
     const secondRes = await app.request('/api/v1/submissions', {
       method: 'POST',
@@ -98,7 +98,7 @@ describe('POST /api/v1/submissions per-version soft lock', () => {
     expect(submissionCount.c).toBe(1);
   });
 
-  it('accepts a different version of the same skill while the first version is locked', async () => {
+  it('does not leave successful publishes locked in pending_versions', async () => {
     db = new Database(':memory:');
     runMigrations(db);
 
@@ -130,7 +130,7 @@ describe('POST /api/v1/submissions per-version soft lock', () => {
         'SELECT COUNT(*) as c FROM pending_versions WHERE skill_name = ?',
       )
       .get('demo') as { c: number };
-    expect(pendingCount.c).toBe(2);
+    expect(pendingCount.c).toBe(0);
   });
 });
 

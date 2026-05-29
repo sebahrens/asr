@@ -344,6 +344,7 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
           if (workflowStatus.phase === 'published' && options.triggerMarketplaceSync) {
             await options.triggerMarketplaceSync(manifest.name);
           }
+          releasePendingVersionIfTerminal(db, manifest, workflowStatus);
         } catch (error) {
           releasePendingVersion(db, manifest.name, manifest.version);
           return apiError(c, 500, 'internal_error', {
@@ -456,6 +457,16 @@ function statusFromWorkflowResult(
   }
 
   return { phase: 'uploaded' };
+}
+
+function releasePendingVersionIfTerminal(
+  db: Database.Database,
+  manifest: SkillManifest,
+  status: SubmissionStatus,
+): void {
+  if (status.phase === 'published' || status.phase === 'rejected') {
+    releasePendingVersion(db, manifest.name, manifest.version);
+  }
 }
 
 function defaultWorkflowDependencies(options: SubmissionRouteOptions): ApprovalPipelineDependencies {

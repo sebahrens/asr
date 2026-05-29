@@ -18,6 +18,7 @@ import {
   type ApprovalPipelineDependencies,
   type HitlSignal,
 } from '../workflow/approvalPipeline.js';
+import { releasePendingVersion } from '../workflow/pendingVersionLock.js';
 
 type WorkflowNodeId = 'questionnaire' | 'confirmation' | 'review';
 
@@ -327,12 +328,22 @@ async function resumeAndSave(
   if (options.db) {
     const db = options.db;
     updatePersistedSubmissionStatus(db, record.id, status);
-    if (status.phase === 'published') {
-      persistPublishedVersion(db, record.id, record.submittedBy, context, status);
-      await options.regenerateRegistryIndex?.();
+    if (isTerminalSubmissionStatus(status)) {
+      try {
+        if (status.phase === 'published') {
+          persistPublishedVersion(db, record.id, record.submittedBy, context, status);
+          await options.regenerateRegistryIndex?.();
+        }
+      } finally {
+        releasePendingVersion(db, context.manifest.name, context.manifest.version);
+      }
     }
   }
   return { ...result, context };
+}
+
+function isTerminalSubmissionStatus(status: SubmissionStatus): boolean {
+  return status.phase === 'published' || status.phase === 'rejected';
 }
 
 function persistPublishedVersion(
