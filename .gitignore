@@ -42,3 +42,6 @@ AGENTS.md
 # Playwright runtime artifacts
 test-results/
 playwright-report/
+
+# Real-skill scanner e2e corpus (fetched by scripts/fetch-real-skills.sh)
+packages/submission/test/fixtures/scanning/real/
