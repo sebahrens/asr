@@ -5,6 +5,10 @@ export interface PendingSubmissionRow {
   id: string;
   skillName: string;
   version: string;
+  status?: string | { phase: string };
+  risk?: string;
+  riskAssessment?: string;
+  findings?: number;
 }
 
 interface PendingSubmissionsResponse {
@@ -58,22 +62,73 @@ export function ReviewQueue() {
             <tr>
               <th scope="col">Skill</th>
               <th scope="col">Version</th>
+              <th scope="col">Status</th>
+              <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {(data ?? []).map((submission) => (
-              <tr key={submission.id}>
-                <th scope="row">
-                  <Link to={`/review/${submission.id}`}>
-                    {submission.skillName}
-                  </Link>
-                </th>
-                <td>{submission.version}</td>
-              </tr>
-            ))}
+            {(data ?? []).map((submission) => {
+              const status = formatSubmissionStatus(submission.status);
+              const risk = submission.riskAssessment ?? submission.risk;
+
+              return (
+                <tr key={submission.id}>
+                  <th scope="row">
+                    <div className="review-queue-skill-cell">
+                      <Link to={`/review/${submission.id}`}>
+                        {submission.skillName}
+                      </Link>
+                      {risk ? (
+                        <span className={`risk-pill risk-${risk}`}>
+                          {risk} risk
+                        </span>
+                      ) : null}
+                    </div>
+                  </th>
+                  <td>{submission.version}</td>
+                  <td>
+                    <span className={`status-pill status-${status.className}`}>
+                      {status.label}
+                    </span>
+                    {typeof submission.findings === 'number' ? (
+                      <span className="review-queue-findings">
+                        {submission.findings} findings
+                      </span>
+                    ) : null}
+                  </td>
+                  <td>
+                    <div className="review-queue-actions" aria-label={`Review actions for ${submission.skillName}`}>
+                      <Link className="review-detail-link" to={`/review/${submission.id}`}>
+                        Review
+                      </Link>
+                      <Link className="approve-btn" to={`/review/${submission.id}`}>
+                        Approve
+                      </Link>
+                      <Link className="reject-btn" to={`/review/${submission.id}`}>
+                        Reject
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
     </main>
   );
+}
+
+function formatSubmissionStatus(
+  status: PendingSubmissionRow['status'],
+): { label: string; className: string } {
+  const raw = typeof status === 'object' && status !== null
+    ? status.phase
+    : status ?? 'pending review';
+  const label = raw.replace(/-/g, ' ');
+
+  return {
+    label,
+    className: label.toLowerCase().replace(/\s+/g, '-'),
+  };
 }

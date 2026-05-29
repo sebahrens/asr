@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReviewQueue, type PendingSubmissionRow } from './ReviewQueue';
 
-function makeSubmission(overrides: { id: string; skillName: string; version: string }): PendingSubmissionRow {
+function makeSubmission(overrides: PendingSubmissionRow): PendingSubmissionRow {
   return { ...overrides };
 }
 
@@ -48,10 +48,37 @@ describe('ReviewQueue', () => {
     const firstLink = screen.getByRole('link', { name: 'secure-code-review' });
     expect(firstLink).toHaveAttribute('href', '/review/sub-A');
     expect(screen.getByText('1.4.0')).toBeInTheDocument();
+    expect(screen.getAllByText('pending review')).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: 'Approve' })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: 'Reject' })).toHaveLength(2);
 
     const secondLink = screen.getByRole('link', { name: 'release-notes' });
     expect(secondLink).toHaveAttribute('href', '/review/sub-B');
     expect(screen.getByText('0.8.2')).toBeInTheDocument();
+  });
+
+  it('renders status, risk, and finding metadata when the API includes it', async () => {
+    const submissions: PendingSubmissionRow[] = [
+      makeSubmission({
+        id: 'sub-rich',
+        skillName: 'secure-code-review',
+        version: '1.4.0',
+        status: { phase: 'compliance-review' },
+        riskAssessment: 'high',
+        findings: 2,
+      }),
+    ];
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ submissions }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )));
+
+    renderQueue();
+
+    expect(await screen.findByText('compliance review')).toBeInTheDocument();
+    expect(screen.getByText('high risk')).toBeInTheDocument();
+    expect(screen.getByText('2 findings')).toBeInTheDocument();
   });
 
   it('renders the empty state when no submissions are pending', async () => {
