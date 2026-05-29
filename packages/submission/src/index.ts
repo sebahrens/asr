@@ -42,7 +42,6 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use('*', authMiddleware({ authMode: env.AUTH_MODE }));
   app.route('/api/v1/submissions', createSubmissionRoutes(options.submissions));
   app.route('/api/v1/submissions', createWorkflowRoutes(workflowOptions));
-  app.route('/submissions', createWorkflowRoutes(workflowOptions));
   app.route('/api/v1/skills', createYankRoutes(options.yank));
   app.route('/api/v1/audit', createAuditRoutes(options.audit));
 

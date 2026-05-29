@@ -1,7 +1,8 @@
-import { ForgejoClient, type AuditAction, type ScanReport, type SkillManifest, type Submission, type VersionDiff } from '@asr/core';
+import { ForgejoClient, type AuditAction, type ScanReport, type SkillManifest, type Submission, type SubmissionStatus, type VersionDiff } from '@asr/core';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import yazl from 'yazl';
 import type { app as App, createApp as CreateApp } from './index.js';
+import type { SubmissionInsertRow } from './db/repositories/submissions.js';
 import type { WorkflowSubmissionRecord, WorkflowSubmissionStore } from './http/workflow.js';
 import {
   resumeApprovalPipeline,
@@ -134,7 +135,53 @@ describe('app', () => {
     });
   });
 
-  it('creates a dev submission from skill markdown and queues it for review', async () => {
+  it('creates a zip submission on the canonical route and returns the same row by id', async () => {
+    const store = new Map<string, Submission>();
+    const persist = (row: SubmissionInsertRow) => {
+      store.set(row.id, insertRowToSubmission(row));
+    };
+    const lookup = (id: string) => store.get(id);
+    const submissionApp = createApp({
+      submissions: { persist, lookup },
+    });
+    const zipBytes = await buildZip([{ path: 'SKILL.md', contents: skillMdFixture() }]);
+    const body = new FormData();
+    body.set(
+      'file',
+      new Blob([new Uint8Array(zipBytes)], { type: 'application/zip' }),
+      'skill.zip',
+    );
+
+    vi.stubEnv('MOCK_USER_SUB', 'submitter-42');
+    vi.stubEnv('MOCK_USER_ROLES', 'Submitter');
+    const created = await submissionApp.request('/api/v1/submissions', {
+      method: 'POST',
+      body,
+    });
+
+    expect(created.status).toBe(201);
+    const data = await created.json() as { id: string; manifest: SkillManifest };
+    expect(data.manifest).toMatchObject({
+      author: 'alice',
+      name: 'demo-skill',
+      version: '1.0.0',
+    });
+
+    const fetched = await submissionApp.request(`/api/v1/submissions/${data.id}`);
+    expect(fetched.status).toBe(200);
+    await expect(fetched.json()).resolves.toMatchObject({
+      id: data.id,
+      submittedBy: 'submitter-42',
+      manifest: {
+        author: 'alice',
+        name: 'demo-skill',
+        version: '1.0.0',
+      },
+      status: { phase: 'uploaded' },
+    });
+  });
+
+  it('does not expose the removed skill-markdown submission shortcut', async () => {
     const store = new TestWorkflowStore();
     const forgejo = new FakeForgejoClient();
     const dependencies = makeDependencies(forgejo, makeScanReport('pass'));
@@ -147,9 +194,16 @@ describe('app', () => {
     body.set('skillMd', `---
 name: demo-skill
 version: 1.0.0
+author: alice
 description: Demo skill
 tags:
   - demo
+kind: skill
+permissions:
+  network: false
+  filesystem: none
+  subprocess: false
+  environment: []
 ---
 
 # demo-skill
@@ -160,28 +214,9 @@ tags:
       body,
     });
 
-    expect(created.status).toBe(201);
-    const data = await created.json();
-    expect(data).toMatchObject({
-      manifest: {
-        author: 'alice',
-        name: 'demo-skill',
-        version: '1.0.0',
-      },
-      status: { phase: 'uploaded' },
-    });
-
-    const queued = store.list()[0];
-    expect(queued).toMatchObject({
-      id: data.id,
-      context: {
-        status: 'compliance-review',
-        branchName: expect.stringMatching(/^submit\/sub-/),
-        prNumber: 42,
-      },
-    });
-    expect(queued.serializedContext).not.toBe('{}');
-    expect(forgejo.openedSubmissionPRs).toBe(1);
+    expect(created.status).toBe(404);
+    expect(store.list()).toHaveLength(0);
+    expect(forgejo.openedSubmissionPRs).toBe(0);
     expect(forgejo.publishedArtifact).toBeUndefined();
   });
 
@@ -240,7 +275,7 @@ tags:
 
     vi.stubEnv('MOCK_USER_SUB', 'submitter-1');
     vi.stubEnv('MOCK_USER_ROLES', 'Submitter');
-    const questionnaire = await submissionApp.request('/submissions/sub-1/questionnaire', {
+    const questionnaire = await submissionApp.request('/api/v1/submissions/sub-1/questionnaire', {
       method: 'POST',
       body: JSON.stringify({ responses: [{ questionId: 'network', answer: false }] }),
       headers: { 'content-type': 'application/json' },
@@ -250,17 +285,17 @@ tags:
       status: { phase: 'scanning', scanJobId: 'scan:sub-1' },
     });
 
-    const scan = await submissionApp.request('/submissions/sub-1/scan');
+    const scan = await submissionApp.request('/api/v1/submissions/sub-1/scan');
     expect(scan.status).toBe(200);
     await expect(scan.json()).resolves.toMatchObject({ scanId: scanReport.scanId, verdict: 'review_required' });
 
-    const confirm = await submissionApp.request('/submissions/sub-1/confirm', { method: 'POST' });
+    const confirm = await submissionApp.request('/api/v1/submissions/sub-1/confirm', { method: 'POST' });
     expect(confirm.status).toBe(200);
     await expect(confirm.json()).resolves.toEqual({ status: { phase: 'compliance-review' } });
 
     vi.stubEnv('MOCK_USER_SUB', 'reviewer-1');
     vi.stubEnv('MOCK_USER_ROLES', 'Compliance');
-    const approve = await submissionApp.request('/submissions/sub-1/approve', {
+    const approve = await submissionApp.request('/api/v1/submissions/sub-1/approve', {
       method: 'POST',
       body: JSON.stringify({ comment: 'looks good' }),
       headers: { 'content-type': 'application/json' },
@@ -365,7 +400,7 @@ tags:
 
     vi.stubEnv('MOCK_USER_SUB', 'submitter-1');
     vi.stubEnv('MOCK_USER_ROLES', 'Compliance');
-    const approve = await submissionApp.request('/submissions/sub-1/approve', { method: 'POST' });
+    const approve = await submissionApp.request('/api/v1/submissions/sub-1/approve', { method: 'POST' });
 
     expect(approve.status).toBe(403);
     await expect(approve.json()).resolves.toEqual({ error: 'separation_of_duties_violation' });
@@ -379,7 +414,7 @@ tags:
 
     vi.stubEnv('MOCK_USER_SUB', 'reviewer-1');
     vi.stubEnv('MOCK_USER_ROLES', 'Compliance');
-    const reject = await submissionApp.request('/submissions/sub-1/reject', {
+    const reject = await submissionApp.request('/api/v1/submissions/sub-1/reject', {
       method: 'POST',
       body: JSON.stringify({ reason: 'short' }),
       headers: { 'content-type': 'application/json' },
@@ -387,7 +422,38 @@ tags:
 
     expect(reject.status).toBe(400);
   });
+
+  it('does not expose unversioned submission routes', async () => {
+    const store = new TestWorkflowStore();
+    const dependencies = makeDependencies(new FakeForgejoClient(), makeScanReport('pass'));
+    const submissionApp = createApp({ workflow: { store, dependencies, now: fixedNow } });
+    await store.save(await seedAwaitingReview(dependencies));
+
+    vi.stubEnv('MOCK_USER_SUB', 'reviewer-1');
+    vi.stubEnv('MOCK_USER_ROLES', 'Compliance');
+    const list = await submissionApp.request('/submissions?status=pending');
+    const approve = await submissionApp.request('/submissions/sub-1/approve', { method: 'POST' });
+
+    expect(list.status).toBe(404);
+    expect(approve.status).toBe(404);
+  });
 });
+
+function insertRowToSubmission(row: SubmissionInsertRow): Submission {
+  const manifest = JSON.parse(row.manifestJson) as SkillManifest;
+  const status = JSON.parse(row.statusJson) as SubmissionStatus;
+  return {
+    id: row.id,
+    manifest,
+    classification: row.classification,
+    contentHash: row.contentHash,
+    submittedAt: row.submittedAt,
+    submittedBy: row.submittedBy,
+    ...(row.branchName != null ? { branchName: row.branchName } : {}),
+    ...(row.prNumber != null ? { prNumber: row.prNumber } : {}),
+    status,
+  };
+}
 
 class TestWorkflowStore implements WorkflowSubmissionStore {
   private readonly records = new Map<string, WorkflowSubmissionRecord>();
@@ -582,9 +648,16 @@ function skillMdFixture(): string {
   return `---
 name: demo-skill
 version: 1.0.0
+author: alice
 description: Demo skill
 tags:
   - demo
+kind: skill
+permissions:
+  network: false
+  filesystem: none
+  subprocess: false
+  environment: []
 ---
 
 # demo-skill

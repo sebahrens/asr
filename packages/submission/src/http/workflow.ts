@@ -1,7 +1,6 @@
-import { ForgejoClient, parseSkillMd, type ScanReport, type SkillManifest, type Submission, type SubmissionStatus, type VersionDiff } from '@asr/core';
+import { ForgejoClient, type ScanReport, type SkillManifest, type Submission, type SubmissionStatus, type VersionDiff } from '@asr/core';
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
-import { createHash, randomUUID } from 'node:crypto';
 import { apiError } from './errors.js';
 import { requireRole } from '../auth/requireRole.js';
 import type { AuthVariables, Identity } from '../auth/types.js';
@@ -85,67 +84,6 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
   const now = options.now ?? (() => new Date());
   const store = options.store ?? (options.db ? new SqliteWorkflowSubmissionStore(options.db, now) : defaultStore);
   const dependencies = options.dependencies ?? defaultDependencies();
-
-  routes.post('/', requireRole('Submitter', 'Admin'), async (c) => {
-    const body = await c.req.parseBody();
-    const skillMd = typeof body.skillMd === 'string' ? body.skillMd : undefined;
-    const owner = typeof body.owner === 'string' && body.owner.trim() ? body.owner.trim() : undefined;
-    if (!skillMd) {
-      return apiError(c, 400, 'invalid_manifest', { message: 'skillMd is required' });
-    }
-
-    const parsed = parseSkillMd(skillMd);
-    const manifest: SkillManifest = {
-      name: parsed.name,
-      version: parsed.version ?? '0.1.0',
-      author: owner ?? parsed.author ?? 'dev',
-      description: parsed.description,
-      tags: parsed.tags ?? [],
-      kind: 'skill',
-      permissions: {
-        network: false,
-        filesystem: 'read-own',
-        subprocess: false,
-        environment: [],
-      },
-    };
-    const id = `sub-${randomUUID().slice(0, 8)}`;
-    const submittedAt = now().toISOString();
-    const contentHash = `sha256:${createHash('sha256').update(skillMd).digest('hex')}`;
-    const submission: Submission = {
-      id,
-      manifest,
-      classification: 'md-only',
-      contentHash,
-      submittedAt,
-      submittedBy: 'submitter-1',
-      status: { phase: 'uploaded' },
-    };
-    const context: ApprovalPipelineContext = {
-      submissionId: id,
-      submission,
-      manifest,
-      files: [{ path: 'SKILL.md', contentBase64: Buffer.from(skillMd).toString('base64') }],
-      contentHash,
-      extractedDir: `/tmp/${id}`,
-      zipBufferBase64: Buffer.from('dev archive').toString('base64'),
-      classification: 'code-containing',
-      status: 'compliance-review',
-    };
-    const result = await runApprovalPipeline(context, dependencies);
-
-    await store.save({
-      id,
-      submittedBy: submission.submittedBy,
-      serializedContext: result.serializedContext,
-      context: {
-        ...result.context,
-        status: 'compliance-review',
-      },
-    });
-
-    return c.json({ id, manifest, status: submission.status }, 201);
-  });
 
   routes.get('/', requireRole('Submitter', 'Compliance', 'Admin'), async (c) => {
     const identity = c.get('identity');
