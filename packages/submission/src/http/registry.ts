@@ -3,11 +3,13 @@ import BetterSqlite3 from 'better-sqlite3';
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { runMigrations } from '../db/migrations/index.js';
+import { emitAudit, type EmitAuditInput } from '../audit/emit.js';
 import { getPublishedSkill, getPublishedSkillVersion, listPublishedSkills } from '../db/repositories/skills.js';
 import {
   insertSkillVersion,
 } from '../db/repositories/skillVersions.js';
 import { insertSubmission } from '../db/repositories/submissions.js';
+import { getBlockedHash } from '../db/repositories/versions.js';
 import { apiError } from './errors.js';
 
 const publishedAt = '2026-05-23T10:00:00.000Z';
@@ -221,6 +223,7 @@ const registryDiffs: VersionDiff[] = [
 export interface RegistryRouteOptions {
   db?: Database.Database;
   forgejoUrl?: string;
+  emitAudit?: (input: EmitAuditInput) => void;
 }
 
 const defaultRegistryDb = createDefaultRegistryDb();
@@ -233,6 +236,7 @@ export function createRegistryRoutes(options: RegistryRouteOptions = {}) {
   const routes = new Hono();
   const db = options.db ?? defaultRegistryDb;
   const forgejoUrl = options.forgejoUrl ?? process.env.FORGEJO_URL ?? 'http://forgejo:3000';
+  const audit = options.emitAudit ?? ((input: EmitAuditInput) => emitAudit(db, input));
 
   routes.get('/', (c) => {
     const limit = parseLimit(c.req.query('limit'));
@@ -294,7 +298,31 @@ export function createRegistryRoutes(options: RegistryRouteOptions = {}) {
     }
 
     if (publishedVersion.yanked) {
-      c.header('X-ASR-Yanked', 'true');
+      auditDownloadRefusal(audit, {
+        owner,
+        name,
+        version,
+        contentHash: publishedVersion.contentHash,
+        reason: 'yanked',
+      });
+      return apiError(c, 410, 'version_yanked', {
+        details: { owner, name, version },
+      });
+    }
+
+    const blockedHash = getBlockedHash(db, publishedVersion.contentHash);
+    if (blockedHash) {
+      auditDownloadRefusal(audit, {
+        owner,
+        name,
+        version,
+        contentHash: publishedVersion.contentHash,
+        reason: 'blocked_hash',
+        blockedSource: blockedHash.source,
+      });
+      return apiError(c, 410, 'content_blocked', {
+        details: { owner, name, version },
+      });
     }
 
     return c.redirect(forgejoPackageUrl(forgejoUrl, owner, name, version), 302);
@@ -328,6 +356,32 @@ export function createRegistryRoutes(options: RegistryRouteOptions = {}) {
   });
 
   return routes;
+}
+
+function auditDownloadRefusal(
+  audit: (input: EmitAuditInput) => void,
+  input: {
+    owner: string;
+    name: string;
+    version: string;
+    contentHash: string;
+    reason: 'yanked' | 'blocked_hash';
+    blockedSource?: string;
+  },
+): void {
+  audit({
+    action: 'download.refused',
+    skillName: input.name,
+    version: input.version,
+    actor: 'system',
+    actorType: 'system',
+    detail: {
+      owner: input.owner,
+      contentHash: input.contentHash,
+      reason: input.reason,
+      ...(input.blockedSource ? { blockedSource: input.blockedSource } : {}),
+    },
+  });
 }
 
 export const registryRoutes = createRegistryRoutes();

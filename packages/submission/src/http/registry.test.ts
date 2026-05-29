@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../db/migrations/index.js';
 import { insertSkillVersion } from '../db/repositories/skillVersions.js';
 import { insertSubmission } from '../db/repositories/submissions.js';
+import { insertBlockedHash } from '../db/repositories/versions.js';
 import { regenerateRegistryIndex } from '../jobs/registryIndex.js';
 import { registryIndexHandler } from './registryIndex.js';
 import { createRegistryRoutes } from './registry.js';
@@ -250,8 +251,9 @@ describe('registryRoutes', () => {
     expect(res.headers.get('X-ASR-Yanked')).toBeNull();
   });
 
-  it('marks yanked version download redirects', async () => {
-    const app = makeApp();
+  it('refuses download for yanked versions with 410 and no Location', async () => {
+    const auditCalls: unknown[] = [];
+    const app = makeApp(auditCalls);
     insertPublishedSubmission(db!, {
       id: 'submission-x',
       name: 'x',
@@ -263,8 +265,71 @@ describe('registryRoutes', () => {
 
     const res = await app.request('/api/v1/skills/acme/x/v/1.0.0/download', { redirect: 'manual' });
 
-    expect(res.status).toBe(302);
-    expect(res.headers.get('X-ASR-Yanked')).toBe('true');
+    expect(res.status).toBe(410);
+    expect(res.headers.get('Location')).toBeNull();
+    expect(res.headers.get('X-ASR-Yanked')).toBeNull();
+    await expect(res.json()).resolves.toEqual({
+      error: 'version_yanked',
+      details: { owner: 'acme', name: 'x', version: '1.0.0' },
+    });
+    expect(auditCalls).toEqual([
+      expect.objectContaining({
+        action: 'download.refused',
+        skillName: 'x',
+        version: '1.0.0',
+        actor: 'system',
+        actorType: 'system',
+        detail: {
+          owner: 'acme',
+          contentHash: 'sha256:submission-x',
+          reason: 'yanked',
+        },
+      }),
+    ]);
+  });
+
+  it('refuses download when the version content hash is blocked', async () => {
+    const auditCalls: unknown[] = [];
+    const app = makeApp(auditCalls);
+    insertPublishedSubmission(db!, {
+      id: 'submission-x',
+      name: 'x',
+      version: '1.0.0',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+    });
+    insertBlockedHash(db!, {
+      content_hash: 'sha256:submission-x',
+      skill_name: 'x',
+      version: '1.0.0',
+      blocked_at: '2026-05-25T10:05:00.000Z',
+      blocked_by: 'compliance@example.com',
+      reason: 'incident response',
+      source: 'incident',
+    });
+
+    const res = await app.request('/api/v1/skills/acme/x/v/1.0.0/download', { redirect: 'manual' });
+
+    expect(res.status).toBe(410);
+    expect(res.headers.get('Location')).toBeNull();
+    await expect(res.json()).resolves.toEqual({
+      error: 'content_blocked',
+      details: { owner: 'acme', name: 'x', version: '1.0.0' },
+    });
+    expect(auditCalls).toEqual([
+      expect.objectContaining({
+        action: 'download.refused',
+        skillName: 'x',
+        version: '1.0.0',
+        actor: 'system',
+        actorType: 'system',
+        detail: {
+          owner: 'acme',
+          contentHash: 'sha256:submission-x',
+          reason: 'blocked_hash',
+          blockedSource: 'incident',
+        },
+      }),
+    ]);
   });
 
   it('returns the registry not-found envelope for a missing download version', async () => {
@@ -360,12 +425,18 @@ describe('registryRoutes', () => {
     expect(notModified.status).toBe(304);
   });
 
-  function makeApp(): Hono {
+  function makeApp(auditCalls: unknown[] = []): Hono {
     db = new Database(':memory:');
     runMigrations(db);
 
     const app = new Hono();
-    app.route('/api/v1/skills', createRegistryRoutes({ db, forgejoUrl: 'https://forgejo.example.test/api/v1' }));
+    app.route('/api/v1/skills', createRegistryRoutes({
+      db,
+      forgejoUrl: 'https://forgejo.example.test/api/v1',
+      emitAudit: (input) => {
+        auditCalls.push(input);
+      },
+    }));
     return app;
   }
 });

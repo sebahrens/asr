@@ -17,6 +17,7 @@ export const AUDIT_ACTIONS = [
   'version.published',
   'version.yanked',
   'version.diff.computed',
+  'download.refused',
   'hash.blocked',
   'token.rotated',
   'key.rotated',
