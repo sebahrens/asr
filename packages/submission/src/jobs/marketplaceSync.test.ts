@@ -250,4 +250,74 @@ describe('runMarketplaceSync', () => {
     });
     expect(pager).not.toHaveBeenCalled();
   });
+
+  it('writes only the triggered skill files plus marketplace.json', async () => {
+    const emitAudit = vi.fn();
+    const pager = vi.fn();
+    const openSubmissionPR = vi.fn().mockResolvedValue({
+      branch: 'submit/marketplace-sync-incremental',
+      prNumber: 51,
+      headSha: 'sha',
+    });
+    const mergePR = vi.fn().mockResolvedValue({ sha: 'merge-sha' });
+
+    await runMarketplaceSync('summarizer', {
+      client: { openSubmissionPR, mergePR },
+      readPublishedSkills: async () => [
+        {
+          name: 'summarizer',
+          version: '1.0.0',
+          description: 'Summarizes documents',
+          kind: 'skill' as const,
+          skillMd: '# Summarizer\n',
+        },
+        {
+          name: 'reviewer',
+          version: '2.0.0',
+          description: 'Reviews code',
+          kind: 'persona' as const,
+          skillMd: '# Reviewer\n',
+        },
+      ],
+      emitAudit,
+      pager,
+    });
+
+    const files = openSubmissionPR.mock.calls[0][0].files as Array<{ path: string }>;
+    expect(files.map((file) => file.path)).toEqual([
+      'marketplace.json',
+      'plugins/summarizer/.claude-plugin/plugin.json',
+      'plugins/summarizer/.codex-plugin/plugin.json',
+      'plugins/summarizer/skills/summarizer/SKILL.md',
+    ]);
+  });
+
+  it('writes only marketplace.json when the triggered skill is no longer published', async () => {
+    const emitAudit = vi.fn();
+    const pager = vi.fn();
+    const openSubmissionPR = vi.fn().mockResolvedValue({
+      branch: 'submit/marketplace-sync-yank',
+      prNumber: 52,
+      headSha: 'sha',
+    });
+    const mergePR = vi.fn().mockResolvedValue({ sha: 'merge-sha' });
+
+    await runMarketplaceSync('summarizer', {
+      client: { openSubmissionPR, mergePR },
+      readPublishedSkills: async () => [
+        {
+          name: 'reviewer',
+          version: '2.0.0',
+          description: 'Reviews code',
+          kind: 'persona' as const,
+          skillMd: '# Reviewer\n',
+        },
+      ],
+      emitAudit,
+      pager,
+    });
+
+    const files = openSubmissionPR.mock.calls[0][0].files as Array<{ path: string }>;
+    expect(files.map((file) => file.path)).toEqual(['marketplace.json']);
+  });
 });

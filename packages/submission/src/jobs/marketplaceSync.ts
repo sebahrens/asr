@@ -32,6 +32,10 @@ export interface SyncMarketplaceRepoDeps {
   readPublishedSkills: () => Promise<SkillRow[]>;
 }
 
+export interface SyncMarketplaceRepoOptions {
+  skillName?: string;
+}
+
 export interface SyncMarketplaceRepoResult {
   prNumber: number;
   merged: boolean;
@@ -84,10 +88,18 @@ export function buildMarketplaceFiles(skills: MarketplaceSkillInput[]): Marketpl
 
 export async function syncMarketplaceRepo(
   deps: SyncMarketplaceRepoDeps,
+  opts: SyncMarketplaceRepoOptions = {},
 ): Promise<SyncMarketplaceRepoResult> {
   const skills = await deps.readPublishedSkills();
   const marketplace = buildMarketplaceFiles(skills);
-  const syncId = marketplaceSyncId(skills);
+  const files = [
+    {
+      path: 'marketplace.json',
+      content: `${JSON.stringify(marketplace.manifest, null, 2)}\n`,
+    },
+    ...marketplaceFilesForSync(marketplace, opts.skillName),
+  ];
+  const syncId = marketplaceSyncId(files);
   const pr = await deps.client.openSubmissionPR({
     submissionId: `marketplace-sync-${syncId}`,
     manifest: marketplaceSyncManifest(skills),
@@ -96,16 +108,10 @@ export async function syncMarketplaceRepo(
     title: '[Marketplace] Sync generated skill marketplace',
     body: `Generated marketplace sync for ${skills.length} published skill(s).`,
     labels: ['auto-approve', 'marketplace-sync'],
-    files: [
-      {
-        path: 'marketplace.json',
-        content: Buffer.from(`${JSON.stringify(marketplace.manifest, null, 2)}\n`),
-      },
-      ...marketplace.files.map((file) => ({
-        path: file.path,
-        content: Buffer.from(file.content),
-      })),
-    ],
+    files: files.map((file) => ({
+      path: file.path,
+      content: Buffer.from(file.content),
+    })),
     autoApprove: true,
     idempotent: true,
   });
@@ -135,7 +141,7 @@ export async function runMarketplaceSync(
   deps: RunMarketplaceSyncDeps,
 ): Promise<SyncMarketplaceRepoResult> {
   try {
-    const result = await runWithMarketplaceLock(deps, () => syncMarketplaceRepo(deps));
+    const result = await runWithMarketplaceLock(deps, () => syncMarketplaceRepo(deps, { skillName }));
     deps.emitAudit({
       action: 'marketplace_sync.succeeded',
       skillName,
@@ -165,9 +171,18 @@ export async function runMarketplaceSync(
   }
 }
 
-function marketplaceSyncId(skills: SkillRow[]): string {
-  const publishedSet = skills
-    .map((skill) => `${skill.name}@${skill.version}`)
+function marketplaceFilesForSync(marketplace: MarketplaceFiles, skillName: string | undefined): MarketplaceFile[] {
+  if (!skillName) {
+    return marketplace.files;
+  }
+
+  const pluginPath = `plugins/${skillName}/`;
+  return marketplace.files.filter((file) => file.path.startsWith(pluginPath));
+}
+
+function marketplaceSyncId(files: MarketplaceFile[]): string {
+  const publishedSet = files
+    .map((file) => `${file.path}\0${file.content}`)
     .sort()
     .join('\n');
 

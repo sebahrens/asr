@@ -87,7 +87,7 @@ describe('marketplace sync integration', () => {
     expect(skillMdFile!.content.toString('utf8')).toBe(X_SKILL_MD);
   });
 
-  it('removes the yanked plugin entry on the next sync after version.yanked fires', async () => {
+  it('removes the yanked plugin entry and only rewrites the marketplace index after version.yanked fires', async () => {
     seedPublishedVersion(db!, {
       author: ACME,
       name: SKILL_X,
@@ -109,6 +109,12 @@ describe('marketplace sync integration', () => {
       'marketplace.json',
     );
     expect(beforeYank.plugins.map((p) => p.name).sort()).toEqual([SKILL_X, SKILL_Y]);
+    expect(forgejo!.openCalls[0].files.map((f) => f.path)).toEqual([
+      'marketplace.json',
+      `plugins/${SKILL_X}/.claude-plugin/plugin.json`,
+      `plugins/${SKILL_X}/.codex-plugin/plugin.json`,
+      `plugins/${SKILL_X}/skills/${SKILL_X}/SKILL.md`,
+    ]);
 
     markVersionYanked(db!, SKILL_X, VERSION, {
       yankedAt: '2026-05-21T00:00:00.000Z',
@@ -126,10 +132,10 @@ describe('marketplace sync integration', () => {
     expect(afterYank.plugins.map((p) => p.name)).toEqual([SKILL_Y]);
 
     const afterYankPaths = forgejo!.openCalls[1].files.map((f) => f.path);
+    expect(afterYankPaths).toEqual(['marketplace.json']);
     expect(afterYankPaths).not.toContain(`plugins/${SKILL_X}/.claude-plugin/plugin.json`);
     expect(afterYankPaths).not.toContain(`plugins/${SKILL_X}/.codex-plugin/plugin.json`);
     expect(afterYankPaths).not.toContain(`plugins/${SKILL_X}/skills/${SKILL_X}/SKILL.md`);
-    expect(afterYankPaths).toContain(`plugins/${SKILL_Y}/skills/${SKILL_Y}/SKILL.md`);
   });
 
   it('reuses the content-addressed marketplace PR for identical published skill sets', async () => {
