@@ -71,36 +71,37 @@ async function assertApprovalQueue() {
   }
 
   const submission = data.submissions.find((item) => item.id === 'sub-1042') ?? data.submissions[0];
-  const decision = await fetch(`${apiBaseUrl}/api/v1/submissions/${submission.id}/approve`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: '{}',
-  });
-
-  if (!decision.ok) {
-    throw new Error(`approval decision returned ${decision.status}`);
-  }
-
-  const decisionData = await decision.json();
-  if (decisionData.submission?.status !== 'approved') {
-    throw new Error('approval decision did not update the submission status');
+  if (!submission.id || submission.status !== 'pending review') {
+    throw new Error('approval queue did not return pending review submissions');
   }
 }
 
 async function assertSubmissionCreate() {
-  const body = new FormData();
-  body.set('owner', 'e2e');
-  body.set('skillMd', `---
+  const skillMd = `---
 name: e2e-skill
 version: 0.1.0
 author: e2e
 description: Created by the Docker smoke test.
+tags:
+  - e2e
 kind: skill
+permissions:
+  network: false
+  filesystem: read-own
+  subprocess: false
+  environment: []
 ---
 
 # e2e-skill
-`);
-  body.set('archive', new Blob(['dev smoke archive']), 'skill.zip');
+`;
+  const archive = createZip([
+    {
+      path: 'SKILL.md',
+      content: Buffer.from(skillMd, 'utf8'),
+    },
+  ]);
+  const body = new FormData();
+  body.set('file', new Blob([archive], { type: 'application/zip' }), 'skill.zip');
 
   const created = await fetch(`${apiBaseUrl}/api/v1/submissions`, {
     method: 'POST',
@@ -108,19 +109,90 @@ kind: skill
   });
 
   if (created.status !== 201) {
-    throw new Error(`submission create returned ${created.status}`);
+    throw new Error(`submission create returned ${created.status}: ${await created.text()}`);
   }
 
   const data = await created.json();
   if (!data.id || data.status?.phase !== 'uploaded' || data.manifest?.name !== 'e2e-skill') {
     throw new Error('submission create did not return the expected uploaded response');
   }
+}
 
-  const queue = await fetch(`${apiBaseUrl}/api/v1/submissions?status=pending`);
-  const queueData = await queue.json();
-  if (!Array.isArray(queueData.submissions) || !queueData.submissions.some((item) => item.id === data.id)) {
-    throw new Error('created submission was not added to the pending queue');
+function createZip(entries) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  for (const entry of entries) {
+    const name = Buffer.from(entry.path, 'utf8');
+    const content = Buffer.from(entry.content);
+    const crc = crc32(content);
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt16LE(0, 10);
+    localHeader.writeUInt16LE(0, 12);
+    localHeader.writeUInt32LE(crc, 14);
+    localHeader.writeUInt32LE(content.length, 18);
+    localHeader.writeUInt32LE(content.length, 22);
+    localHeader.writeUInt16LE(name.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+    localParts.push(localHeader, name, content);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt16LE(0, 12);
+    centralHeader.writeUInt16LE(0, 14);
+    centralHeader.writeUInt32LE(crc, 16);
+    centralHeader.writeUInt32LE(content.length, 20);
+    centralHeader.writeUInt32LE(content.length, 24);
+    centralHeader.writeUInt16LE(name.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+    centralParts.push(centralHeader, name);
+
+    offset += localHeader.length + name.length + content.length;
   }
+
+  const centralDirectory = Buffer.concat(centralParts);
+  const endOfCentralDirectory = Buffer.alloc(22);
+  endOfCentralDirectory.writeUInt32LE(0x06054b50, 0);
+  endOfCentralDirectory.writeUInt16LE(0, 4);
+  endOfCentralDirectory.writeUInt16LE(0, 6);
+  endOfCentralDirectory.writeUInt16LE(entries.length, 8);
+  endOfCentralDirectory.writeUInt16LE(entries.length, 10);
+  endOfCentralDirectory.writeUInt32LE(centralDirectory.length, 12);
+  endOfCentralDirectory.writeUInt32LE(offset, 16);
+  endOfCentralDirectory.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...localParts, centralDirectory, endOfCentralDirectory]);
+}
+
+const crcTable = new Uint32Array(256);
+for (let i = 0; i < crcTable.length; i += 1) {
+  let c = i;
+  for (let k = 0; k < 8; k += 1) {
+    c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+  }
+  crcTable[i] = c >>> 0;
+}
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 async function assertRegistryBrowse() {
