@@ -442,11 +442,13 @@ function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
                 <a href="/review" aria-current={current === 'review' ? 'page' : undefined}>Review</a>
               ) : null}
             </nav>
-            <div className="mobile-session-summary" aria-label={`${session.authMode === 'mock' ? 'Development mock auth' : 'Signed in'} session for ${session.sub} with ${roleLabel} role`}>
-              <span>{session.authMode === 'mock' ? 'Dev mock auth' : 'Signed in'}</span>
-              <strong>{session.sub}</strong>
-              <small>{roleLabel}</small>
-            </div>
+            {import.meta.env.DEV ? (
+              <div className="mobile-session-summary" aria-label={`${session.authMode === 'mock' ? 'Development mock auth' : 'Signed in'} session for ${session.sub} with ${roleLabel} role`}>
+                <span>{session.authMode === 'mock' ? 'Dev mock auth' : 'Signed in'}</span>
+                <strong>{session.sub}</strong>
+                <small>{roleLabel}</small>
+              </div>
+            ) : null}
           </aside>
         </div>
       ) : null}
@@ -455,6 +457,10 @@ function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
 }
 
 function MockAuthBanner() {
+  if (!import.meta.env.DEV) {
+    return null;
+  }
+
   const session = useSession();
   const roleLabel = sessionRoleLabel(session);
   const label = session.authMode === 'mock' ? 'Dev mock auth' : 'Signed in';
@@ -699,7 +705,7 @@ function createManifestDraft(content: string): PublishManifestDraft {
   };
 }
 
-const mockReviewQueue: ReviewSubmission[] = [
+const mockReviewQueue: ReviewSubmission[] = import.meta.env.DEV ? [
   {
     id: 'sub-1042',
     skillName: 'secure-code-review',
@@ -733,9 +739,9 @@ const mockReviewQueue: ReviewSubmission[] = [
     risk: 'low',
     findings: 0,
   },
-];
+] : [];
 
-const mockReviewDetails: Record<string, ReviewSubmissionDetail> = {
+const mockReviewDetails: Record<string, ReviewSubmissionDetail> = import.meta.env.DEV ? {
   'sub-1042': {
     diff: [
       {
@@ -931,7 +937,7 @@ Flag dependency upgrades that change runtime behavior or deployment steps.`,
       { actor: 'compliance', action: 'Opened review', at: '2026-05-23T17:18:00Z' },
     ],
   },
-};
+} : {};
 
 function createReviewDetail(submission: ReviewSubmission): ReviewSubmissionDetail {
   const findingSummary = submission.findings === 1

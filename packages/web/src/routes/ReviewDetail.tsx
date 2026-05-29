@@ -2,10 +2,6 @@ import type { ScanReport, Submission, VersionDiff } from '@asr/core';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import {
-  getReviewSubmissionMock,
-  isDevMockMode,
-} from '../dev-mocks/reviewSubmissionMocks';
 import { DecisionPanel } from './DecisionPanel';
 
 type TabId = 'diff' | 'scan';
@@ -27,6 +23,13 @@ async function fetchJson<T>(url: string): Promise<T> {
 
 type SubmissionEvidenceKey = 'submission' | 'diff' | 'scan';
 
+function isDevMockMode(): boolean {
+  return (
+    import.meta.env.MODE === 'development' &&
+    !import.meta.env.VITE_API_URL
+  );
+}
+
 // In `vite dev` with no API URL configured, the dev server has no backend that
 // serves /api/v1/submissions/:id, so route requests through canonical mock
 // evidence instead. Tests run in MODE='test' and stub fetch directly, so this
@@ -36,7 +39,8 @@ async function fetchSubmissionEvidence<T>(
   kind: SubmissionEvidenceKey,
   url: string,
 ): Promise<T> {
-  if (isDevMockMode()) {
+  if (import.meta.env.DEV && isDevMockMode()) {
+    const { getReviewSubmissionMock } = await import('../dev-mocks/reviewSubmissionMocks');
     const mock = getReviewSubmissionMock(id);
     if (mock) {
       return mock[kind] as unknown as T;

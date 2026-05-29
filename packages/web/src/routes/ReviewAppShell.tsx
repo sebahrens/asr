@@ -11,8 +11,6 @@ export function ReviewAppShell({ current, children }: ReviewAppShellProps) {
   const session = useSession();
   const canReview = session.roles.some((role) => role === 'Compliance' || role === 'Admin');
   const roleLabel = session.roles.length > 0 ? session.roles.join(', ') : 'Viewer';
-  const authLabel = session.authMode === 'mock' ? 'Dev mock auth' : 'Signed in';
-  const authDescription = session.authMode === 'mock' ? 'Development mock auth' : 'Signed in';
 
   return (
     <>
@@ -29,15 +27,17 @@ export function ReviewAppShell({ current, children }: ReviewAppShellProps) {
               <Link to="/review" aria-current={current === 'review' ? 'page' : undefined}>Review</Link>
             ) : null}
           </nav>
-          <div
-            className="mock-auth-banner"
-            role="status"
-            aria-label={`${authDescription} session for ${session.sub} with ${roleLabel} role`}
-          >
-            <span className="mock-auth-label">{authLabel}</span>
-            <span className="mock-auth-identity">{session.sub}</span>
-            <span className="mock-auth-role">{roleLabel}</span>
-          </div>
+          {import.meta.env.DEV ? (
+            <div
+              className="mock-auth-banner"
+              role="status"
+              aria-label={`${session.authMode === 'mock' ? 'Development mock auth' : 'Signed in'} session for ${session.sub} with ${roleLabel} role`}
+            >
+              <span className="mock-auth-label">{session.authMode === 'mock' ? 'Dev mock auth' : 'Signed in'}</span>
+              <span className="mock-auth-identity">{session.sub}</span>
+              <span className="mock-auth-role">{roleLabel}</span>
+            </div>
+          ) : null}
         </div>
       </header>
       {children}
