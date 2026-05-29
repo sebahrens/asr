@@ -5,10 +5,7 @@ import type { AuthVariables, Identity } from './types.js';
 export const EXEMPT_PATHS = ['/health', '/api/health', '/version'] as const;
 
 export function isExemptPath(path: string): boolean {
-  return (
-    EXEMPT_PATHS.includes(path as (typeof EXEMPT_PATHS)[number]) ||
-    path.startsWith('/webhooks/')
-  );
+  return EXEMPT_PATHS.includes(path as (typeof EXEMPT_PATHS)[number]);
 }
 
 export function requireRole(...roles: string[]): MiddlewareHandler<{ Variables: AuthVariables }> {

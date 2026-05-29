@@ -51,7 +51,7 @@ describe('isExemptPath', () => {
     expect(isExemptPath('/health')).toBe(true);
     expect(isExemptPath('/api/health')).toBe(true);
     expect(isExemptPath('/version')).toBe(true);
-    expect(isExemptPath('/webhooks/forgejo')).toBe(true);
+    expect(isExemptPath('/webhooks/forgejo')).toBe(false);
     expect(isExemptPath('/api/v1/skills')).toBe(false);
     expect(isExemptPath('/api/v1/skills/alice/demo/versions/1.0.0/yank')).toBe(false);
     expect(isExemptPath('/submissions')).toBe(false);

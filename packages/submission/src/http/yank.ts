@@ -1,6 +1,7 @@
 import type { ForgejoClient } from '@asr/core';
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
+import { requireRole } from '../auth/requireRole.js';
 import { SeparationOfDutiesError, assertSeparation } from '../auth/separation.js';
 import type { AuthVariables } from '../auth/types.js';
 import { emitAudit } from '../audit/emit.js';
@@ -31,12 +32,8 @@ export function createYankRoutes(options: YankRouteOptions = {}) {
   const routes = new Hono<{ Variables: AuthVariables }>();
   const now = options.now ?? (() => new Date());
 
-  routes.post('/:owner/:name/versions/:version/yank', async (c) => {
-    const identity = c.get('identity');
-    if (!identity || !identity.roles.includes('Compliance')) {
-      return apiError(c, 403, 'insufficient_permissions', { required: 'Compliance' });
-    }
-
+  routes.post('/:owner/:name/versions/:version/yank', requireRole('Compliance'), async (c) => {
+    const identity = c.get('identity')!;
     const body = await parseBody(c.req.raw);
     if (!body) {
       return apiError(c, 400, 'invalid_manifest', {
