@@ -455,6 +455,7 @@ function createDefaultRegistryDb(): Database.Database {
         }),
       });
       insertSkillVersion(db, {
+        owner: skill.owner,
         skill_name: skill.name,
         version: version.version,
         content_hash: version.contentHash,

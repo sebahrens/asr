@@ -90,7 +90,7 @@ describe('app', () => {
     await expect(res.json()).resolves.toMatchObject({
       items: [
         {
-          owner: 'submitter-1',
+          owner: 'asr',
           name: 'security-review',
           latestVersion: '1.0.0',
         },
