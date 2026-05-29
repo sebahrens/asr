@@ -3370,7 +3370,7 @@ main {
   header .app-topbar,
   header .review-topbar {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 10px 12px;
     min-height: 40px;
   }
@@ -3396,6 +3396,8 @@ main {
     justify-items: center;
     padding: 0;
     width: 40px;
+    grid-column: 3;
+    grid-row: 1;
   }
 
   .mobile-nav-toggle span {
@@ -3512,10 +3514,21 @@ main {
   }
 
   .app-topbar-right {
-    grid-column: 1 / -1;
-    justify-content: space-between;
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
     min-width: 0;
-    width: 100%;
+    width: auto;
+  }
+
+  .app-topbar-right .brand-toggle {
+    gap: 0;
+    padding: 8px;
+  }
+
+  .app-topbar-right .brand-toggle-label,
+  .app-topbar-right .brand-toggle-value {
+    display: none;
   }
 
   .mock-auth-banner {

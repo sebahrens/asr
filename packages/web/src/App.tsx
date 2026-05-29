@@ -330,11 +330,11 @@ function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
 }
 
 function MockAuthBanner() {
-  if (!import.meta.env.DEV) {
+  const session = useSession();
+  if (!import.meta.env.DEV && session.authMode !== 'mock') {
     return null;
   }
 
-  const session = useSession();
   const roleLabel = sessionRoleLabel(session);
   const label = session.authMode === 'mock' ? 'Dev mock auth' : 'Signed in';
   return (

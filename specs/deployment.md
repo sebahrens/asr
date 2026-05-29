@@ -54,6 +54,7 @@ services:
       args:
         - VITE_API_URL=http://localhost:3001
         - VITE_AUTH_MODE=mock
+        - VITE_ENABLE_MOCK_AUTH=true
     ports:
       - "5173:5173"
     depends_on:
