@@ -1,6 +1,10 @@
+import type { SkillManifest, Submission } from '@asr/core';
+import Database from 'better-sqlite3';
 import { pino } from 'pino';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { createApp as CreateApp } from '../index.js';
+import { runMigrations } from '../db/migrations/index.js';
+import { insertSubmission } from '../db/repositories/submissions.js';
 import { MCP_ERROR, McpToolError } from './errors.js';
 import { createRateLimiter } from './rateLimit.js';
 import {
@@ -11,6 +15,51 @@ import {
 import type { InvocationLogger } from './telemetry.js';
 
 let createApp: typeof CreateApp;
+let db: Database.Database | undefined;
+
+function makeManifest(name: string, version = '1.0.0'): SkillManifest {
+  return {
+    name,
+    version,
+    author: 'submitter@example.com',
+    description: `${name} skill awaiting review`,
+    tags: ['demo'],
+    kind: 'skill',
+    permissions: {
+      network: false,
+      filesystem: 'none',
+      subprocess: false,
+      environment: [],
+    },
+  };
+}
+
+function seedReviewSubmission(
+  database: Database.Database,
+  id: string,
+  manifest: SkillManifest,
+): Submission {
+  const submission: Submission = {
+    id,
+    manifest,
+    classification: 'md-only',
+    contentHash: `sha256:${id}`,
+    submittedAt: '2026-05-24T10:00:00.000Z',
+    submittedBy: 'submitter@example.com',
+    status: { phase: 'compliance-review' },
+  };
+  insertSubmission(database, {
+    id: submission.id,
+    manifestJson: JSON.stringify(submission.manifest),
+    classification: submission.classification,
+    contentHash: submission.contentHash,
+    submittedAt: submission.submittedAt,
+    submittedBy: submission.submittedBy,
+    statusPhase: submission.status.phase,
+    statusJson: JSON.stringify(submission.status),
+  });
+  return submission;
+}
 
 function makeCapturingLogger(): {
   logger: InvocationLogger;
@@ -50,6 +99,14 @@ beforeAll(async () => {
   vi.stubEnv('MOCK_USER_ROLES', 'Submitter');
 
   ({ createApp } = await import('../index.js'));
+});
+
+afterEach(() => {
+  db?.close();
+  db = undefined;
+  vi.stubEnv('AUTH_MODE', 'mock');
+  vi.stubEnv('MOCK_USER_SUB', 'mock-user');
+  vi.stubEnv('MOCK_USER_ROLES', 'Submitter');
 });
 
 describe('mcpHandler', () => {
@@ -180,6 +237,52 @@ describe('mcpHandler', () => {
       jsonrpc: '2.0',
       id: 2,
       result: { tools: expect.any(Array) },
+    });
+  });
+
+  it('lets a Compliance-only mock principal initialize and call review_queue', async () => {
+    vi.stubEnv('MOCK_USER_SUB', 'reviewer-1');
+    vi.stubEnv('MOCK_USER_ROLES', 'Compliance');
+
+    db = new Database(':memory:');
+    runMigrations(db);
+    seedReviewSubmission(db, 'sub-pending-1', makeManifest('alpha'));
+
+    const app = createApp({ mcp: { db } });
+    const init = await initializeMcpSession(app);
+    const sessionId = init.headers.get('mcp-session-id');
+
+    expect(init.status).toBe(200);
+    expect(sessionId).toBeTruthy();
+
+    const res = await app.request('/mcp', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-session-id': sessionId ?? '',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: {
+          name: 'review_queue',
+          arguments: { limit: 20 },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      jsonrpc: '2.0',
+      id: 2,
+      result: {
+        structuredContent: {
+          submissions: [expect.objectContaining({ id: 'sub-pending-1' })],
+        },
+      },
     });
   });
 });

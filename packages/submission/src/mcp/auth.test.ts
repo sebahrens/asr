@@ -73,8 +73,23 @@ describe('resolveMcpPrincipal (AUTH_MODE=entra)', () => {
     });
   });
 
-  it('rejects with insufficient_permissions (-32001) when token has no Submitter role', async () => {
+  it('resolves to {sub, roles} for a valid Compliance-only token', async () => {
     const { tenantId, clientId, jwks, token } = await signedToken(['Compliance']);
+    const req = new Request('https://example.test/mcp', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    await expect(
+      resolveMcpPrincipal(req, { authMode: 'entra', tenantId, clientId, jwks }),
+    ).resolves.toEqual({
+      sub: 'user-1',
+      roles: ['Compliance'],
+    });
+  });
+
+  it('rejects with insufficient_permissions (-32001) when token has no MCP role', async () => {
+    const { tenantId, clientId, jwks, token } = await signedToken(['Observer']);
     const req = new Request('https://example.test/mcp', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
@@ -91,8 +106,8 @@ describe('resolveMcpPrincipal (AUTH_MODE=entra)', () => {
     expect((err as McpToolError).code).toBe(MCP_ERROR.insufficient_permissions);
     expect((err as McpToolError).message).toBe('insufficient_permissions');
     expect((err as McpToolError).data).toEqual({
-      required: 'Submitter',
-      actual: ['Compliance'],
+      required: 'Submitter or Compliance',
+      actual: ['Observer'],
     });
   });
 });
@@ -112,9 +127,23 @@ describe('resolveMcpPrincipal (AUTH_MODE=mock)', () => {
     vi.unstubAllEnvs();
   });
 
-  it('rejects with insufficient_permissions when mock principal lacks Submitter', async () => {
+  it('resolves to a Compliance-only mock principal', async () => {
     vi.stubEnv('MOCK_USER_SUB', 'mock-user');
     vi.stubEnv('MOCK_USER_ROLES', 'Compliance');
+
+    const req = new Request('https://example.test/mcp', { method: 'POST' });
+
+    await expect(resolveMcpPrincipal(req, { authMode: 'mock' })).resolves.toEqual({
+      sub: 'mock-user',
+      roles: ['Compliance'],
+    });
+
+    vi.unstubAllEnvs();
+  });
+
+  it('rejects with insufficient_permissions when mock principal lacks an MCP role', async () => {
+    vi.stubEnv('MOCK_USER_SUB', 'mock-user');
+    vi.stubEnv('MOCK_USER_ROLES', 'Observer');
 
     const req = new Request('https://example.test/mcp', { method: 'POST' });
 

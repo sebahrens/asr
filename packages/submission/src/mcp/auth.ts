@@ -2,6 +2,9 @@ import { verifyBearer, type VerifyBearerOptions } from '../auth/entra.js';
 import type { Identity } from '../auth/types.js';
 import { MCP_ERROR, McpToolError } from './errors.js';
 
+const MCP_SESSION_ROLES = ['Submitter', 'Compliance'] as const;
+const MCP_SESSION_ROLE_SET = new Set<string>(MCP_SESSION_ROLES);
+
 export interface ResolveMcpPrincipalOptions extends VerifyBearerOptions {
   authMode?: string;
 }
@@ -42,9 +45,9 @@ export async function resolveMcpPrincipal(
     }
   }
 
-  if (!identity.roles.includes('Submitter')) {
+  if (!identity.roles.some((role) => MCP_SESSION_ROLE_SET.has(role))) {
     throw new McpToolError(MCP_ERROR.insufficient_permissions, 'insufficient_permissions', {
-      required: 'Submitter',
+      required: MCP_SESSION_ROLES.join(' or '),
       actual: identity.roles,
     });
   }
