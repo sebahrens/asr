@@ -42,6 +42,54 @@ test('passes against an empty clean directory', async () => {
   }
 });
 
+test('skips opengrep when executable code exists but no rule files are configured', async () => {
+  const fixture = await createFixture();
+  try {
+    const scriptsDir = join(fixture.scanDir, 'scripts');
+    const rulesDir = join(fixture.root, 'rules');
+    await mkdir(scriptsDir);
+    await mkdir(rulesDir);
+    await writeFile(join(scriptsDir, 'index.ts'), 'export const answer = 42;\n');
+    await writeFile(join(rulesDir, '.gitkeep'), '');
+
+    const result = await runOrchestrator(fixture, {
+      OPENGREP_RULES_DIR: rulesDir,
+    });
+
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.report.verdict, 'pass');
+    assert.equal(result.report.toolResults.opengrep.exitCode, 0);
+    assert.equal(result.report.toolResults.opengrep.findingCount, 0);
+    assert.equal(result.report.toolResults.opengrep.skipped, true);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test('runs opengrep when executable code and rule files are present', async () => {
+  const fixture = await createFixture();
+  try {
+    const scriptsDir = join(fixture.scanDir, 'scripts');
+    const rulesDir = join(fixture.root, 'rules');
+    await mkdir(scriptsDir);
+    await mkdir(rulesDir);
+    await writeFile(join(scriptsDir, 'index.ts'), 'export const answer = 42;\n');
+    await writeFile(join(rulesDir, 'asr.yml'), 'rules: []\n');
+
+    const result = await runOrchestrator(fixture, {
+      OPENGREP_RULES_DIR: rulesDir,
+    });
+
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.report.verdict, 'pass');
+    assert.equal(result.report.toolResults.opengrep.exitCode, 0);
+    assert.equal(result.report.toolResults.opengrep.findingCount, 0);
+    assert.equal(result.report.toolResults.opengrep.skipped, undefined);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test('invokes veracode CLI with documented args when credentials are set', async () => {
   const fixture = await createFixture();
   try {

@@ -87,12 +87,13 @@ async function runFoxguard() {
 
 async function runOpengrep() {
   const hasScripts = await hasExecutableCode();
-  if (!hasScripts || process.env.OPENGREP_ENABLED === 'false') {
+  const rulesDir = process.env.OPENGREP_RULES_DIR || '/opt/scan/rules';
+  const hasRules = await hasOpengrepRules(rulesDir);
+  if (!hasScripts || !hasRules || process.env.OPENGREP_ENABLED === 'false') {
     return { tool: 'opengrep', exitCode: 0, findings: [], skipped: true };
   }
 
   const sarifPath = join(OUTPUT_DIR, 'opengrep.sarif');
-  const rulesDir = process.env.OPENGREP_RULES_DIR || '/opt/scan/rules';
   const exitCode = await runCommand('opengrep', [
     'scan',
     '--sarif-output',
@@ -137,6 +138,11 @@ async function runVeracode() {
 async function hasExecutableCode() {
   const entries = await readdir(join(SCAN_DIR, 'scripts'), { recursive: true }).catch(() => []);
   return entries.some((entry) => /\.(ts|tsx|js|jsx|mjs|cjs|py|go|sh)$/.test(String(entry)));
+}
+
+async function hasOpengrepRules(rulesDir) {
+  const entries = await readdir(rulesDir, { recursive: true }).catch(() => []);
+  return entries.some((entry) => /\.(ya?ml|json)$/i.test(String(entry)));
 }
 
 async function parseSarif(path, tool, overrideSeverity) {
