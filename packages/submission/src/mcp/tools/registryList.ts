@@ -35,24 +35,6 @@ function principalFromExtra(extra: unknown): Identity {
   return principal;
 }
 
-function postFilter(
-  items: SkillSummary[],
-  filters: { tags?: string[]; author?: string },
-): SkillSummary[] {
-  return items.filter((item) => {
-    if (filters.author && item.owner !== filters.author) {
-      return false;
-    }
-    if (filters.tags && filters.tags.length > 0) {
-      const tagSet = new Set(item.tags);
-      for (const tag of filters.tags) {
-        if (!tagSet.has(tag)) return false;
-      }
-    }
-    return true;
-  });
-}
-
 export function registryListHandler(
   db: Database,
   args: RegistryListArgs,
@@ -65,19 +47,15 @@ export function registryListHandler(
   requireToolRole(principal, 'Submitter');
 
   const { items } = listPublishedSkills(db, {
-    tag: args.tag?.[0],
+    tags: args.tag,
+    owner: args.author,
     kind: args.kind,
-    limit: 100,
+    limit: args.limit,
   });
 
-  const skills = postFilter(items, {
-    tags: args.tag,
-    author: args.author,
-  }).slice(0, args.limit);
-
   return {
-    content: [{ type: 'text', text: JSON.stringify({ skills }, null, 2) }],
-    structuredContent: { skills },
+    content: [{ type: 'text', text: JSON.stringify({ skills: items }, null, 2) }],
+    structuredContent: { skills: items },
   };
 }
 

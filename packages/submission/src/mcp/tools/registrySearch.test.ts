@@ -1,7 +1,7 @@
 import type { SkillManifest } from '@asr/core';
 import Database from 'better-sqlite3';
 import { pino } from 'pino';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Identity } from '../../auth/types.js';
 import { runMigrations } from '../../db/migrations/index.js';
 import { insertSubmission } from '../../db/repositories/submissions.js';
@@ -188,6 +188,38 @@ describe('registrySearchHandler', () => {
     );
 
     expect(result.structuredContent.skills).toHaveLength(2);
+  });
+
+  it('passes caller limit through to the repository before parsing result rows', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    for (let i = 0; i < 3; i += 1) {
+      seedPublished(
+        db,
+        `s-${i}`,
+        makeManifest({ name: `n${i}` }),
+        `2026-05-24T1${i}:00:00.000Z`,
+        `2026-05-24T1${i}:05:00.000Z`,
+      );
+    }
+    const parse = JSON.parse;
+    let parseCount = 0;
+    const parseSpy = vi.spyOn(JSON, 'parse').mockImplementation((value) => {
+      parseCount += 1;
+      return parse(value);
+    });
+
+    try {
+      registrySearchHandler(
+        db,
+        { limit: 2 },
+        extraFor({ sub: 'p1', roles: ['Submitter'] }),
+      );
+      expect(parseCount).toBe(4);
+    } finally {
+      parseSpy.mockRestore();
+    }
   });
 
   it('throws insufficient_permissions (-32001) for a principal lacking the Submitter role', () => {

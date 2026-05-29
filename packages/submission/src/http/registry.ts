@@ -1,4 +1,4 @@
-import type { SkillDetail, SkillKind, SkillVersion, VersionDiff } from '@asr/core';
+import type { SkillDetail, SkillKind, VersionDiff } from '@asr/core';
 import BetterSqlite3 from 'better-sqlite3';
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
@@ -6,9 +6,6 @@ import { runMigrations } from '../db/migrations/index.js';
 import { getPublishedSkill, getPublishedSkillVersion, listPublishedSkills } from '../db/repositories/skills.js';
 import {
   insertSkillVersion,
-  listVersions,
-  resolveLatestVersion,
-  type SkillVersionRow,
 } from '../db/repositories/skillVersions.js';
 import { insertSubmission } from '../db/repositories/submissions.js';
 import { apiError } from './errors.js';
@@ -263,17 +260,8 @@ export function createRegistryRoutes(options: RegistryRouteOptions = {}) {
       return apiError(c, 404, 'submission_not_found');
     }
 
-    const versionRows = listVersions(db, name);
     c.header('Cache-Control', 'public, max-age=60');
-    if (versionRows.length === 0) {
-      return c.json(skill);
-    }
-
-    return c.json({
-      ...skill,
-      latestVersion: resolveLatestVersion(db, name) ?? null,
-      versions: versionRows.map((row) => mapSkillVersionRow(row, owner)),
-    });
+    return c.json(skill);
   });
 
   routes.get('/:owner/:name/v/:version', (c) => {
@@ -372,24 +360,6 @@ function decodeCursor(value: string | undefined): number | undefined {
 
 function encodeCursor(offset: number): string {
   return Buffer.from(JSON.stringify({ offset }), 'utf8').toString('base64');
-}
-
-function mapSkillVersionRow(row: SkillVersionRow, owner: string): SkillVersion {
-  return {
-    owner,
-    name: row.skill_name,
-    version: row.version,
-    contentHash: row.content_hash,
-    publishedAt: row.published_at,
-    publishedBy: row.published_by,
-    approvedBy: row.approved_by,
-    prNumber: row.pr_number,
-    mergeCommit: row.merge_commit,
-    yanked: row.yanked_at !== null,
-    ...(row.yanked_at ? { yankedAt: row.yanked_at } : {}),
-    ...(row.yank_reason ? { yankReason: row.yank_reason } : {}),
-    riskAssessment: 'low',
-  };
 }
 
 function forgejoPackageUrl(forgejoUrl: string, owner: string, name: string, version: string): string {

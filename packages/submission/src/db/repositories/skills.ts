@@ -5,6 +5,8 @@ import type Database from 'better-sqlite3';
 export interface ListPublishedSkillsOptions {
   q?: string;
   tag?: string;
+  tags?: string[];
+  owner?: string;
   kind?: SkillKind;
   limit?: number;
   offset?: number;
@@ -49,6 +51,12 @@ interface PublishedSkillGroup {
   versions: PublishedSkillVersion[];
 }
 
+interface PublishedSkillKeyRow {
+  owner: string;
+  name: string;
+  published_at: string;
+}
+
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
@@ -56,15 +64,22 @@ export function listPublishedSkills(
   db: Database.Database,
   opts: ListPublishedSkillsOptions = {},
 ): ListPublishedSkillsResult {
-  const groups = groupPublishedSkills(readPublishedRows(db))
-    .map(toSkillDetail)
-    .filter((skill) => matchesFilters(skill, opts))
-    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
-
   const limit = normalizeLimit(opts.limit);
   const offset = normalizeOffset(opts.offset);
-  const items = groups.slice(offset, offset + limit).map(toSummary);
-  const nextOffset = offset + limit < groups.length ? offset + limit : null;
+  const keys = readPublishedSkillKeys(db, opts, limit + 1, offset);
+  const pageKeys = keys.slice(0, limit);
+  const keyOrder = new Map(
+    pageKeys.map((key, index) => [`${key.owner}\0${key.name}`, index]),
+  );
+  const items = groupPublishedSkills(readPublishedRowsForSkillKeys(db, pageKeys))
+    .map(toSkillDetail)
+    .sort((a, b) => {
+      const aIndex = keyOrder.get(`${a.owner}\0${a.name}`) ?? Number.MAX_SAFE_INTEGER;
+      const bIndex = keyOrder.get(`${b.owner}\0${b.name}`) ?? Number.MAX_SAFE_INTEGER;
+      return aIndex - bIndex;
+    })
+    .map(toSummary);
+  const nextOffset = keys.length > limit ? offset + limit : null;
 
   return { items, nextOffset };
 }
@@ -74,8 +89,7 @@ export function getPublishedSkill(
   owner: string,
   name: string,
 ): SkillDetail | undefined {
-  return groupPublishedSkills(readPublishedRows(db))
-    .filter((group) => group.owner === owner && group.name === name)
+  return groupPublishedSkills(readPublishedRowsForSkill(db, owner, name))
     .map(toSkillDetail)
     .at(0);
 }
@@ -92,9 +106,11 @@ export function getPublishedSkillVersion(
   name: string,
   version?: string,
 ): PublishedSkillVersionRecord | undefined {
-  const group = groupPublishedSkills(readPublishedRows(db)).find(
-    (candidate) => candidate.owner === owner && candidate.name === name,
-  );
+  const rows =
+    version === undefined
+      ? readPublishedRowsForSkill(db, owner, name)
+      : readPublishedRowsForSkillVersion(db, owner, name, version);
+  const group = groupPublishedSkills(rows).at(0);
   if (!group) {
     return undefined;
   }
@@ -115,7 +131,97 @@ export function getPublishedSkillVersion(
   };
 }
 
-function readPublishedRows(db: Database.Database): PublishedSubmissionRow[] {
+function readPublishedSkillKeys(
+  db: Database.Database,
+  opts: ListPublishedSkillsOptions,
+  limit: number,
+  offset: number,
+): PublishedSkillKeyRow[] {
+  const filters = buildPublishedSkillFilters(opts);
+  return db
+    .prepare(
+      `
+        SELECT
+          owner,
+          name,
+          MAX(published_at) AS published_at
+        FROM (
+          SELECT
+            json_extract(submissions.manifest_json, '$.author') AS owner,
+            json_extract(submissions.manifest_json, '$.name') AS name,
+            COALESCE(
+              json_extract(submissions.status_json, '$.publishedAt'),
+              submissions.submitted_at
+            ) AS published_at,
+            submissions.manifest_json
+          FROM submissions
+          WHERE submissions.status_phase = 'published'
+            ${filters.sql}
+        )
+        GROUP BY owner, name
+        ORDER BY published_at DESC, owner ASC, name ASC
+        LIMIT ? OFFSET ?
+      `,
+    )
+    .all(...filters.params, limit, offset) as PublishedSkillKeyRow[];
+}
+
+function readPublishedRowsForSkillKeys(
+  db: Database.Database,
+  keys: PublishedSkillKeyRow[],
+): PublishedSubmissionRow[] {
+  if (keys.length === 0) {
+    return [];
+  }
+
+  const clauses = keys
+    .map(
+      () =>
+        "(json_extract(submissions.manifest_json, '$.author') = ? AND json_extract(submissions.manifest_json, '$.name') = ?)",
+    )
+    .join(' OR ');
+  const params = keys.flatMap((key) => [key.owner, key.name]);
+
+  return readPublishedRowsWhere(db, `AND (${clauses})`, params);
+}
+
+function readPublishedRowsForSkill(
+  db: Database.Database,
+  owner: string,
+  name: string,
+): PublishedSubmissionRow[] {
+  return readPublishedRowsWhere(
+    db,
+    `
+      AND json_extract(submissions.manifest_json, '$.author') = ?
+      AND json_extract(submissions.manifest_json, '$.name') = ?
+    `,
+    [owner, name],
+  );
+}
+
+function readPublishedRowsForSkillVersion(
+  db: Database.Database,
+  owner: string,
+  name: string,
+  version: string,
+): PublishedSubmissionRow[] {
+  return readPublishedRowsWhere(
+    db,
+    `
+      AND json_extract(submissions.manifest_json, '$.author') = ?
+      AND json_extract(submissions.manifest_json, '$.name') = ?
+      AND json_extract(submissions.manifest_json, '$.version') = ?
+    `,
+    [owner, name, version],
+  );
+}
+
+function readPublishedRowsWhere(
+  db: Database.Database,
+  whereSql: string,
+  params: unknown[],
+): PublishedSubmissionRow[] {
   return db
     .prepare(
       `
@@ -133,10 +239,56 @@ function readPublishedRows(db: Database.Database): PublishedSubmissionRow[] {
         LEFT JOIN skill_versions sv
           ON sv.submission_id = submissions.id
         WHERE status_phase = 'published'
-        ORDER BY submitted_at DESC
+          ${whereSql}
+        ORDER BY COALESCE(json_extract(submissions.status_json, '$.publishedAt'), submissions.submitted_at) DESC
       `,
     )
-    .all() as PublishedSubmissionRow[];
+    .all(...params) as PublishedSubmissionRow[];
+}
+
+function buildPublishedSkillFilters(opts: ListPublishedSkillsOptions): {
+  sql: string;
+  params: unknown[];
+} {
+  const sql: string[] = [];
+  const params: unknown[] = [];
+
+  if (opts.owner) {
+    sql.push("AND json_extract(submissions.manifest_json, '$.author') = ?");
+    params.push(opts.owner);
+  }
+
+  if (opts.kind) {
+    sql.push("AND json_extract(submissions.manifest_json, '$.kind') = ?");
+    params.push(opts.kind);
+  }
+
+  const tags = opts.tags ?? (opts.tag ? [opts.tag] : []);
+  for (const tag of tags) {
+    sql.push(
+      "AND EXISTS (SELECT 1 FROM json_each(submissions.manifest_json, '$.tags') WHERE json_each.value = ?)",
+    );
+    params.push(tag);
+  }
+
+  const query = opts.q?.trim().toLowerCase();
+  if (query) {
+    sql.push(`
+      AND (
+        lower(CAST(json_extract(submissions.manifest_json, '$.name') AS TEXT)) LIKE ? ESCAPE '\\'
+        OR lower(CAST(json_extract(submissions.manifest_json, '$.description') AS TEXT)) LIKE ? ESCAPE '\\'
+        OR EXISTS (
+          SELECT 1
+          FROM json_each(submissions.manifest_json, '$.tags')
+          WHERE lower(CAST(json_each.value AS TEXT)) LIKE ? ESCAPE '\\'
+        )
+      )
+    `);
+    const pattern = `%${escapeLike(query)}%`;
+    params.push(pattern, pattern, pattern);
+  }
+
+  return { sql: sql.join('\n'), params };
 }
 
 function groupPublishedSkills(rows: PublishedSubmissionRow[]): PublishedSkillGroup[] {
@@ -161,7 +313,7 @@ function groupPublishedSkills(rows: PublishedSubmissionRow[]): PublishedSkillGro
 
 function toSkillDetail(group: PublishedSkillGroup): SkillDetail {
   const sortedVersions = sortVersions(group.versions);
-  const latest = sortedVersions[0];
+  const latest = sortedVersions.find((version) => version.row.yanked_at === null) ?? sortedVersions[0];
 
   return {
     owner: group.owner,
@@ -218,29 +370,12 @@ function toSummary(skill: SkillDetail): SkillSummary {
   };
 }
 
-function matchesFilters(skill: SkillDetail, opts: ListPublishedSkillsOptions): boolean {
-  if (opts.kind && skill.kind !== opts.kind) {
-    return false;
-  }
-
-  if (opts.tag && !skill.tags.includes(opts.tag)) {
-    return false;
-  }
-
-  const query = opts.q?.trim().toLowerCase();
-  if (!query) {
-    return true;
-  }
-
-  return [
-    skill.name,
-    skill.description,
-    ...skill.tags,
-  ].some((value) => value.toLowerCase().includes(query));
-}
-
 function publishedAtFor(version: PublishedSkillVersion): string {
   return version.status.publishedAt ?? version.row.submitted_at;
+}
+
+function escapeLike(value: string): string {
+  return value.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
 }
 
 function normalizeLimit(limit: number | undefined): number {

@@ -1,6 +1,6 @@
 import type { SkillKind, SkillManifest } from '@asr/core';
 import Database from 'better-sqlite3';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runMigrations } from '../migrations/index.js';
 import {
   getPublishedSkill,
@@ -112,6 +112,83 @@ describe('published skills repository', () => {
     const secondPage = listPublishedSkills(db, { limit: 1, offset: firstPage.nextOffset ?? 0 });
     expect(secondPage.items.map((skill) => skill.name)).toEqual(['y']);
     expect(secondPage.nextOffset).toBe(2);
+  });
+
+  it('pushes list pagination into SQL before parsing manifest and status JSON', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    insertPublishedSubmission(db, {
+      id: 'submission-newest',
+      name: 'newest',
+      version: '1.0.0',
+      submittedAt: '2026-05-26T10:00:00.000Z',
+      publishedAt: '2026-05-26T10:05:00.000Z',
+    });
+    insertPublishedSubmission(db, {
+      id: 'submission-middle',
+      name: 'middle',
+      version: '1.0.0',
+      submittedAt: '2026-05-25T10:00:00.000Z',
+      publishedAt: '2026-05-25T10:05:00.000Z',
+    });
+    insertPublishedSubmission(db, {
+      id: 'submission-oldest',
+      name: 'oldest',
+      version: '1.0.0',
+      submittedAt: '2026-05-24T10:00:00.000Z',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+    });
+
+    const parse = JSON.parse;
+    let parseCount = 0;
+    const parseSpy = vi.spyOn(JSON, 'parse').mockImplementation((value) => {
+      parseCount += 1;
+      return parse(value);
+    });
+
+    try {
+      expect(listPublishedSkills(db, { limit: 1 }).items.map((skill) => skill.name)).toEqual(['newest']);
+      expect(parseCount).toBe(2);
+    } finally {
+      parseSpy.mockRestore();
+    }
+  });
+
+  it('queries one owner/name directly instead of parsing unrelated published rows', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    insertPublishedSubmission(db, {
+      id: 'submission-target',
+      name: 'target',
+      version: '1.0.0',
+      submittedAt: '2026-05-26T10:00:00.000Z',
+      publishedAt: '2026-05-26T10:05:00.000Z',
+    });
+    insertPublishedSubmission(db, {
+      id: 'submission-unrelated',
+      name: 'unrelated',
+      version: '1.0.0',
+      submittedAt: '2026-05-25T10:00:00.000Z',
+      publishedAt: '2026-05-25T10:05:00.000Z',
+    });
+
+    const database = db;
+    const parse = JSON.parse;
+    let parseCount = 0;
+    const parseSpy = vi.spyOn(JSON, 'parse').mockImplementation((value) => {
+      parseCount += 1;
+      return parse(value);
+    });
+
+    try {
+      expect(getPublishedSkill(database, 'acme', 'target')?.name).toBe('target');
+      expect(getPublishedSkillVersion(database, 'acme', 'target', '1.0.0')?.manifest.name).toBe('target');
+      expect(parseCount).toBe(4);
+    } finally {
+      parseSpy.mockRestore();
+    }
   });
 
   it('ignores non-published submissions', () => {
