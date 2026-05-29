@@ -21,7 +21,7 @@ export interface Session {
 export const SessionContext = createContext<Session | undefined>(undefined);
 
 const defaultMockSub = 'dev-compliance';
-const defaultMockRoles: SessionRole[] = ['Compliance'];
+const defaultMockRoles: SessionRole[] = ['Submitter', 'Compliance'];
 const supportedRoles: SessionRole[] = ['Submitter', 'Compliance', 'Admin'];
 const supportedAuthModes: AuthMode[] = ['mock', 'msal'];
 

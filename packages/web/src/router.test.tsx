@@ -374,6 +374,13 @@ describe('router', () => {
     expect(screen.getByRole('heading', { name: /publish a skill/i })).toBeInTheDocument();
   });
 
+  it('renders the publish wizard with the default dev mock session', () => {
+    renderRoute('/publish');
+
+    expect(screen.getByRole('heading', { name: /publish a skill/i })).toBeInTheDocument();
+    expect(screen.queryByText(/submitter role required/i)).not.toBeInTheDocument();
+  });
+
   it('announces missing upload fields when publish wizard advancement is attempted', () => {
     renderPublishRoute();
 

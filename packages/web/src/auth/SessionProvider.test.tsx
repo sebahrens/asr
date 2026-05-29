@@ -17,6 +17,20 @@ afterEach(() => {
 });
 
 describe('SessionProvider', () => {
+  it('provides a default mock session that can exercise publish and review flows', () => {
+    vi.stubEnv('DEV', true);
+
+    render(
+      <SessionProvider>
+        <SessionProbe />
+      </SessionProvider>,
+    );
+
+    expect(screen.getByLabelText('session')).toHaveTextContent(
+      JSON.stringify({ sub: 'dev-compliance', roles: ['Submitter', 'Compliance'] }),
+    );
+  });
+
   it('provides mock session env values without rendering a competing auth banner', () => {
     vi.stubEnv('DEV', true);
     vi.stubEnv('VITE_MOCK_SUB', 'u1');
