@@ -3,7 +3,7 @@ import BetterSqlite3 from 'better-sqlite3';
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { runMigrations } from '../db/migrations/index.js';
-import { getPublishedSkill, listPublishedSkills } from '../db/repositories/skills.js';
+import { getPublishedSkill, getPublishedSkillVersion, listPublishedSkills } from '../db/repositories/skills.js';
 import {
   listVersions,
   resolveLatestVersion,
@@ -275,6 +275,25 @@ export function createRegistryRoutes(options: RegistryRouteOptions = {}) {
     });
   });
 
+  routes.get('/:owner/:name/v/:version', (c) => {
+    const resolved = getPublishedSkillVersion(
+      db,
+      c.req.param('owner'),
+      c.req.param('name'),
+      c.req.param('version'),
+    );
+    if (!resolved) {
+      return apiError(c, 404, 'submission_not_found');
+    }
+
+    c.header('Cache-Control', 'public, max-age=60');
+    return c.json({
+      manifest: resolved.manifest,
+      skillMd: resolved.skillMd,
+      version: resolved.skillVersion,
+    });
+  });
+
   routes.get('/:owner/:name/v/:version/download', (c) => {
     const owner = c.req.param('owner');
     const name = c.req.param('name');
@@ -290,6 +309,16 @@ export function createRegistryRoutes(options: RegistryRouteOptions = {}) {
     }
 
     return c.redirect(forgejoPackageUrl(forgejoUrl, owner, name, version), 302);
+  });
+
+  routes.get('/:owner/:name/versions', (c) => {
+    const skill = getPublishedSkill(db, c.req.param('owner'), c.req.param('name'));
+    if (!skill) {
+      return apiError(c, 404, 'submission_not_found');
+    }
+
+    c.header('Cache-Control', 'public, max-age=60');
+    return c.json(skill.versions.filter((version) => !version.yanked));
   });
 
   routes.get('/:owner/:name/versions/:version/diff', (c) => {

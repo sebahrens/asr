@@ -80,6 +80,7 @@ export function getPublishedSkill(
 
 export interface PublishedSkillVersionRecord {
   manifest: SkillManifest;
+  skillMd?: string;
   skillVersion: SkillVersion;
 }
 
@@ -107,6 +108,7 @@ export function getPublishedSkillVersion(
 
   return {
     manifest: target.manifest,
+    skillMd: target.status.skillMd,
     skillVersion: toSkillVersion(target),
   };
 }

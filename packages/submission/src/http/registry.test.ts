@@ -159,6 +159,63 @@ describe('registryRoutes', () => {
     );
   });
 
+  it('returns non-yanked versions semver-sorted on the versions endpoint', async () => {
+    const app = makeApp();
+    insertPublishedSubmission(db!, {
+      id: 'submission-x-110',
+      name: 'x',
+      version: '1.1.0',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+    });
+    insertPublishedSubmission(db!, {
+      id: 'submission-x-100',
+      name: 'x',
+      version: '1.0.0',
+      publishedAt: '2026-05-23T10:05:00.000Z',
+    });
+    insertPublishedSubmission(db!, {
+      id: 'submission-x-120',
+      name: 'x',
+      version: '1.2.0',
+      publishedAt: '2026-05-25T10:05:00.000Z',
+      yankedAt: '2026-05-26T08:00:00.000Z',
+      yankReason: 'security incident',
+    });
+
+    const res = await app.request('/api/v1/skills/acme/x/versions');
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=60');
+    const body = (await res.json()) as Array<{ version: string; yanked: boolean }>;
+    expect(body.map((version) => version.version)).toEqual(['1.1.0', '1.0.0']);
+    expect(body.every((version) => version.yanked === false)).toBe(true);
+  });
+
+  it('returns a pinned version manifest and SKILL.md body', async () => {
+    const app = makeApp();
+    insertPublishedSubmission(db!, {
+      id: 'submission-x',
+      name: 'x',
+      version: '1.0.0',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+    });
+
+    const res = await app.request('/api/v1/skills/acme/x/v/1.0.0');
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=60');
+    await expect(res.json()).resolves.toEqual({
+      manifest: expect.objectContaining({ author: 'acme', name: 'x', version: '1.0.0' }),
+      skillMd: '# x',
+      version: expect.objectContaining({
+        owner: 'acme',
+        name: 'x',
+        version: '1.0.0',
+        yanked: false,
+      }),
+    });
+  });
+
   it('returns the registry not-found envelope for a missing skill', async () => {
     const app = makeApp();
 
