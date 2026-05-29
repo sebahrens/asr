@@ -4,7 +4,12 @@ import { computeHash } from './hash.js';
 import type { KeyRing } from './keyring.js';
 
 export type VerifyResult =
-  | { valid: true; eventCount: number; lastHash: string }
+  | {
+      valid: true;
+      eventCount: number;
+      lastHash: string;
+      lastHmacKeyId: string | null;
+    }
   | {
       valid: false;
       brokenAt: string;
@@ -52,6 +57,7 @@ export function verifyChain(
 
   let expectedPrev = '0'.repeat(64);
   let eventCount = 0;
+  let lastHmacKeyId: string | null = null;
 
   for (const row of rows) {
     if (row.prev_hash !== expectedPrev) {
@@ -69,8 +75,9 @@ export function verifyChain(
     }
 
     expectedPrev = row.hash;
+    lastHmacKeyId = row.hmac_key_id;
     eventCount += 1;
   }
 
-  return { valid: true, eventCount, lastHash: expectedPrev };
+  return { valid: true, eventCount, lastHash: expectedPrev, lastHmacKeyId };
 }

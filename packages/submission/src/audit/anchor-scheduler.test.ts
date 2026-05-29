@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ForgejoClient } from '@asr/core';
 import type { PrivateKey } from 'openpgp';
 import type { AnchorResult } from './anchor.js';
+import type { KeyRing } from './keyring.js';
 import {
   createAnchorScheduler,
   shouldAnchor,
@@ -23,6 +24,7 @@ function addEvents(db: Database.Database, count: number): void {
 
 const stubForgejo = {} as unknown as ForgejoClient;
 const stubKey = {} as unknown as PrivateKey;
+const stubKeys = {} as unknown as KeyRing;
 
 describe('shouldAnchor', () => {
   const baseOpts = { intervalMs: 3_600_000, eventThreshold: 100 };
@@ -105,6 +107,7 @@ describe('createAnchorScheduler', () => {
         _db: Database.Database,
         _forgejo: ForgejoClient,
         _key: PrivateKey,
+        _keys: KeyRing,
       ): Promise<AnchorResult | null> => {
         addEvents(database, 1); // emulate runAnchorOnce inserting audit.anchored
         return { tagName: 'audit-anchor-test', eventCount: 100 };
@@ -115,6 +118,7 @@ describe('createAnchorScheduler', () => {
       db: database,
       forgejo: stubForgejo,
       key: stubKey,
+      keys: stubKeys,
       intervalMs: 3_600_000,
       eventThreshold: 100,
       now: () => currentTime,
@@ -130,7 +134,7 @@ describe('createAnchorScheduler', () => {
     const result = await scheduler.tick();
 
     expect(run).toHaveBeenCalledTimes(1);
-    expect(run).toHaveBeenCalledWith(database, stubForgejo, stubKey);
+    expect(run).toHaveBeenCalledWith(database, stubForgejo, stubKey, stubKeys);
     expect(result).toEqual({ tagName: 'audit-anchor-test', eventCount: 100 });
 
     const stateAfter = scheduler.getState();
@@ -149,6 +153,7 @@ describe('createAnchorScheduler', () => {
       db: database,
       forgejo: stubForgejo,
       key: stubKey,
+      keys: stubKeys,
       intervalMs: 3_600_000,
       eventThreshold: 100,
       now: () => currentTime,
@@ -173,6 +178,7 @@ describe('createAnchorScheduler', () => {
       db: database,
       forgejo: stubForgejo,
       key: stubKey,
+      keys: stubKeys,
       intervalMs: 3_600_000,
       eventThreshold: 100,
       now: () => currentTime,
@@ -201,6 +207,7 @@ describe('createAnchorScheduler', () => {
         db: database,
         forgejo: stubForgejo,
         key: stubKey,
+        keys: stubKeys,
         intervalMs: 3_600_000,
         eventThreshold: 100,
         pollMs: 1_000,
@@ -231,6 +238,7 @@ describe('createAnchorScheduler', () => {
       db: db!,
       forgejo: stubForgejo,
       key: stubKey,
+      keys: stubKeys,
       run: vi.fn(async () => null),
       pollMs: 1_000,
     });
@@ -253,6 +261,7 @@ describe('createAnchorScheduler', () => {
       db: database,
       forgejo: stubForgejo,
       key: stubKey,
+      keys: stubKeys,
       intervalMs: 3_600_000,
       eventThreshold: 100,
       now: () => currentTime,

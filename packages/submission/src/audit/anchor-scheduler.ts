@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import type { PrivateKey } from 'openpgp';
 import type { ForgejoClient } from '@asr/core';
 import { runAnchorOnce, type AnchorResult } from './anchor.js';
+import type { KeyRing } from './keyring.js';
 
 export interface ShouldAnchorState {
   lastAnchorAt: number;
@@ -28,6 +29,7 @@ export interface AnchorSchedulerOpts {
   db: Database.Database;
   forgejo: ForgejoClient;
   key: PrivateKey;
+  keys: KeyRing;
   intervalMs?: number;
   eventThreshold?: number;
   pollMs?: number;
@@ -81,7 +83,7 @@ export function createAnchorScheduler(
       );
       if (!trigger) return null;
 
-      const result = await run(opts.db, opts.forgejo, opts.key);
+      const result = await run(opts.db, opts.forgejo, opts.key, opts.keys);
       lastAnchorAt = now();
       lastAnchorEventCount = countEvents(opts.db);
       return result;

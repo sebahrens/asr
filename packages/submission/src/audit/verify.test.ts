@@ -122,6 +122,7 @@ describe('verifyChain', () => {
       valid: true,
       eventCount: 3,
       lastHash: e3.hash,
+      lastHmacKeyId: HMAC_KEY_ID,
     });
   });
 
@@ -135,6 +136,7 @@ describe('verifyChain', () => {
       valid: true,
       eventCount: 0,
       lastHash: '0'.repeat(64),
+      lastHmacKeyId: null,
     });
   });
 

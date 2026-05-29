@@ -9,6 +9,7 @@ import type { ForgejoClient } from '@asr/core';
 import { runMigrations } from '../db/migrations/index.js';
 import { emitAudit } from './emit.js';
 import { runAnchorOnce } from './anchor.js';
+import { loadKeyRing } from './keyring.js';
 
 const HMAC_KEY_BYTES = Buffer.alloc(32, 0x7a);
 const HMAC_KEY_B64 = HMAC_KEY_BYTES.toString('base64');
@@ -91,7 +92,9 @@ describe('runAnchorOnce (unit, mocked Forgejo)', () => {
       createAnchorTag,
     } as unknown as ForgejoClient;
 
-    await expect(runAnchorOnce(database, forgejo, key)).resolves.toBeNull();
+    await expect(
+      runAnchorOnce(database, forgejo, key, loadKeyRing()),
+    ).resolves.toBeNull();
 
     expect(getDefaultBranchHeadSha).not.toHaveBeenCalled();
     expect(createAnchorTag).not.toHaveBeenCalled();
@@ -129,7 +132,7 @@ describe('runAnchorOnce (unit, mocked Forgejo)', () => {
       createAnchorTag,
     } as unknown as ForgejoClient;
 
-    const result = await runAnchorOnce(database, forgejo, key);
+    const result = await runAnchorOnce(database, forgejo, key, loadKeyRing());
     expect(result).not.toBeNull();
     expect(result!.eventCount).toBe(3);
     expect(result!.tagName).toMatch(/^audit-anchor-\d{8}T\d{6}Z$/);
@@ -158,7 +161,10 @@ describe('runAnchorOnce (unit, mocked Forgejo)', () => {
       )
       .all() as Array<{ detail: string; action: string }>;
     expect(anchored).toHaveLength(1);
-    const detail = JSON.parse(anchored[0]!.detail) as { tag: string; commitSha: string };
+    const detail = JSON.parse(anchored[0]!.detail) as {
+      tag: string;
+      commitSha: string;
+    };
     expect(detail.tag).toBe(result!.tagName);
     expect(detail.commitSha).toBe('main-head-sha');
   });
@@ -176,13 +182,50 @@ describe('runAnchorOnce (unit, mocked Forgejo)', () => {
       })),
     } as unknown as ForgejoClient;
 
-    await runAnchorOnce(database, forgejo, key);
+    await runAnchorOnce(database, forgejo, key, loadKeyRing());
 
     const rows = database
       .prepare("SELECT detail FROM audit_events WHERE action = 'audit.anchored'")
       .all() as Array<{ detail: string }>;
     expect(rows).toHaveLength(1);
     expect(rows[0]!.detail).not.toContain('BEGIN PGP SIGNATURE');
+  });
+
+  it('refuses to anchor a broken audit chain and emits audit.verify.failed', async () => {
+    const database = db!;
+    seedEvents(database, 2);
+    database
+      .prepare(
+        `UPDATE audit_events
+         SET detail = ?
+         WHERE rowid = (
+           SELECT rowid FROM audit_events WHERE action = 'submission.created' LIMIT 1
+         )`,
+      )
+      .run(JSON.stringify({ seq: 'tampered' }));
+    const key = await makeKey();
+
+    const getDefaultBranchHeadSha = vi.fn();
+    const createAnchorTag = vi.fn();
+    const forgejo = {
+      getDefaultBranchHeadSha,
+      createAnchorTag,
+    } as unknown as ForgejoClient;
+
+    await expect(
+      runAnchorOnce(database, forgejo, key, loadKeyRing()),
+    ).resolves.toBeNull();
+
+    expect(getDefaultBranchHeadSha).not.toHaveBeenCalled();
+    expect(createAnchorTag).not.toHaveBeenCalled();
+
+    const failed = database
+      .prepare("SELECT detail FROM audit_events WHERE action = 'audit.verify.failed'")
+      .all() as Array<{ detail: string }>;
+    expect(failed).toHaveLength(1);
+    expect(JSON.parse(failed[0]!.detail)).toMatchObject({
+      reason: 'hash mismatch',
+    });
   });
 });
 
@@ -244,7 +287,7 @@ describe.skipIf(!shouldRun)('runAnchorOnce (integration, dev Forgejo)', () => {
     seedEvents(db!, 3);
     const key = await makeKey();
 
-    const result = await runAnchorOnce(db!, forgejo, key);
+    const result = await runAnchorOnce(db!, forgejo, key, loadKeyRing());
     expect(result).not.toBeNull();
     expect(result!.tagName).toMatch(/^audit-anchor-\d{8}T\d{6}Z$/);
     expect(result!.eventCount).toBe(3);

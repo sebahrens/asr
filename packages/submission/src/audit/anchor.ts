@@ -3,15 +3,12 @@ import type { PrivateKey } from 'openpgp';
 import type { ForgejoClient } from '@asr/core';
 import { signAnchorMessage } from './anchor-signer.js';
 import { emitAudit } from './emit.js';
+import type { KeyRing } from './keyring.js';
+import { verifyChain } from './verify.js';
 
 export interface AnchorResult {
   tagName: string;
   eventCount: number;
-}
-
-interface HeadRow {
-  hash: string;
-  hmac_key_id: string;
 }
 
 function anchorTagName(now: Date): string {
@@ -25,24 +22,39 @@ export async function runAnchorOnce(
   db: Database.Database,
   forgejo: ForgejoClient,
   key: PrivateKey,
+  keys: KeyRing,
 ): Promise<AnchorResult | null> {
-  const eventCount = db
-    .prepare('SELECT COUNT(*) FROM audit_events')
-    .pluck()
-    .get() as number;
-  if (eventCount === 0) {
+  const verified = verifyChain(db, keys);
+  if (!verified.valid) {
+    const lastAction = db
+      .prepare('SELECT action FROM audit_events ORDER BY rowid DESC LIMIT 1')
+      .pluck()
+      .get() as string | undefined;
+
+    if (lastAction !== 'audit.verify.failed') {
+      emitAudit(
+        db,
+        {
+          action: 'audit.verify.failed',
+          actor: 'system',
+          actorType: 'system',
+          detail: { brokenAt: verified.brokenAt, reason: verified.reason },
+        },
+        keys,
+      );
+    }
     return null;
   }
 
-  const headRow = db
-    .prepare('SELECT hash, hmac_key_id FROM audit_events ORDER BY rowid DESC LIMIT 1')
-    .get() as HeadRow;
+  if (verified.eventCount === 0) {
+    return null;
+  }
 
   const tagName = anchorTagName(new Date());
   const message =
-    `lastHash=${headRow.hash}\n` +
-    `eventCount=${eventCount}\n` +
-    `hmacKeyId=${headRow.hmac_key_id}`;
+    `lastHash=${verified.lastHash}\n` +
+    `eventCount=${verified.eventCount}\n` +
+    `hmacKeyId=${verified.lastHmacKeyId}`;
   const signature = await signAnchorMessage(message, key);
 
   const targetSha = await forgejo.getDefaultBranchHeadSha();
@@ -54,13 +66,17 @@ export async function runAnchorOnce(
   });
 
   db.transaction(() => {
-    emitAudit(db, {
-      action: 'audit.anchored',
-      actor: 'system',
-      actorType: 'system',
-      detail: { tag: tn, commitSha },
-    });
+    emitAudit(
+      db,
+      {
+        action: 'audit.anchored',
+        actor: 'system',
+        actorType: 'system',
+        detail: { tag: tn, commitSha },
+      },
+      keys,
+    );
   })();
 
-  return { tagName: tn, eventCount };
+  return { tagName: tn, eventCount: verified.eventCount };
 }
