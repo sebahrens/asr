@@ -188,6 +188,56 @@ describe('ReviewDetail', () => {
     expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^reject$/i }));
   });
 
+  it('wires evidence tabs to their panels and supports arrow-key activation', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      let body: unknown;
+      if (url.endsWith('/api/v1/submissions/sub-test')) {
+        body = submission;
+      } else if (url.endsWith('/api/v1/submissions/sub-test/diff')) {
+        body = versionDiff;
+      } else if (url.endsWith('/api/v1/submissions/sub-test/scan')) {
+        body = scanReport;
+      } else {
+        throw new Error(`unexpected fetch url ${url}`);
+      }
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderRoute('sub-test');
+
+    expect(await screen.findByRole('heading', { name: /example-skill/i })).toBeInTheDocument();
+
+    const diffTab = screen.getByRole('tab', { name: /^diff$/i });
+    const scanTab = screen.getByRole('tab', { name: /^scan$/i });
+    let panel = screen.getByRole('tabpanel', { name: /^diff$/i });
+
+    expect(diffTab).toHaveAttribute('id', 'review-detail-tab-diff');
+    expect(diffTab).toHaveAttribute('aria-controls', 'review-detail-panel-diff');
+    expect(panel).toHaveAttribute('id', 'review-detail-panel-diff');
+    expect(panel).toHaveAttribute('aria-labelledby', 'review-detail-tab-diff');
+    expect(diffTab).toHaveAttribute('tabindex', '0');
+    expect(scanTab).toHaveAttribute('tabindex', '-1');
+
+    fireEvent.keyDown(diffTab, { key: 'ArrowRight' });
+
+    expect(scanTab).toHaveAttribute('aria-selected', 'true');
+    expect(scanTab).toHaveFocus();
+    panel = screen.getByRole('tabpanel', { name: /^scan$/i });
+    expect(panel).toHaveAttribute('id', 'review-detail-panel-scan');
+    expect(panel).toHaveAttribute('aria-labelledby', 'review-detail-tab-scan');
+    expect(scanTab).toHaveAttribute('tabindex', '0');
+    expect(diffTab).toHaveAttribute('tabindex', '-1');
+
+    fireEvent.keyDown(scanTab, { key: 'ArrowRight' });
+
+    expect(diffTab).toHaveAttribute('aria-selected', 'true');
+    expect(diffTab).toHaveFocus();
+  });
+
   it('keeps the review page usable when diff evidence is not available yet', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input);

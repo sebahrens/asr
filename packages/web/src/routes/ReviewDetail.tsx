@@ -1,11 +1,24 @@
 import type { ScanReport, Submission, VersionDiff } from '@asr/core';
 import { useQuery } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { DecisionPanel } from './DecisionPanel';
 
 type TabId = 'diff' | 'scan';
+
+const evidenceTabs: { id: TabId; label: string }[] = [
+  { id: 'diff', label: 'Diff' },
+  { id: 'scan', label: 'Scan' },
+];
+
+function getEvidenceTabId(tab: TabId): string {
+  return `review-detail-tab-${tab}`;
+}
+
+function getEvidencePanelId(tab: TabId): string {
+  return `review-detail-panel-${tab}`;
+}
 
 class HttpError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -97,6 +110,21 @@ export function ReviewDetail() {
 
   const [activeTab, setActiveTab] = useState<TabId>('diff');
 
+  function focusEvidenceTab(tab: TabId) {
+    document.getElementById(getEvidenceTabId(tab))?.focus();
+  }
+
+  function handleEvidenceTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number) {
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+    event.preventDefault();
+
+    const direction = event.key === 'ArrowRight' ? 1 : -1;
+    const nextIndex = (index + direction + evidenceTabs.length) % evidenceTabs.length;
+    const nextTab = evidenceTabs[nextIndex].id;
+    setActiveTab(nextTab);
+    focusEvidenceTab(nextTab);
+  }
+
   if (submissionQuery.isLoading) {
     return (
       <main className="review-detail review-detail-loading" aria-busy="true">
@@ -117,6 +145,9 @@ export function ReviewDetail() {
   const submission = submissionQuery.data;
   const diff = diffQuery.data;
   const scan = scanQuery.data;
+  const activeTabConfig = evidenceTabs.find((tab) => tab.id === activeTab);
+  const activeTabId = getEvidenceTabId(activeTab);
+  const activePanelId = getEvidencePanelId(activeTab);
 
   if (!submission) {
     return (
@@ -143,31 +174,29 @@ export function ReviewDetail() {
       </header>
 
       <nav role="tablist" aria-label="Submission evidence" className="review-detail-tabs">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'diff'}
-          aria-controls="review-detail-panel-diff"
-          onClick={() => setActiveTab('diff')}
-        >
-          Diff
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'scan'}
-          aria-controls="review-detail-panel-scan"
-          onClick={() => setActiveTab('scan')}
-        >
-          Scan
-        </button>
+        {evidenceTabs.map((tab, index) => (
+          <button
+            key={tab.id}
+            id={getEvidenceTabId(tab.id)}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={getEvidencePanelId(tab.id)}
+            tabIndex={activeTab === tab.id ? 0 : -1}
+            onClick={() => setActiveTab(tab.id)}
+            onKeyDown={(event) => handleEvidenceTabKeyDown(event, index)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </nav>
 
       {activeTab === 'diff' ? (
         <section
-          id="review-detail-panel-diff"
+          id={activePanelId}
           role="tabpanel"
-          aria-label="Diff"
+          aria-label={activeTabConfig?.label}
+          aria-labelledby={activeTabId}
           className="review-detail-panel review-detail-panel-diff"
         >
           <EvidencePanelContent
@@ -181,9 +210,10 @@ export function ReviewDetail() {
         </section>
       ) : (
         <section
-          id="review-detail-panel-scan"
+          id={activePanelId}
           role="tabpanel"
-          aria-label="Scan"
+          aria-label={activeTabConfig?.label}
+          aria-labelledby={activeTabId}
           className="review-detail-panel review-detail-panel-scan"
         >
           <EvidencePanelContent

@@ -316,6 +316,47 @@ describe('router', () => {
     expect(screen.getByText(/scanner output/i)).toBeInTheDocument();
   });
 
+  it('wires skill detail tabs to their panel and supports arrow-key activation', async () => {
+    renderRoute('/skills/asr/security-review');
+
+    expect(await screen.findByRole('heading', { name: /security-review/i })).toBeInTheDocument();
+
+    const previewTab = screen.getByRole('tab', { name: /skill\.md preview/i });
+    const versionsTab = screen.getByRole('tab', { name: /^versions$/i });
+    const auditTab = screen.getByRole('tab', { name: /^audit$/i });
+    let panel = screen.getByRole('tabpanel', { name: /skill\.md preview/i });
+
+    expect(previewTab).toHaveAttribute('id', 'skill-detail-tab-preview');
+    expect(previewTab).toHaveAttribute('aria-controls', 'skill-detail-panel-preview');
+    expect(panel).toHaveAttribute('id', 'skill-detail-panel-preview');
+    expect(panel).toHaveAttribute('aria-labelledby', 'skill-detail-tab-preview');
+    expect(previewTab).toHaveAttribute('tabindex', '0');
+    expect(versionsTab).toHaveAttribute('tabindex', '-1');
+
+    fireEvent.keyDown(previewTab, { key: 'ArrowLeft' });
+
+    expect(auditTab).toHaveAttribute('aria-selected', 'true');
+    expect(auditTab).toHaveFocus();
+    panel = screen.getByRole('tabpanel', { name: /^audit$/i });
+    expect(panel).toHaveAttribute('id', 'skill-detail-panel-audit');
+    expect(panel).toHaveAttribute('aria-labelledby', 'skill-detail-tab-audit');
+
+    fireEvent.keyDown(auditTab, { key: 'ArrowRight' });
+
+    expect(previewTab).toHaveAttribute('aria-selected', 'true');
+    expect(previewTab).toHaveFocus();
+
+    fireEvent.keyDown(previewTab, { key: 'ArrowRight' });
+
+    expect(versionsTab).toHaveAttribute('aria-selected', 'true');
+    expect(versionsTab).toHaveFocus();
+    panel = screen.getByRole('tabpanel', { name: /^versions$/i });
+    expect(panel).toHaveAttribute('id', 'skill-detail-panel-versions');
+    expect(panel).toHaveAttribute('aria-labelledby', 'skill-detail-tab-versions');
+    expect(versionsTab).toHaveAttribute('tabindex', '0');
+    expect(previewTab).toHaveAttribute('tabindex', '-1');
+  });
+
   it('renders the documented install command on skill detail', async () => {
     renderRoute('/skills/asr/security-review');
 

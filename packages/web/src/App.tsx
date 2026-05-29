@@ -171,6 +171,14 @@ const skillDetailTabs: { id: SkillDetailTab; label: string }[] = [
   { id: 'audit', label: 'Audit' },
 ];
 
+function getSkillDetailTabId(tab: SkillDetailTab): string {
+  return `skill-detail-tab-${tab}`;
+}
+
+function getSkillDetailPanelId(tab: SkillDetailTab): string {
+  return `skill-detail-panel-${tab}`;
+}
+
 export const reviewDiffViewerStyles = {
   diffContainer: {
     maxWidth: '100%',
@@ -1916,6 +1924,24 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
   const markdownPreview = detail.skillMd
     ? stripFrontmatter(detail.skillMd)
     : detail.manifestLatest.description || detail.description || 'No SKILL.md preview available.';
+  const activeTabLabel = skillDetailTabs.find((tab) => tab.id === activeTab)?.label;
+  const activeTabId = getSkillDetailTabId(activeTab);
+  const activePanelId = getSkillDetailPanelId(activeTab);
+
+  function focusSkillDetailTab(tab: SkillDetailTab) {
+    document.getElementById(getSkillDetailTabId(tab))?.focus();
+  }
+
+  function handleSkillDetailTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number) {
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+    event.preventDefault();
+
+    const direction = event.key === 'ArrowRight' ? 1 : -1;
+    const nextIndex = (index + direction + skillDetailTabs.length) % skillDetailTabs.length;
+    const nextTab = skillDetailTabs[nextIndex].id;
+    setActiveTab(nextTab);
+    focusSkillDetailTab(nextTab);
+  }
 
   return (
     <>
@@ -1949,21 +1975,31 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
           </div>
 
           <div className="skill-detail-tabs" role="tablist" aria-label="Skill detail sections">
-            {skillDetailTabs.map((tab) => (
+            {skillDetailTabs.map((tab, index) => (
               <button
                 key={tab.id}
+                id={getSkillDetailTabId(tab.id)}
                 type="button"
                 role="tab"
                 aria-selected={activeTab === tab.id}
+                aria-controls={getSkillDetailPanelId(tab.id)}
                 className={activeTab === tab.id ? 'active' : undefined}
+                tabIndex={activeTab === tab.id ? 0 : -1}
                 onClick={() => setActiveTab(tab.id)}
+                onKeyDown={(event) => handleSkillDetailTabKeyDown(event, index)}
               >
                 {tab.label}
               </button>
             ))}
           </div>
 
-          <section className="skill-detail-panel" role="tabpanel" aria-label={skillDetailTabs.find((tab) => tab.id === activeTab)?.label}>
+          <section
+            id={activePanelId}
+            className="skill-detail-panel"
+            role="tabpanel"
+            aria-label={activeTabLabel}
+            aria-labelledby={activeTabId}
+          >
             {activeTab === 'preview' && (
               <div className="skill-content">
                 <ReactMarkdown
