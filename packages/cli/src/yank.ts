@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import pc from 'picocolors';
+import { resolveRegistryToken } from './auth/registry-token.js';
 import { getConfig } from './config.js';
 
 export interface YankPostResult {
@@ -119,10 +120,11 @@ export function registerYank(program: Command): void {
       'Severity: low|high|critical',
       'high',
     )
+    .option('-t, --token <token>', 'Registry bearer token override')
     .action(
       async (
         ref: string,
-        options: { reason: string; severity: string },
+        options: { reason: string; severity: string; token?: string },
       ) => {
         const config = getConfig();
         if (!config.registry) {
@@ -138,8 +140,13 @@ export function registerYank(program: Command): void {
           token?: string,
         ): Promise<YankPostResult> =>
           postRegistryViaFetch(registryUrl, path, body, token);
+        const token = await resolveRegistryToken({
+          explicitToken: options.token,
+          configToken: config.token,
+          baseUrl: registryUrl,
+        });
         const code = await runYank(
-          { postRegistry, token: config.token },
+          { postRegistry, token },
           ref,
           options.reason,
           options.severity,

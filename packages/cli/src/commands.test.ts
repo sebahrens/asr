@@ -19,6 +19,10 @@ vi.mock('./lockfile.js', () => ({
   getAllInstalled: vi.fn(),
 }));
 
+vi.mock('./auth/registry-token.js', () => ({
+  resolveRegistryToken: vi.fn(async () => undefined),
+}));
+
 vi.mock('ora', () => ({
   default: () => ({
     start: () => ({
@@ -31,6 +35,7 @@ vi.mock('ora', () => ({
 
 import { getSkillDetail, searchSkills, RegistryError } from './registry-client.js';
 import { getAllInstalled } from './lockfile.js';
+import { resolveRegistryToken } from './auth/registry-token.js';
 import { registerSearch } from './commands/search.js';
 import { registerInfo } from './commands/info.js';
 import { registerVersions, runVersions } from './commands/versions.js';
@@ -39,6 +44,7 @@ import { registerList } from './commands/list.js';
 const searchMock = vi.mocked(searchSkills);
 const getSkillDetailMock = vi.mocked(getSkillDetail);
 const getAllInstalledMock = vi.mocked(getAllInstalled);
+const resolveRegistryTokenMock = vi.mocked(resolveRegistryToken);
 
 function testProgram(): Command {
   const program = new Command();
@@ -54,6 +60,8 @@ describe('search command', () => {
   beforeEach(() => {
     log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     searchMock.mockReset();
+    resolveRegistryTokenMock.mockReset();
+    resolveRegistryTokenMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -101,6 +109,17 @@ describe('search command', () => {
     expect(printed).toContain('downloads 7');
   });
 
+  it('passes the resolved registry token when available', async () => {
+    searchMock.mockResolvedValueOnce({ items: [] });
+    resolveRegistryTokenMock.mockResolvedValueOnce('cached-token');
+
+    const program = testProgram();
+    await program.parseAsync(['node', 'asr', 'search', 'foo']);
+
+    expect(resolveRegistryTokenMock).toHaveBeenCalledWith({ configToken: undefined });
+    expect(searchMock).toHaveBeenCalledWith('foo', {}, { token: 'cached-token' });
+  });
+
   it('prints "No skills found." when items is empty', async () => {
     searchMock.mockResolvedValueOnce({ items: [] });
 
@@ -126,6 +145,8 @@ describe('info command', () => {
   beforeEach(() => {
     log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     getSkillDetailMock.mockReset();
+    resolveRegistryTokenMock.mockReset();
+    resolveRegistryTokenMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -171,6 +192,44 @@ describe('info command', () => {
     expect(printed).toContain('Reviews code with security focus');
     expect(printed).toContain('medium');
   });
+
+  it('passes the resolved registry token when available', async () => {
+    const detail: SkillDetail = {
+      owner: 'owner',
+      name: 'code-review',
+      latestVersion: '1.2.3',
+      description: 'Reviews code',
+      tags: [],
+      kind: 'skill',
+      publishedAt: '2026-05-23T10:00:00Z',
+      downloadCount: 0,
+      riskAssessmentLatest: 'low',
+      manifestLatest: {
+        name: 'code-review',
+        version: '1.2.3',
+        author: 'owner',
+        description: 'Reviews code',
+        tags: [],
+        kind: 'skill',
+        permissions: {
+          network: false,
+          filesystem: 'none',
+          subprocess: false,
+          environment: [],
+        },
+      },
+      versions: [],
+    };
+    getSkillDetailMock.mockResolvedValueOnce(detail);
+    resolveRegistryTokenMock.mockResolvedValueOnce('cached-token');
+
+    const program = infoProgram();
+    await program.parseAsync(['node', 'asr', 'info', 'owner/code-review']);
+
+    expect(getSkillDetailMock).toHaveBeenCalledWith('owner', 'code-review', {
+      token: 'cached-token',
+    });
+  });
 });
 
 function versionsProgram(): Command {
@@ -187,6 +246,8 @@ describe('versions command', () => {
   beforeEach(() => {
     log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     getSkillDetailMock.mockReset();
+    resolveRegistryTokenMock.mockReset();
+    resolveRegistryTokenMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -269,7 +330,7 @@ describe('versions command', () => {
 
     expect(getSkillDetailMock).toHaveBeenCalledWith('owner', 'code-review', {});
 
-    const lines = log.mock.calls.map((args: unknown[]) => String(args[0]));
+    const lines: string[] = log.mock.calls.map((args: unknown[]) => String(args[0]));
     const printed = lines.join('\n');
 
     expect(printed).toContain('1.1.0');
@@ -305,6 +366,44 @@ describe('versions command', () => {
     expect(errPrinted).toContain('owner/missing');
 
     errSpy.mockRestore();
+  });
+
+  it('passes the resolved registry token when available', async () => {
+    const detail: SkillDetail = {
+      owner: 'owner',
+      name: 'code-review',
+      latestVersion: '1.0.0',
+      description: 'Reviews code',
+      tags: [],
+      kind: 'skill',
+      publishedAt: '2026-05-23T10:00:00Z',
+      downloadCount: 0,
+      riskAssessmentLatest: 'low',
+      manifestLatest: {
+        name: 'code-review',
+        version: '1.0.0',
+        author: 'owner',
+        description: 'Reviews code',
+        tags: [],
+        kind: 'skill',
+        permissions: {
+          network: false,
+          filesystem: 'none',
+          subprocess: false,
+          environment: [],
+        },
+      },
+      versions: [],
+    };
+    getSkillDetailMock.mockResolvedValueOnce(detail);
+    resolveRegistryTokenMock.mockResolvedValueOnce('cached-token');
+
+    const code = await runVersions('owner/code-review');
+
+    expect(code).toBe(0);
+    expect(getSkillDetailMock).toHaveBeenCalledWith('owner', 'code-review', {
+      token: 'cached-token',
+    });
   });
 
   it('returns a non-zero exit code without calling the registry when the slug is malformed', async () => {

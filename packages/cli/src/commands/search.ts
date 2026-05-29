@@ -3,12 +3,13 @@ import pc from 'picocolors';
 import ora from 'ora';
 import { getConfig } from '../config.js';
 import { searchSkills } from '../registry-client.js';
+import { resolveRegistryToken } from '../auth/registry-token.js';
 
 export async function runSearch(query: string): Promise<void> {
   const spinner = ora('Searching skills...').start();
   try {
     const config = getConfig();
-    const token = config.token;
+    const token = await resolveRegistryToken({ configToken: config.token });
     const { items } = await searchSkills(query, {}, token ? { token } : {});
     spinner.stop();
 

@@ -1,5 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { runYank, type YankPostResult } from './yank.js';
+import { Command } from 'commander';
+
+vi.mock('./config.js', () => ({
+  getConfig: vi.fn(() => ({
+    defaultTarget: 'project' as const,
+    registry: 'https://registry.example.com',
+  })),
+}));
+
+vi.mock('./auth/registry-token.js', () => ({
+  resolveRegistryToken: vi.fn(async () => undefined),
+}));
+
+import { resolveRegistryToken } from './auth/registry-token.js';
+import { registerYank, runYank, type YankPostResult } from './yank.js';
+
+const resolveRegistryTokenMock = vi.mocked(resolveRegistryToken);
 
 type PostFn = (
   path: string,
@@ -16,6 +32,8 @@ describe('runYank', () => {
     errorSpy = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
+    resolveRegistryTokenMock.mockReset();
+    resolveRegistryTokenMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -143,5 +161,46 @@ describe('runYank', () => {
     expect(code).toBe(1);
     expect(postRegistry).not.toHaveBeenCalled();
     expect(stderr()).toContain('Invalid ref');
+  });
+
+  it('registerYank resolves the keyring token before posting', async () => {
+    resolveRegistryTokenMock.mockResolvedValueOnce('cached-yank-token');
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response(JSON.stringify({ yanked: true }), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock;
+
+    try {
+      const program = new Command();
+      program.name('asr');
+      program.exitOverride();
+      registerYank(program);
+
+      await program.parseAsync([
+        'node',
+        'asr',
+        'yank',
+        'acme/x@1.0.0',
+        '--reason',
+        'leak',
+      ]);
+
+      expect(resolveRegistryTokenMock).toHaveBeenCalledWith({
+        explicitToken: undefined,
+        configToken: undefined,
+        baseUrl: 'https://registry.example.com',
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [, init] = fetchMock.mock.calls[0];
+      expect((init?.headers as Record<string, string>).Authorization).toBe(
+        'Bearer cached-yank-token',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

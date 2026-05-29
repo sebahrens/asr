@@ -3,6 +3,7 @@ import pc from 'picocolors';
 import ora from 'ora';
 import { getConfig } from '../config.js';
 import { getSkillDetail, RegistryError } from '../registry-client.js';
+import { resolveRegistryToken } from '../auth/registry-token.js';
 
 function parseSlug(slug: string): { owner: string; name: string } {
   const parts = slug.split('/');
@@ -25,7 +26,7 @@ export async function runVersions(slug: string): Promise<number> {
   const spinner = ora('Fetching versions...').start();
   try {
     const config = getConfig();
-    const token = config.token;
+    const token = await resolveRegistryToken({ configToken: config.token });
     const detail = await getSkillDetail(owner, name, token ? { token } : {});
     spinner.stop();
 
