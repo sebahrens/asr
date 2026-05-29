@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { apiUrl } from '../api';
 
 export interface PendingSubmissionRow {
   id: string;
@@ -16,7 +17,7 @@ interface PendingSubmissionsResponse {
 }
 
 async function fetchPendingSubmissions(): Promise<PendingSubmissionRow[]> {
-  const res = await fetch('/api/v1/submissions?status=pending');
+  const res = await fetch(apiUrl('/api/v1/submissions?status=pending'));
   if (!res.ok) {
     throw new Error(`Pending submissions request failed with ${res.status}`);
   }

@@ -57,6 +57,19 @@ describe('ReviewQueue', () => {
     expect(screen.getByText('0.8.2')).toBeInTheDocument();
   });
 
+  it('requests the canonical pending submissions API path', async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({ submissions: [] }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderQueue();
+
+    await screen.findByText('No submissions awaiting review');
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/submissions?status=pending');
+  });
+
   it('renders status, risk, and finding metadata when the API includes it', async () => {
     const submissions: PendingSubmissionRow[] = [
       makeSubmission({

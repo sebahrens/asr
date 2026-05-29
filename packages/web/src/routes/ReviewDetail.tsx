@@ -8,6 +8,7 @@ import {
   mobileReviewDiffViewerStyles,
   reviewDiffViewerStyles,
 } from '../App';
+import { apiUrl } from '../api';
 import { DecisionPanel } from './DecisionPanel';
 
 interface DiffFile {
@@ -237,7 +238,7 @@ export function ReviewDetail() {
     queryFn: () => fetchSubmissionEvidence<Submission>(
       id,
       'submission',
-      `/api/v1/submissions/${encodeURIComponent(id)}`,
+      apiUrl(`/api/v1/submissions/${encodeURIComponent(id)}`),
     ),
     enabled: id !== '',
     retry: retryUnless4xx,
@@ -247,7 +248,7 @@ export function ReviewDetail() {
     queryFn: () => fetchSubmissionEvidence<VersionDiff>(
       id,
       'diff',
-      `/api/v1/submissions/${encodeURIComponent(id)}/diff`,
+      apiUrl(`/api/v1/submissions/${encodeURIComponent(id)}/diff`),
     ),
     enabled: id !== '',
     retry: retryUnless4xx,
@@ -257,7 +258,7 @@ export function ReviewDetail() {
     queryFn: () => fetchSubmissionEvidence<ScanReport>(
       id,
       'scan',
-      `/api/v1/submissions/${encodeURIComponent(id)}/scan`,
+      apiUrl(`/api/v1/submissions/${encodeURIComponent(id)}/scan`),
     ),
     enabled: id !== '',
     retry: retryUnless4xx,

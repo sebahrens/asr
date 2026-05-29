@@ -2,6 +2,7 @@ import type { RiskAssessment, Submission } from '@asr/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { apiUrl } from '../api';
 import { useSession } from '../auth/useSession';
 
 type DecisionAction = 'approve' | 'reject';
@@ -118,7 +119,7 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
   const approveMutation = useMutation({
     mutationFn: () =>
       postDecision(
-        `/api/v1/submissions/${encodeURIComponent(submission.id)}/approve`,
+        apiUrl(`/api/v1/submissions/${encodeURIComponent(submission.id)}/approve`),
         undefined,
       ),
     onSuccess: () => {
@@ -129,7 +130,7 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
   const rejectMutation = useMutation({
     mutationFn: (rejectReason: string) =>
       postDecision(
-        `/api/v1/submissions/${encodeURIComponent(submission.id)}/reject`,
+        apiUrl(`/api/v1/submissions/${encodeURIComponent(submission.id)}/reject`),
         { reason: rejectReason },
       ),
     onSuccess: () => {
