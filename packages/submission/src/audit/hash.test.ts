@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { AuditEvent } from '@asr/core';
 import { AUDIT_HASH_FORMAT_VERSION, computeHash } from './hash.js';
@@ -56,7 +55,29 @@ describe('computeHash', () => {
     ).not.toBe(digest);
   });
 
-  it('serialises null submissionId/skillName/version to empty-string payload segments', () => {
+  it('distinguishes delimiter shifts across nullable fields', () => {
+    const digest = computeHash(
+      {
+        ...sampleHashableEvent,
+        skillName: 'a',
+        version: 'b',
+      },
+      HMAC_KEY,
+    );
+
+    expect(
+      computeHash(
+        {
+          ...sampleHashableEvent,
+          skillName: 'a|b',
+          version: '',
+        },
+        HMAC_KEY,
+      ),
+    ).not.toBe(digest);
+  });
+
+  it('distinguishes null nullable fields from empty strings', () => {
     const nullEvent: Omit<AuditEvent, 'hash'> = {
       ...sampleEventWithoutHash,
       submissionId: null,
@@ -64,29 +85,31 @@ describe('computeHash', () => {
       version: null,
     };
 
-    const expectedPayload = [
-      `v${AUDIT_HASH_FORMAT_VERSION}`,
-      nullEvent.id,
-      '',
-      '',
-      '',
-      nullEvent.timestamp,
-      nullEvent.actor,
-      nullEvent.actorType,
-      nullEvent.action,
-      JSON.stringify(nullEvent.detail),
-      nullEvent.prevHash,
-      nullEvent.hmacKeyId,
-    ].join('|');
-    const expectedDigest = createHmac('sha256', HMAC_KEY)
-      .update(expectedPayload)
-      .digest('hex');
+    const nullDigest = computeHash(
+      { ...nullEvent, hashVersion: AUDIT_HASH_FORMAT_VERSION },
+      HMAC_KEY,
+    );
 
+    const emptyDigest = computeHash(
+      {
+        ...nullEvent,
+        submissionId: '',
+        skillName: '',
+        version: '',
+        hashVersion: AUDIT_HASH_FORMAT_VERSION,
+      },
+      HMAC_KEY,
+    );
+
+    expect(nullDigest).not.toBe(emptyDigest);
+  });
+
+  it('changes when the hash format version changes', () => {
     expect(
       computeHash(
-        { ...nullEvent, hashVersion: AUDIT_HASH_FORMAT_VERSION },
+        { ...sampleHashableEvent, hashVersion: AUDIT_HASH_FORMAT_VERSION - 1 },
         HMAC_KEY,
       ),
-    ).toBe(expectedDigest);
+    ).not.toBe(computeHash(sampleHashableEvent, HMAC_KEY));
   });
 });

@@ -32,7 +32,7 @@ describe('migration0010AuditHashVersion', () => {
         CREATE TABLE audit_events (
           id TEXT PRIMARY KEY,
           hash TEXT NOT NULL,
-          hash_version INTEGER NOT NULL DEFAULT 2
+          hash_version INTEGER NOT NULL DEFAULT 3
         );
       `);
 

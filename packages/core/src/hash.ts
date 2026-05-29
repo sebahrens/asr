@@ -1,6 +1,7 @@
 const CANONICAL_MTIME_SECONDS = 946684800n;
 const FILE_MODE = 0o644;
 const EXECUTABLE_MODE = 0o755;
+const UINT32_BYTE_LENGTH = 4;
 
 type HashLike = {
   update(data: Uint8Array): HashLike;
@@ -76,11 +77,15 @@ export function canonicalHashFromDigests(files: CanonicalFileDigest[]): string {
   const hash = createSha256();
 
   for (const { file, pathBytes } of includedFiles) {
+    const pathLength = Buffer.alloc(UINT32_BYTE_LENGTH);
+    pathLength.writeUInt32BE(pathBytes.length, 0);
+
     const metadata = Buffer.alloc(20);
     metadata.writeUInt32BE(file.executable ? EXECUTABLE_MODE : FILE_MODE, 0);
     metadata.writeBigUInt64BE(CANONICAL_MTIME_SECONDS, 4);
     metadata.writeBigUInt64BE(BigInt(file.size), 12);
 
+    hash.update(pathLength);
     hash.update(pathBytes);
     hash.update(metadata);
     hash.update(file.sha256);

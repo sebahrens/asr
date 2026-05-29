@@ -69,4 +69,20 @@ describe('canonicalHash', () => {
 
     expect(canonicalHashFromDigests(digests)).toBe(canonicalHash(base));
   });
+
+  it('frames path bytes so boundary-shifted path sets stay distinct', () => {
+    const contentDigest = createHash('sha256').update('').digest();
+
+    expect(
+      canonicalHashFromDigests([
+        { path: 'ab', size: 0, sha256: contentDigest },
+        { path: 'c', size: 0, sha256: contentDigest },
+      ]),
+    ).not.toBe(
+      canonicalHashFromDigests([
+        { path: 'a', size: 0, sha256: contentDigest },
+        { path: 'bc', size: 0, sha256: contentDigest },
+      ]),
+    );
+  });
 });
