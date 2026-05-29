@@ -4,7 +4,12 @@ import type { AuthVariables, Identity } from '../auth/types.js';
 import { requireRole } from '../auth/requireRole.js';
 import { loadKeyRing, type KeyRing } from '../audit/keyring.js';
 import { verifyChain } from '../audit/verify.js';
-import { getBySkill, getBySubmission, getByUser } from '../db/repositories/auditEvents.js';
+import {
+  AuditSkillOwnerScopeUnavailableError,
+  getBySkill,
+  getBySubmission,
+  getByUser,
+} from '../db/repositories/auditEvents.js';
 import { getSubmissionById } from '../db/repositories/submissions.js';
 import { apiError } from './errors.js';
 import { getDefaultRegistryDb } from './registry.js';
@@ -25,13 +30,38 @@ export function createAuditRoutes(options: AuditRouteOptions = {}) {
   routes.get(
     '/skill/:owner/:name',
     requireRole('Compliance', 'Admin'),
-    (c) => c.json(getBySkill(db, c.req.param('name'))),
+    (c) => {
+      try {
+        return c.json(getBySkill(db, c.req.param('owner'), c.req.param('name')));
+      } catch (error) {
+        if (error instanceof AuditSkillOwnerScopeUnavailableError) {
+          return apiError(c, 503, 'audit_scope_unavailable');
+        }
+        throw error;
+      }
+    },
   );
 
   routes.get(
     '/skill/:owner/:name/v/:version',
     requireRole('Compliance', 'Admin'),
-    (c) => c.json(getBySkill(db, c.req.param('name'), c.req.param('version'))),
+    (c) => {
+      try {
+        return c.json(
+          getBySkill(
+            db,
+            c.req.param('owner'),
+            c.req.param('name'),
+            c.req.param('version'),
+          ),
+        );
+      } catch (error) {
+        if (error instanceof AuditSkillOwnerScopeUnavailableError) {
+          return apiError(c, 503, 'audit_scope_unavailable');
+        }
+        throw error;
+      }
+    },
   );
 
   routes.get(

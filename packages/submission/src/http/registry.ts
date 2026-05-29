@@ -371,6 +371,7 @@ function auditDownloadRefusal(
 ): void {
   audit({
     action: 'download.refused',
+    skillOwner: input.owner,
     skillName: input.name,
     version: input.version,
     actor: 'system',

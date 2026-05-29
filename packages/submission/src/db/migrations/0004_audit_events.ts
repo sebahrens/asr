@@ -9,6 +9,7 @@ export const migration0004AuditEvents: Migration = {
       CREATE TABLE IF NOT EXISTS audit_events (
         id TEXT PRIMARY KEY,
         submission_id TEXT,
+        skill_owner TEXT,
         skill_name TEXT,
         version TEXT,
         timestamp TEXT NOT NULL,
@@ -27,7 +28,7 @@ export const migration0004AuditEvents: Migration = {
         ON audit_events(submission_id);
 
       CREATE INDEX IF NOT EXISTS idx_audit_skill
-        ON audit_events(skill_name, version);
+        ON audit_events(skill_owner, skill_name, version);
 
       CREATE INDEX IF NOT EXISTS idx_audit_actor
         ON audit_events(actor);

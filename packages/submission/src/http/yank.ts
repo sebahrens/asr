@@ -104,6 +104,7 @@ export function createYankRoutes(options: YankRouteOptions = {}) {
       });
       emitAudit(db, {
         action: 'version.yanked',
+        skillOwner: owner,
         skillName: name,
         version,
         actor: identity.sub,

@@ -13,7 +13,11 @@ const HMAC_KEY_BYTES = Buffer.alloc(32, 0x42);
 const HMAC_KEY_B64 = HMAC_KEY_BYTES.toString('base64');
 const HMAC_KEY_ID = 'k-test';
 
-function seedSubmission(db: Database.Database, id: string): void {
+function seedSubmission(
+  db: Database.Database,
+  id: string,
+  submittedBy = 'submitter@example.com',
+): void {
   db.prepare(
     `
       INSERT INTO submissions (
@@ -33,7 +37,7 @@ function seedSubmission(db: Database.Database, id: string): void {
     'md-only',
     `sha256:${id}`,
     '2026-05-23T00:00:00.000Z',
-    'submitter@example.com',
+    submittedBy,
     'submitted',
     '{"phase":"submitted"}',
   );
@@ -49,8 +53,8 @@ describe('auditEvents repository', () => {
     process.env.AUDIT_HMAC_KEY_BYTES = HMAC_KEY_B64;
     db = new Database(':memory:');
     runMigrations(db);
-    seedSubmission(db, 'sub_a');
-    seedSubmission(db, 'sub_b');
+    seedSubmission(db, 'sub_a', 'owner-a');
+    seedSubmission(db, 'sub_b', 'owner-b');
 
     // sub_a: skill "foo" v1.0.0 created by alice, then classified by system
     emitAudit(db, {
@@ -85,6 +89,7 @@ describe('auditEvents repository', () => {
     emitAudit(db, {
       action: 'version.yanked',
       submissionId: null,
+      skillOwner: 'owner-a',
       skillName: 'bar',
       version: '0.1.0',
       actor: 'alice',
@@ -121,16 +126,17 @@ describe('auditEvents repository', () => {
   });
 
   it('getBySkill returns events across all versions when version is undefined', () => {
-    const events = getBySkill(db!, 'foo');
-    expect(events).toHaveLength(3);
+    const events = getBySkill(db!, 'owner-a', 'foo');
+    expect(events).toHaveLength(2);
     expect(events.every((e) => e.skillName === 'foo')).toBe(true);
-    expect(events.map((e) => e.version)).toEqual(['1.0.0', '1.0.0', '2.0.0']);
+    expect(events.map((e) => e.version)).toEqual(['1.0.0', '1.0.0']);
     // none of bar's events leak in
     expect(events.some((e) => e.skillName === 'bar')).toBe(false);
+    expect(getBySkill(db!, 'owner-b', 'foo').map((e) => e.version)).toEqual(['2.0.0']);
   });
 
   it('getBySkill filters by version when provided', () => {
-    const events = getBySkill(db!, 'foo', '1.0.0');
+    const events = getBySkill(db!, 'owner-a', 'foo', '1.0.0');
     expect(events).toHaveLength(2);
     expect(events.every((e) => e.skillName === 'foo' && e.version === '1.0.0')).toBe(
       true,

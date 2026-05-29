@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 interface AuditEventRow {
   id: string;
   submission_id: string | null;
+  skill_owner: string | null;
   skill_name: string | null;
   version: string | null;
   timestamp: string;
@@ -36,6 +37,7 @@ export function mapAuditEventRow(row: AuditEventRow): AuditEvent {
 const SELECT_COLUMNS = `
   id,
   submission_id,
+  skill_owner,
   skill_name,
   version,
   timestamp,
@@ -68,9 +70,12 @@ export function getBySubmission(
 
 export function getBySkill(
   db: Database.Database,
+  skillOwner: string,
   skillName: string,
   version?: string,
 ): AuditEvent[] {
+  assertAuditSkillOwnerScoped(db);
+
   const rows =
     version === undefined
       ? (db
@@ -78,23 +83,41 @@ export function getBySkill(
             `
               SELECT ${SELECT_COLUMNS}
               FROM audit_events
-              WHERE skill_name = ?
+              WHERE skill_owner = ? AND skill_name = ?
               ORDER BY timestamp ASC, rowid ASC
             `,
           )
-          .all(skillName) as AuditEventRow[])
+          .all(skillOwner, skillName) as AuditEventRow[])
       : (db
           .prepare(
             `
               SELECT ${SELECT_COLUMNS}
               FROM audit_events
-              WHERE skill_name = ? AND version = ?
+              WHERE skill_owner = ? AND skill_name = ? AND version = ?
               ORDER BY timestamp ASC, rowid ASC
             `,
           )
-          .all(skillName, version) as AuditEventRow[]);
+          .all(skillOwner, skillName, version) as AuditEventRow[]);
 
   return rows.map(mapAuditEventRow);
+}
+
+export class AuditSkillOwnerScopeUnavailableError extends Error {
+  constructor() {
+    super('audit_events.skill_owner is required for scoped audit lookups');
+    this.name = 'AuditSkillOwnerScopeUnavailableError';
+  }
+}
+
+export function hasAuditSkillOwnerColumn(db: Database.Database): boolean {
+  const columns = db.pragma('table_info(audit_events)') as Array<{ name: string }>;
+  return columns.some((column) => column.name === 'skill_owner');
+}
+
+function assertAuditSkillOwnerScoped(db: Database.Database): void {
+  if (!hasAuditSkillOwnerColumn(db)) {
+    throw new AuditSkillOwnerScopeUnavailableError();
+  }
 }
 
 export function getByUser(db: Database.Database, actor: string): AuditEvent[] {

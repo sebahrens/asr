@@ -21,6 +21,7 @@ export type ApiError =
   | 'invalid_manifest'
   | 'content_blocked'
   | 'too_many_requests'
+  | 'audit_scope_unavailable'
   | 'audit_chain_broken'
   | 'internal_error';
 

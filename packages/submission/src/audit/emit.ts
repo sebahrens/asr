@@ -3,10 +3,12 @@ import { ulid } from 'ulid';
 import { AUDIT_ACTIONS, type AuditAction, type AuditEvent } from '@asr/core';
 import { AUDIT_HASH_FORMAT_VERSION, computeHash } from './hash.js';
 import { loadKeyRing, type KeyRing } from './keyring.js';
+import { ownerFromPrincipal } from '../identity/owners.js';
 
 export interface EmitAuditInput {
   action: AuditAction;
   submissionId?: string | null;
+  skillOwner?: string | null;
   skillName?: string | null;
   version?: string | null;
   actor: string;
@@ -63,6 +65,7 @@ export function emitAudit(
 
   const id = ulid();
   const timestamp = new Date().toISOString();
+  const skillOwner = resolveSkillOwner(db, input);
 
   const prevRow = db
     .prepare('SELECT hash FROM audit_events ORDER BY rowid DESC LIMIT 1')
@@ -94,6 +97,7 @@ export function emitAudit(
       INSERT INTO audit_events (
         id,
         submission_id,
+        skill_owner,
         skill_name,
         version,
         timestamp,
@@ -108,6 +112,7 @@ export function emitAudit(
       ) VALUES (
         @id,
         @submissionId,
+        @skillOwner,
         @skillName,
         @version,
         @timestamp,
@@ -124,6 +129,7 @@ export function emitAudit(
   ).run({
     id,
     submissionId: unsigned.submissionId,
+    skillOwner,
     skillName: unsigned.skillName,
     version: unsigned.version,
     timestamp,
@@ -138,4 +144,41 @@ export function emitAudit(
   });
 
   return { ...unsigned, hash };
+}
+
+function resolveSkillOwner(
+  db: Database.Database,
+  input: EmitAuditInput,
+): string | null {
+  if (input.skillOwner !== undefined) {
+    return input.skillOwner;
+  }
+
+  if (input.submissionId) {
+    const submittedBy = db
+      .prepare('SELECT submitted_by FROM submissions WHERE id = ?')
+      .pluck()
+      .get(input.submissionId) as string | undefined;
+    if (submittedBy) {
+      return ownerFromPrincipal(submittedBy);
+    }
+  }
+
+  if (input.skillName && input.version) {
+    const owner = db
+      .prepare(
+        `
+          SELECT owner
+          FROM skill_versions
+          WHERE skill_name = ? AND version = ?
+          ORDER BY published_at DESC
+          LIMIT 1
+        `,
+      )
+      .pluck()
+      .get(input.skillName, input.version) as string | undefined;
+    return owner ?? null;
+  }
+
+  return null;
 }

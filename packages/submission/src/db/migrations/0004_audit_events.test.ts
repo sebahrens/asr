@@ -79,6 +79,7 @@ describe('migration0004AuditEvents', () => {
       expect.arrayContaining([
         'id',
         'submission_id',
+        'skill_owner',
         'actor_type',
         'action',
         'detail',
