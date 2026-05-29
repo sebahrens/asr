@@ -6,7 +6,7 @@ import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../db/migrations/index.js';
 import { emitAudit } from './emit.js';
-import { loadKeyRing } from './keyring.js';
+import { loadKeyRing, rotateKey } from './keyring.js';
 import { verifyChain } from './verify.js';
 
 const HMAC_KEY_BYTES = Buffer.alloc(32, 0x42);
@@ -251,6 +251,87 @@ describe('verifyChain', () => {
     const result = verifyChain(database, keys);
 
     expect(result).toEqual({
+      valid: false,
+      brokenAt: e1.id,
+      reason: 'unknown key',
+    });
+  });
+
+  it('detects tamper in pre-rotation segment when both keys are in the ring', () => {
+    const database = db!;
+    const k1Bytes = Buffer.alloc(32, 0x11);
+    const k2Bytes = Buffer.alloc(32, 0x22);
+    const ring = loadKeyRing({
+      AUDIT_HMAC_KEY_ID: 'k1',
+      AUDIT_HMAC_KEY_BYTES: k1Bytes.toString('base64'),
+    });
+
+    const e1 = emitAudit(
+      database,
+      {
+        action: 'submission.created',
+        submissionId: 'sub_1',
+        skillName: 'example-skill',
+        version: '1.0.0',
+        actor: 'submitter@example.com',
+        actorType: 'user',
+        detail: { source: 'cli' },
+      },
+      ring,
+    );
+
+    rotateKey(database, ring, 'k2', k2Bytes);
+
+    const e2 = emitAudit(
+      database,
+      {
+        action: 'submission.classified',
+        submissionId: 'sub_1',
+        skillName: 'example-skill',
+        version: '1.0.0',
+        actor: 'system',
+        actorType: 'system',
+        detail: { classification: 'md-only' },
+      },
+      ring,
+    );
+
+    expect(e1.hmacKeyId).toBe('k1');
+    expect(e2.hmacKeyId).toBe('k2');
+    expect(ring.activeId).toBe('k2');
+
+    const rotated = database
+      .prepare(
+        `SELECT action, hmac_key_id AS hmacKeyId, detail
+           FROM audit_events
+          WHERE action = 'key.rotated'
+          ORDER BY rowid DESC
+          LIMIT 1`,
+      )
+      .get() as
+      | { action: string; hmacKeyId: string; detail: string }
+      | undefined;
+    expect(rotated).toEqual({
+      action: 'key.rotated',
+      hmacKeyId: 'k1',
+      detail: JSON.stringify({ oldKeyId: 'k1', newKeyId: 'k2' }),
+    });
+
+    database
+      .prepare('UPDATE audit_events SET detail = ? WHERE id = ?')
+      .run(JSON.stringify({ source: 'tampered' }), e1.id);
+
+    expect(verifyChain(database, ring)).toEqual({
+      valid: false,
+      brokenAt: e1.id,
+      reason: 'hash mismatch',
+    });
+
+    const ringWithoutK1 = loadKeyRing({
+      AUDIT_HMAC_KEY_ID: 'k2',
+      AUDIT_HMAC_KEY_BYTES: k2Bytes.toString('base64'),
+    });
+    expect(verifyChain(database, ringWithoutK1)).toEqual({
       valid: false,
       brokenAt: e1.id,
       reason: 'unknown key',
