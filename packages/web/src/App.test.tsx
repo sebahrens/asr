@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BrowseRegistry, SessionProvider } from './App';
+import { BrandProvider } from './branding/BrandProvider';
 
 interface MockSkill {
   owner: string;
@@ -50,7 +51,9 @@ function makeFetchStub(items: MockSkill[]): typeof fetch {
 function renderBrowse() {
   return render(
     <SessionProvider>
-      <BrowseRegistry />
+      <BrandProvider>
+        <BrowseRegistry />
+      </BrandProvider>
     </SessionProvider>,
   );
 }

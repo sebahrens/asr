@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BrandProvider } from './branding/BrandProvider';
 import { routes } from './router';
 
 const skillDetail = {
@@ -151,7 +152,9 @@ function renderRoute(initialEntry: string) {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <BrandProvider>
+        <RouterProvider router={router} />
+      </BrandProvider>
     </QueryClientProvider>,
   );
 }
@@ -210,7 +213,7 @@ describe('router', () => {
 
     expect(await screen.findByRole('heading', { name: /^review queue$/i })).toBeInTheDocument();
 
-    expect(screen.getByRole('link', { name: /asr home/i })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: /home/i })).toHaveAttribute('href', '/');
 
     const primaryNav = screen.getByRole('navigation', { name: /primary navigation/i });
     expect(within(primaryNav).getByRole('link', { name: /browse/i })).toHaveAttribute('href', '/');

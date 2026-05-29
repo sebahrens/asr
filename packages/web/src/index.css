@@ -18,6 +18,106 @@
   --sticky-header-offset: 96px;
 }
 
+/* PwC-branded palette override. Activated by BrandProvider setting
+   data-brand="pwc" on <html>. Keeps default-off so the visual-QA tests
+   (which assert no PwC strings) stay green out of the box.
+
+   Only the accent shifts to PwC orange (#FD5108) — surfaces stay neutral
+   so the chrome reads as "PwC-branded asr" rather than full re-skin. */
+[data-brand="pwc"] {
+  --accent: #fd5108;
+  --accent-light: rgba(253, 81, 8, 0.10);
+}
+
+.brand-logo {
+  display: block;
+  height: auto;
+}
+
+.brand-logo-asr {
+  width: 80px;
+}
+
+.brand-logo-pwc {
+  width: 64px;
+  height: 36px;
+}
+
+.app-topbar-right {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.brand-toggle {
+  align-items: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 700;
+  gap: 8px;
+  letter-spacing: 0.04em;
+  padding: 4px 12px 4px 10px;
+  text-transform: uppercase;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.brand-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.brand-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.brand-toggle-label {
+  color: var(--text-muted);
+  font-size: 0.66rem;
+}
+
+.brand-toggle-pill {
+  background: var(--bg-secondary);
+  border-radius: 999px;
+  display: inline-block;
+  height: 14px;
+  position: relative;
+  width: 26px;
+  transition: background 0.15s ease;
+}
+
+.brand-toggle-pill-pwc {
+  background: var(--accent);
+}
+
+.brand-toggle-thumb {
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  height: 10px;
+  left: 2px;
+  position: absolute;
+  top: 2px;
+  transition: left 0.15s ease;
+  width: 10px;
+}
+
+.brand-toggle-pill-pwc .brand-toggle-thumb {
+  left: 14px;
+}
+
+.brand-toggle-value {
+  color: var(--text);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.74rem;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -2668,6 +2768,11 @@ main {
 
 /* /review/:id — routes/ReviewDetail.tsx */
 .review-detail {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+  display: grid;
+  gap: 16px;
   align-items: start;
   grid-template-columns: minmax(0, 1fr) 320px;
   grid-template-areas:
@@ -2676,8 +2781,52 @@ main {
     "panel decision";
 }
 
+.review-detail-loading {
+  color: var(--text-muted);
+}
+
 .review-detail-header {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  padding: 20px 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
   grid-area: header;
+}
+
+.review-detail-header h1 {
+  font-size: 1.5rem;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.review-detail-version {
+  background: var(--bg-secondary);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin: 0;
+  padding: 4px 10px;
+}
+
+.risk-badge {
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  text-transform: uppercase;
+}
+
+.risk-badge.risk-critical {
+  background: #b42318;
+  color: #fff;
 }
 
 .review-detail-decision-slot {
@@ -2688,6 +2837,7 @@ main {
 .review-detail-decision-slot .decision-panel {
   max-height: calc(100vh - var(--sticky-header-offset) - 24px);
   overflow-y: auto;
+  padding: 20px 24px;
   position: sticky;
   top: var(--sticky-header-offset);
 }
@@ -2699,6 +2849,11 @@ main {
 .review-detail > .review-detail-panel {
   grid-area: panel;
   min-width: 0;
+}
+
+.review-detail .review-detail-panel.review-detail-panel-diff,
+.review-detail .review-detail-panel.review-detail-panel-scan {
+  padding: 20px 24px;
 }
 
 @media (max-width: 1100px) {
@@ -2716,6 +2871,248 @@ main {
     overflow: visible;
     position: static;
   }
+}
+
+.review-detail-permissions-warning {
+  background: #fff4cc;
+  border: 1px solid #f0d488;
+  border-radius: 6px;
+  color: #7a5800;
+  font-size: 0.86rem;
+  font-weight: 600;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+}
+
+.review-detail-file-list {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.review-detail-file-list li {
+  align-items: baseline;
+  display: grid;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.85rem;
+  gap: 12px;
+  grid-template-columns: 90px minmax(0, 1fr);
+}
+
+.file-status {
+  border-radius: 4px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.file-status-added {
+  background: #eaf7ef;
+  color: #166534;
+}
+
+.file-status-removed {
+  background: #ffe9e9;
+  color: #b42318;
+}
+
+.file-status-modified {
+  background: #fff4cc;
+  color: #7a5800;
+}
+
+.review-detail-empty {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 0;
+  padding: 8px 0;
+}
+
+.review-detail-scan-findings {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.review-detail-scan-findings li {
+  align-items: center;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 80px minmax(0, 1fr) auto;
+  padding: 10px 14px;
+}
+
+.severity-tag {
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.severity-low { background: #eaf7ef; color: #166534; }
+.severity-medium { background: #fff4cc; color: #7a5800; }
+.severity-high { background: #ffe9e9; color: #b42318; }
+.severity-critical { background: #b42318; color: #fff; }
+
+.finding-message {
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.finding-location {
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+}
+
+/* DecisionPanel form controls (routes/DecisionPanel.tsx) */
+.decision-panel-sod-notice {
+  background: #fff4cc;
+  border: 1px solid #f0d488;
+  border-radius: 6px;
+  color: #7a5800;
+  font-size: 0.84rem;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+}
+
+.decision-panel-reason-label {
+  color: var(--text);
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.decision-panel-reason {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 10px 12px;
+  resize: vertical;
+  width: 100%;
+}
+
+.decision-panel-reason:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent-light);
+  outline-offset: 0;
+}
+
+.decision-panel-reason:disabled {
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.decision-panel-approve,
+.decision-panel-reject {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 10px 16px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.decision-panel-approve {
+  background: var(--accent);
+  color: #fff;
+}
+
+.decision-panel-approve:hover:not(:disabled) {
+  background: #b73f01;
+}
+
+.decision-panel-reject {
+  background: var(--bg-card);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.decision-panel-reject:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.decision-panel-approve:disabled,
+.decision-panel-reject:disabled {
+  background: var(--bg-secondary);
+  border-color: var(--border-light);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.decision-panel-modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  inset: 50% auto auto 50%;
+  max-width: 480px;
+  padding: 24px;
+  position: fixed;
+  transform: translate(-50%, -50%);
+  width: calc(100vw - 48px);
+  z-index: 100;
+}
+
+.decision-panel-modal-title {
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+}
+
+.decision-panel-modal-version {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  margin: 0 0 12px;
+}
+
+.decision-panel-modal-reason {
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.86rem;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+}
+
+.decision-panel-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.decision-panel-modal-actions button {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 8px 14px;
+}
+
+.decision-panel-modal-actions button:last-child {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 /* Responsive */
@@ -2993,6 +3390,21 @@ main {
 
   .review-detail-layout {
     grid-template-columns: 1fr;
+  }
+
+  .review-detail {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "header"
+      "tabs"
+      "panel"
+      "decision";
+  }
+
+  .review-detail-decision-slot .decision-panel {
+    max-height: none;
+    overflow: visible;
+    position: static;
   }
 
   .review-detail-tabs {

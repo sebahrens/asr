@@ -7,6 +7,9 @@ import { useLocation } from 'react-router-dom';
 import { parseSkillMd, type SkillDetail, type SkillSummary, type VersionDiff } from '@asr/core';
 import { SessionProvider, type Session } from './auth/SessionProvider';
 import { useSession } from './auth/useSession';
+import { BrandLogo } from './branding/BrandLogo';
+import { BrandToggle } from './branding/BrandToggle';
+import { useBrand } from './branding/BrandProvider';
 
 export { SessionProvider } from './auth/SessionProvider';
 
@@ -294,7 +297,7 @@ function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mobile-nav-header">
-              <img src="/logo.svg" alt="asr" />
+              <BrandLogo />
               <button
                 type="button"
                 className="mobile-nav-close"
@@ -878,10 +881,10 @@ function PublishSkill() {
       <header>
         <div className="container app-topbar">
           <a className="logo" href="/" aria-label="asr home">
-            <img src="/logo.svg" alt="asr" />
+            <BrandLogo />
           </a>
           <PrimaryNav current="publish" />
-          <MockAuthBanner />
+          <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
         </div>
       </header>
 
@@ -1248,6 +1251,8 @@ function BrowseLoadingSkeleton() {
 }
 
 export function BrowseRegistry() {
+  const { mode: brandMode } = useBrand();
+  const heroTitle = brandMode === 'pwc' ? 'Agent Skill Repository' : 'asr';
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [registryStatus, setRegistryStatus] = useState<RegistryConnectionStatus>('checking');
@@ -1357,11 +1362,11 @@ export function BrowseRegistry() {
       <header>
         <div className="container app-topbar">
           <div className="logo">
-            <img src="/logo.svg" alt="asr" />
+            <BrandLogo />
           </div>
 
           <PrimaryNav current="browse" />
-          <MockAuthBanner />
+          <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
 
           <div className="search-wrapper">
             <div className="search-box">
@@ -1384,7 +1389,7 @@ export function BrowseRegistry() {
       <main>
         <div className="container">
           <div className="hero">
-            <h1>asr</h1>
+            <h1>{heroTitle}</h1>
             <p>
               Browse, search and install skills for AI coding agents.
               Works with Claude Code, Copilot, and other AI agents.
@@ -1600,10 +1605,10 @@ function SkillNotFoundState({
       <header>
         <div className="container app-topbar">
           <a className="logo" href="/" aria-label="asr home">
-            <img src="/logo.svg" alt="asr" />
+            <BrandLogo />
           </a>
           <PrimaryNav current="browse" />
-          <MockAuthBanner />
+          <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
         </div>
       </header>
 
@@ -1639,10 +1644,10 @@ function AccessDeniedState({
       <header>
         <div className="container app-topbar">
           <a className="logo" href="/" aria-label="asr home">
-            <img src="/logo.svg" alt="asr" />
+            <BrandLogo />
           </a>
           <PrimaryNav current={current} />
-          <MockAuthBanner />
+          <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
         </div>
       </header>
 
@@ -1726,10 +1731,10 @@ function SkillVersionDiffPage({ owner, name, version }: { owner: string; name: s
         <header>
           <div className="container app-topbar">
             <a className="logo" href="/" aria-label="asr home">
-              <img src="/logo.svg" alt="asr" />
+              <BrandLogo />
             </a>
             <PrimaryNav current="browse" />
-            <MockAuthBanner />
+            <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
           </div>
         </header>
         <main>
@@ -1778,10 +1783,10 @@ function SkillVersionDiffPage({ owner, name, version }: { owner: string; name: s
       <header>
         <div className="container app-topbar">
           <a className="logo" href="/" aria-label="asr home">
-            <img src="/logo.svg" alt="asr" />
+            <BrandLogo />
           </a>
           <PrimaryNav current="browse" />
-          <MockAuthBanner />
+          <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
         </div>
       </header>
 
@@ -1879,10 +1884,10 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
         <header>
           <div className="container app-topbar">
             <a className="logo" href="/" aria-label="asr home">
-              <img src="/logo.svg" alt="asr" />
+              <BrandLogo />
             </a>
             <PrimaryNav current="browse" />
-            <MockAuthBanner />
+            <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
           </div>
         </header>
         <main>
@@ -1949,10 +1954,10 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
       <header>
         <div className="container app-topbar">
           <a className="logo" href="/" aria-label="asr home">
-            <img src="/logo.svg" alt="asr" />
+            <BrandLogo />
           </a>
           <PrimaryNav current="browse" />
-          <MockAuthBanner />
+          <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
         </div>
       </header>
 

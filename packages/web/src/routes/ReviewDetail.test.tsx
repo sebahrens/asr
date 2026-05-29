@@ -166,7 +166,7 @@ describe('ReviewDetail', () => {
 
     // Header: skill name and version
     expect(await screen.findByRole('heading', { name: /example-skill/i })).toBeInTheDocument();
-    expect(screen.getByText(/2\.1\.0/)).toBeInTheDocument();
+    expect(screen.getAllByText(/2\.1\.0/).length).toBeGreaterThan(0);
 
     // Risk badge from VersionDiff.riskAssessment
     expect(screen.getByLabelText(/medium risk/i)).toBeInTheDocument();

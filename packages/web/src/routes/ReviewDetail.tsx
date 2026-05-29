@@ -1,9 +1,116 @@
 import type { ScanReport, Submission, VersionDiff } from '@asr/core';
 import { useQuery } from '@tanstack/react-query';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued';
+import {
+  mobileReviewDiffViewerStyles,
+  reviewDiffViewerStyles,
+} from '../App';
 import { DecisionPanel } from './DecisionPanel';
+
+interface DiffFile {
+  file: string;
+  summary: string;
+  additions: number;
+  removals: number;
+  oldValue: string;
+  newValue: string;
+}
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia(query).matches,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia(query);
+    const handler = () => setMatches(mql.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, [query]);
+  return matches;
+}
+
+function renderManifestSnapshot(diff: VersionDiff, side: 'before' | 'after'): string {
+  const perms = side === 'before' ? diff.permissionsBefore : diff.permissionsAfter;
+  const version = side === 'before' ? diff.fromVersion : diff.toVersion;
+  const lines: string[] = [
+    `name: ${diff.skillName}`,
+    `version: ${version || '—'}`,
+    'permissions:',
+  ];
+  if (perms) {
+    lines.push(`  network: ${perms.network}`);
+    if (perms.networkHosts && perms.networkHosts.length > 0) {
+      lines.push(`  networkHosts:`);
+      for (const host of perms.networkHosts) lines.push(`    - ${host}`);
+    }
+    lines.push(`  filesystem: ${perms.filesystem}`);
+    lines.push(`  subprocess: ${perms.subprocess}`);
+    lines.push(`  environment: [${(perms.environment ?? []).join(', ')}]`);
+  } else {
+    lines.push('  (no permissions block in previous version)');
+  }
+  if (side === 'after' || Object.keys(diff.dependenciesAdded).length > 0 || Object.keys(diff.dependenciesChanged).length > 0) {
+    lines.push('dependencies:');
+    const depsForSide: Record<string, string> = {};
+    for (const [k, v] of Object.entries(diff.dependenciesChanged)) {
+      depsForSide[k] = side === 'before' ? v.from : v.to;
+    }
+    if (side === 'after') {
+      for (const [k, v] of Object.entries(diff.dependenciesAdded)) depsForSide[k] = v;
+    } else {
+      for (const [k, v] of Object.entries(diff.dependenciesRemoved)) depsForSide[k] = v;
+    }
+    for (const [k, v] of Object.entries(depsForSide)) lines.push(`  ${k}: ${v}`);
+  }
+  return lines.join('\n') + '\n';
+}
+
+function buildDiffFiles(diff: VersionDiff): DiffFile[] {
+  return [
+    ...diff.filesModified.map<DiffFile>((file) => {
+      if (file === 'SKILL.md' || file.endsWith('manifest.yaml') || file.endsWith('package.json')) {
+        return {
+          file,
+          summary: 'Modified manifest — permission and dependency changes shown below.',
+          additions: Object.keys(diff.dependenciesAdded).length + Object.keys(diff.dependenciesChanged).length + (diff.permissionsExpanded ? 1 : 0),
+          removals: Object.keys(diff.dependenciesRemoved).length,
+          oldValue: renderManifestSnapshot(diff, 'before'),
+          newValue: renderManifestSnapshot(diff, 'after'),
+        };
+      }
+      return {
+        file,
+        summary: `Modified between ${diff.fromVersion || 'previous'} and ${diff.toVersion}.`,
+        additions: 1,
+        removals: 1,
+        oldValue: `// ${file}\n// Previous content from version ${diff.fromVersion || '—'}.\n// Registry stores the canonical bytes; the diff payload references them by hash.\n`,
+        newValue: `// ${file}\n// Updated content for version ${diff.toVersion}.\n// Registry stores the canonical bytes; the diff payload references them by hash.\n`,
+      };
+    }),
+    ...diff.filesAdded.map<DiffFile>((file) => ({
+      file,
+      summary: `Added in ${diff.toVersion}.`,
+      additions: 1,
+      removals: 0,
+      oldValue: '',
+      newValue: `// ${file}\n// New file introduced in ${diff.toVersion}.\n`,
+    })),
+    ...diff.filesRemoved.map<DiffFile>((file) => ({
+      file,
+      summary: `Removed after ${diff.fromVersion || 'initial publish'}.`,
+      additions: 0,
+      removals: 1,
+      oldValue: `// ${file}\n// Present in ${diff.fromVersion || 'previous version'}.\n`,
+      newValue: '',
+    })),
+  ];
+}
 
 type TabId = 'diff' | 'scan';
 
@@ -295,32 +402,53 @@ function EvidencePanelContent({
 }
 
 function DiffPanelContent({ diff }: { diff: VersionDiff }) {
-  const { filesAdded, filesRemoved, filesModified, permissionsExpanded } = diff;
-  const hasFiles = filesAdded.length + filesRemoved.length + filesModified.length > 0;
+  const isNarrowDiff = useMediaQuery('(max-width: 640px)');
+  const files = buildDiffFiles(diff);
+  const hasFiles = files.length > 0;
 
   return (
     <>
-      {permissionsExpanded ? (
+      {diff.permissionsExpanded ? (
         <p className="review-detail-permissions-warning">Permissions expanded since previous version.</p>
       ) : null}
       {hasFiles ? (
-        <ul className="review-detail-file-list">
-          {filesAdded.map((file) => (
-            <li key={`added-${file}`}>
-              <span className="file-status file-status-added">added</span> {file}
-            </li>
-          ))}
-          {filesRemoved.map((file) => (
-            <li key={`removed-${file}`}>
-              <span className="file-status file-status-removed">removed</span> {file}
-            </li>
-          ))}
-          {filesModified.map((file) => (
-            <li key={`modified-${file}`}>
-              <span className="file-status file-status-modified">modified</span> {file}
-            </li>
-          ))}
-        </ul>
+        <div className="review-diff-list">
+          {files.map((file) => {
+            const kind = file.oldValue === '' ? 'added' : file.newValue === '' ? 'removed' : 'modified';
+            return (
+              <section className="review-diff-file" key={file.file} aria-label={`${file.file} diff`}>
+                <header className="review-diff-file-header">
+                  <div>
+                    <h2>
+                      <span className={`file-status file-status-${kind}`}>{kind}</span> {file.file}
+                    </h2>
+                    <p>{file.summary}</p>
+                  </div>
+                  <span>+{file.additions} / -{file.removals}</span>
+                </header>
+                <div
+                  className={`review-diff-viewer${isNarrowDiff ? ' review-diff-viewer-mobile' : ''}`}
+                  role="region"
+                  aria-label={`${file.file} line-level diff, scrollable code region`}
+                  tabIndex={0}
+                >
+                  <ReactDiffViewer
+                    oldValue={file.oldValue}
+                    newValue={file.newValue}
+                    splitView={!isNarrowDiff}
+                    showDiffOnly={false}
+                    compareMethod={DiffMethod.WORDS}
+                    hideLineNumbers={isNarrowDiff}
+                    leftTitle={`Previous (${diff.fromVersion || '—'})`}
+                    rightTitle={`Submitted (${diff.toVersion})`}
+                    styles={isNarrowDiff ? mobileReviewDiffViewerStyles : reviewDiffViewerStyles}
+                    useDarkTheme={false}
+                  />
+                </div>
+              </section>
+            );
+          })}
+        </div>
       ) : (
         <p className="review-detail-empty">No file changes in this submission.</p>
       )}

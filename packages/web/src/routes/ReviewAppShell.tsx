@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useSession } from '../auth/useSession';
+import { BrandLogo } from '../branding/BrandLogo';
+import { BrandToggle } from '../branding/BrandToggle';
 
 interface ReviewAppShellProps {
   current: 'browse' | 'publish' | 'review';
@@ -17,8 +19,8 @@ export function ReviewAppShell({ current, children }: ReviewAppShellProps) {
       <div className="brand-stripe" />
       <header>
         <div className="container app-topbar">
-          <Link className="logo" to="/" aria-label="asr home">
-            <img src="/logo.svg" alt="asr" />
+          <Link className="logo" to="/" aria-label="Home">
+            <BrandLogo />
           </Link>
           <nav className="primary-nav" aria-label="Primary navigation">
             <Link to="/" aria-current={current === 'browse' ? 'page' : undefined}>Browse</Link>
@@ -27,17 +29,20 @@ export function ReviewAppShell({ current, children }: ReviewAppShellProps) {
               <Link to="/review" aria-current={current === 'review' ? 'page' : undefined}>Review</Link>
             ) : null}
           </nav>
-          {import.meta.env.DEV ? (
-            <div
-              className="mock-auth-banner"
-              role="status"
-              aria-label={`${session.authMode === 'mock' ? 'Development mock auth' : 'Signed in'} session for ${session.sub} with ${roleLabel} role`}
-            >
-              <span className="mock-auth-label">{session.authMode === 'mock' ? 'Dev mock auth' : 'Signed in'}</span>
-              <span className="mock-auth-identity">{session.sub}</span>
-              <span className="mock-auth-role">{roleLabel}</span>
-            </div>
-          ) : null}
+          <div className="app-topbar-right">
+            <BrandToggle />
+            {import.meta.env.DEV ? (
+              <div
+                className="mock-auth-banner"
+                role="status"
+                aria-label={`${session.authMode === 'mock' ? 'Development mock auth' : 'Signed in'} session for ${session.sub} with ${roleLabel} role`}
+              >
+                <span className="mock-auth-label">{session.authMode === 'mock' ? 'Dev mock auth' : 'Signed in'}</span>
+                <span className="mock-auth-identity">{session.sub}</span>
+                <span className="mock-auth-role">{roleLabel}</span>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
       {children}
