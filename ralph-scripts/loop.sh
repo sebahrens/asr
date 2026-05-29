@@ -54,6 +54,72 @@ CODEX_BUILD_MODEL="${CODEX_BUILD_MODEL:-}"    # empty => codex config.toml defau
 CODEX_VISUAL_MODEL="${CODEX_VISUAL_MODEL:-}"  # empty => codex config.toml default
 HARD_TIMEOUT=2700  # 45min safety net (should never hit with stream-json detection)
 
+# --help / -h : print usage and exit (before any side effects).
+print_help() {
+    cat <<'EOF'
+ASR Ralph Loop Runner — drives an agent (Claude or Codex) over the asr repo,
+iterating on beads-tracked work until done or an iteration cap is hit.
+
+USAGE:
+  ./loop.sh [claude|codex] [plan] [include-tests] [N]
+  ./loop.sh --help | -h
+
+POSITIONAL ARGS (order-independent, all optional, compose freely):
+  plan            Run the planning loop (decompose specs into beads) instead of
+                  the default build loop. Uses PROMPT_plan.md.
+  include-tests   After each build iteration, also run the Docker E2E test
+                  (pnpm test:e2e) and a visual web-UI inspection pass. Opt-in;
+                  off by default. Ignored in plan mode.
+  claude          Use the Claude engine (`claude -p`). This is the default.
+  codex           Use the OpenAI Codex engine (`codex exec`) instead of Claude.
+                  Equivalent to RALPH_ENGINE=codex.
+  N               A bare integer caps the run at N iterations. 0 / omitted means
+                  run until an exit signal or no work remains.
+
+  Examples:
+    ./loop.sh                  Build loop, Claude, unlimited iterations
+    ./loop.sh plan             Planning loop
+    ./loop.sh 5                Build loop, stop after 5 iterations
+    ./loop.sh plan 3           Planning loop, max 3 iterations
+    ./loop.sh include-tests    Build loop + E2E + visual inspection each pass
+    ./loop.sh codex plan 2     Codex engine, planning loop, max 2 iterations
+
+ENGINES:
+  claude  `claude -p` on the Anthropic subscription (ANTHROPIC_API_KEY is
+          unset so it never bills the API account).
+  codex   `codex exec` on the ChatGPT subscription (OPENAI_API_KEY is unset
+          for the same reason). Called as the supported headless CLI directly.
+
+MODELS:
+  claude  Build/plan = Opus (--model opus); visual inspection = Haiku.
+  codex   Uses ~/.codex/config.toml default unless overridden per phase via
+          CODEX_BUILD_MODEL / CODEX_VISUAL_MODEL.
+
+ENVIRONMENT VARIABLES:
+  PROJECT_DIR         Repo to run against (default: ~/projects/asr). Must exist.
+  RALPH_ENGINE        Default engine when no claude/codex arg is given
+                      (claude | codex; default claude). A positional arg wins.
+  CODEX_BUILD_MODEL   Override the codex model for the build/plan phase
+                      (default: codex config.toml default).
+  CODEX_VISUAL_MODEL  Override the codex model for the visual phase
+                      (default: codex config.toml default).
+  ANTHROPIC_API_KEY   Always unset by this script (forces subscription auth).
+  OPENAI_API_KEY      Unset for codex runs (forces ChatGPT-subscription auth).
+
+BEHAVIOUR NOTES:
+  - In build mode, only tasks/stories are picked up; epics are skipped. If no
+    buildable bead is ready, the iteration auto-pivots to plan mode to decompose.
+  - Create a file named .ralph-exit in PROJECT_DIR to stop the loop after the
+    current iteration (the file is consumed on exit).
+  - HARD_TIMEOUT (2700s) is a per-phase watchdog safety net.
+EOF
+}
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help|help) print_help; exit 0 ;;
+    esac
+done
+
 # Absolute paths
 # - SCRIPT_DIR: where loop.sh + PROMPT_*.md live (this directory)
 # - PROJECT_DIR: the asr repo to run against; override with PROJECT_DIR=...
