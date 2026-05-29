@@ -16,7 +16,15 @@ import { registerPublish } from './commands/publish.js';
 import { registerStatus, registerSubmissions } from './commands/submissions.js';
 import { registerToken } from './commands/token.js';
 import { registerList } from './commands/list.js';
-import { getConfig, setConfig, getTargetDir } from './config.js';
+import {
+  getConfig,
+  getConfigValue,
+  getConfigWithSecrets,
+  getTargetDir,
+  isSecretConfigKey,
+  redactConfig,
+  setConfig,
+} from './config.js';
 import { recordInstall } from './lockfile.js';
 import { installSkill, removeSkill, updateSkill } from './install.js';
 import { registerYank } from './yank.js';
@@ -50,7 +58,7 @@ async function confirm(message: string): Promise<boolean> {
 }
 
 async function fetchRegistry<T>(path: string, options: { token?: string } = {}): Promise<T | null> {
-  const config = getConfig();
+  const config = await getConfigWithSecrets();
   if (!config.registry) return null;
   
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -141,7 +149,7 @@ async function installFromRegistry(
   target: 'cursor' | 'claude' | 'project',
   global: boolean
 ): Promise<boolean> {
-  const config = getConfig();
+  const config = await getConfigWithSecrets();
   if (!config.registry) return false;
 
   try {
@@ -237,7 +245,7 @@ program
   .action(async (source, options) => {
     const spinner = ora('Installing skill...').start();
     try {
-      const config = getConfig();
+      const config = await getConfigWithSecrets();
       const githubToken = options.token || config.githubToken;
       const target = options.agent as 'cursor' | 'claude' | 'project';
 
@@ -459,7 +467,7 @@ program
   .option('-o, --owner <owner>', 'Owner name', 'local')
   .option('-r, --repo <repo>', 'Repo name', 'skills')
   .action(async (name, options) => {
-    const config = getConfig();
+    const config = await getConfigWithSecrets();
     if (!config.registry || !config.token) {
       console.log(pc.yellow('Registry and token required'));
       process.exit(1);
@@ -492,15 +500,20 @@ program
   .description('Manage configuration (get/set registry, token, githubToken, defaultTarget)')
   .action(async (action, key, value) => {
     if (action === 'get') {
-      const config = getConfig();
+      const config = await getConfigWithSecrets();
       if (key) {
-        console.log(config[key as keyof typeof config] || '');
+        if (isSecretConfigKey(key)) {
+          console.log(config[key] ? '<redacted>' : '');
+        } else {
+          console.log((await getConfigValue(key as keyof typeof config)) || '');
+        }
       } else {
-        console.log(JSON.stringify(config, null, 2));
+        console.log(JSON.stringify(redactConfig(config), null, 2));
       }
     } else if (action === 'set' && key && value) {
-      setConfig(key as 'registry' | 'token' | 'githubToken' | 'defaultTarget', value);
-      console.log(pc.green(`Set ${key} = ${value}`));
+      await setConfig(key as 'registry' | 'token' | 'githubToken' | 'defaultTarget', value);
+      const displayedValue = isSecretConfigKey(key) ? '<redacted>' : value;
+      console.log(pc.green(`Set ${key} = ${displayedValue}`));
     } else {
       console.log(pc.yellow('Usage: asr config get [key] | set <key> <value>'));
     }

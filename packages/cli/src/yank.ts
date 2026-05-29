@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import pc from 'picocolors';
 import { resolveRegistryToken } from './auth/registry-token.js';
-import { getConfig } from './config.js';
+import { getConfigWithSecrets } from './config.js';
 
 export interface YankPostResult {
   status: number;
@@ -126,7 +126,7 @@ export function registerYank(program: Command): void {
         ref: string,
         options: { reason: string; severity: string; token?: string },
       ) => {
-        const config = getConfig();
+        const config = await getConfigWithSecrets();
         if (!config.registry) {
           console.error(
             pc.red('No registry configured. Use: asr config set registry <url>'),

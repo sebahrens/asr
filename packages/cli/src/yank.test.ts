@@ -6,6 +6,10 @@ vi.mock('./config.js', () => ({
     defaultTarget: 'project' as const,
     registry: 'https://registry.example.com',
   })),
+  getConfigWithSecrets: vi.fn(async () => ({
+    defaultTarget: 'project' as const,
+    registry: 'https://registry.example.com',
+  })),
 }));
 
 vi.mock('./auth/registry-token.js', () => ({

@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import pc from 'picocolors';
 import ora from 'ora';
-import { getConfig } from '../config.js';
+import { getConfigWithSecrets } from '../config.js';
 import { getSkillDetail } from '../registry-client.js';
 import { resolveRegistryToken } from '../auth/registry-token.js';
 
@@ -25,7 +25,7 @@ export async function runInfo(slug: string): Promise<void> {
 
   const spinner = ora('Fetching skill...').start();
   try {
-    const config = getConfig();
+    const config = await getConfigWithSecrets();
     const token = await resolveRegistryToken({ configToken: config.token });
     const detail = await getSkillDetail(owner, name, token ? { token } : {});
     spinner.stop();

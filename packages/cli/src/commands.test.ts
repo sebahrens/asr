@@ -4,6 +4,7 @@ import type { InstalledSkill, SkillDetail, SkillSummary } from '@asr/core';
 
 vi.mock('./config.js', () => ({
   getConfig: vi.fn(() => ({ defaultTarget: 'project' as const })),
+  getConfigWithSecrets: vi.fn(async () => ({ defaultTarget: 'project' as const })),
 }));
 
 vi.mock('./registry-client.js', async (importOriginal) => {

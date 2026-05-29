@@ -1,6 +1,11 @@
 import Conf from 'conf';
 import { homedir } from 'os';
 import { join } from 'path';
+import {
+  getConfigSecret,
+  storeConfigSecret,
+  type ConfigSecretKey,
+} from './auth/token-store.js';
 
 interface Config {
   registry?: string;
@@ -9,8 +14,13 @@ interface Config {
   defaultTarget: 'cursor' | 'claude' | 'project';
 }
 
+type ConfigKey = keyof Config;
+
+const SECRET_CONFIG_KEYS = new Set<ConfigKey>(['token', 'githubToken']);
+
 const config = new Conf<Config>({
   projectName: 'asr',
+  ...(process.env.ASR_CONFIG_HOME ? { cwd: process.env.ASR_CONFIG_HOME } : {}),
   defaults: {
     defaultTarget: 'project',
   },
@@ -19,14 +29,59 @@ const config = new Conf<Config>({
 export function getConfig(): Config {
   return {
     registry: config.get('registry'),
-    token: config.get('token'),
-    githubToken: config.get('githubToken'),
     defaultTarget: config.get('defaultTarget'),
   };
 }
 
-export function setConfig(key: keyof Config, value: string) {
+async function getMigratedSecret(key: ConfigSecretKey): Promise<string | undefined> {
+  const storedSecret = await getConfigSecret(key);
+  if (storedSecret) return storedSecret;
+
+  const plaintextValue = config.get(key);
+  if (plaintextValue) {
+    await storeConfigSecret(key, plaintextValue);
+    config.delete(key);
+  }
+
+  return plaintextValue;
+}
+
+export async function getConfigWithSecrets(): Promise<Config> {
+  return {
+    ...getConfig(),
+    token: await getMigratedSecret('token'),
+    githubToken: await getMigratedSecret('githubToken'),
+  };
+}
+
+export async function getConfigValue(key: ConfigKey): Promise<string | undefined> {
+  if (key === 'token' || key === 'githubToken') {
+    return getMigratedSecret(key);
+  }
+
+  return config.get(key);
+}
+
+export async function setConfig(key: ConfigKey, value: string) {
+  if (SECRET_CONFIG_KEYS.has(key)) {
+    await storeConfigSecret(key as ConfigSecretKey, value);
+    config.delete(key);
+    return;
+  }
+
   config.set(key, value);
+}
+
+export function redactConfig(config: Config): Config {
+  return {
+    ...config,
+    token: config.token ? '<redacted>' : undefined,
+    githubToken: config.githubToken ? '<redacted>' : undefined,
+  };
+}
+
+export function isSecretConfigKey(key: string): key is ConfigSecretKey {
+  return key === 'token' || key === 'githubToken';
 }
 
 export function getTargetDir(

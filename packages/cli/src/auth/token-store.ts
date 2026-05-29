@@ -18,6 +18,9 @@ interface KeytarLike {
 const SERVICE_NAME = 'asr';
 const KEYTAR_ACCOUNT = 'tokens';
 const TOKEN_FILE = 'token.json';
+const CONFIG_SECRETS_FILE = 'config-secrets.json';
+
+export type ConfigSecretKey = 'token' | 'githubToken';
 
 type KeytarImporter = () => Promise<unknown>;
 
@@ -38,6 +41,14 @@ function configRoot(): string {
 
 function tokenFilePath(): string {
   return join(configRoot(), 'asr', TOKEN_FILE);
+}
+
+function configSecretsFilePath(): string {
+  return join(configRoot(), 'asr', CONFIG_SECRETS_FILE);
+}
+
+function configSecretAccount(key: ConfigSecretKey): string {
+  return `config:${key}`;
 }
 
 async function loadKeytar(): Promise<KeytarLike | null> {
@@ -78,6 +89,39 @@ async function readFallbackFile(): Promise<StoredTokens | null> {
 
 async function clearFallbackFile(): Promise<void> {
   await rm(tokenFilePath(), { force: true });
+}
+
+async function readFallbackConfigSecrets(): Promise<Partial<Record<ConfigSecretKey, string>>> {
+  try {
+    const content = await readFile(configSecretsFilePath(), 'utf8');
+    const parsed = JSON.parse(content) as Partial<Record<ConfigSecretKey, unknown>>;
+    const secrets: Partial<Record<ConfigSecretKey, string>> = {};
+    if (typeof parsed.token === 'string') secrets.token = parsed.token;
+    if (typeof parsed.githubToken === 'string') secrets.githubToken = parsed.githubToken;
+    return secrets;
+  } catch {
+    return {};
+  }
+}
+
+async function writeFallbackConfigSecrets(
+  secrets: Partial<Record<ConfigSecretKey, string>>
+): Promise<void> {
+  const path = configSecretsFilePath();
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  await writeFile(path, JSON.stringify(secrets, null, 2), { mode: 0o600 });
+  await chmod(path, 0o600);
+}
+
+async function storeFallbackConfigSecret(key: ConfigSecretKey, value: string): Promise<void> {
+  const secrets = await readFallbackConfigSecrets();
+  secrets[key] = value;
+  await writeFallbackConfigSecrets(secrets);
+}
+
+async function getFallbackConfigSecret(key: ConfigSecretKey): Promise<string | undefined> {
+  const secrets = await readFallbackConfigSecrets();
+  return secrets[key];
 }
 
 export async function storeTokens(tokens: StoredTokens): Promise<void> {
@@ -124,4 +168,34 @@ export async function clearTokens(): Promise<void> {
   }
 
   await clearFallbackFile();
+}
+
+export async function storeConfigSecret(key: ConfigSecretKey, value: string): Promise<void> {
+  const keytar = await loadKeytar();
+
+  if (keytar) {
+    try {
+      await keytar.setPassword(SERVICE_NAME, configSecretAccount(key), value);
+      return;
+    } catch {
+      // Fall back to the portable file store when native keyring access fails at runtime.
+    }
+  }
+
+  await storeFallbackConfigSecret(key, value);
+}
+
+export async function getConfigSecret(key: ConfigSecretKey): Promise<string | undefined> {
+  const keytar = await loadKeytar();
+
+  if (keytar) {
+    try {
+      const password = await keytar.getPassword(SERVICE_NAME, configSecretAccount(key));
+      if (password) return password;
+    } catch {
+      // Fall back to the portable file store when native keyring access fails at runtime.
+    }
+  }
+
+  return getFallbackConfigSecret(key);
 }
