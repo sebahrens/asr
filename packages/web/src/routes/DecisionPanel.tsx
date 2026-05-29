@@ -18,6 +18,18 @@ interface RejectPayload {
   reason: string;
 }
 
+class DecisionRequestError extends Error {
+  readonly code?: string;
+  readonly status: number;
+
+  constructor(status: number, code?: string, message?: string) {
+    super(message ?? `Decision request failed with ${status}`);
+    this.name = 'DecisionRequestError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
 async function postDecision(
   url: string,
   payload: ApprovePayload | RejectPayload | undefined,
@@ -29,8 +41,49 @@ async function postDecision(
   }
   const res = await fetch(url, init);
   if (!res.ok) {
-    throw new Error(`POST ${url} failed with ${res.status}`);
+    const body = await parseErrorBody(res);
+    throw new DecisionRequestError(res.status, body.error, body.message);
   }
+}
+
+async function parseErrorBody(res: Response): Promise<{ error?: string; message?: string }> {
+  const text = await res.text().catch(() => '');
+  if (text.length === 0) {
+    return {};
+  }
+
+  try {
+    const body = JSON.parse(text) as unknown;
+    if (typeof body !== 'object' || body === null) {
+      return {};
+    }
+
+    const error = 'error' in body && typeof body.error === 'string' ? body.error : undefined;
+    const message = 'message' in body && typeof body.message === 'string' ? body.message : undefined;
+    return { error, message };
+  } catch {
+    return {};
+  }
+}
+
+function formatDecisionError(error: unknown): string {
+  if (error instanceof DecisionRequestError) {
+    if (error.code === 'separation_of_duties_violation') {
+      return 'Separation of duties: submitters cannot approve or reject their own submissions.';
+    }
+
+    if (error.message.length > 0 && !error.message.startsWith('Decision request failed')) {
+      return error.message;
+    }
+
+    return `Unable to record the decision. The server responded with ${error.status}.`;
+  }
+
+  if (error instanceof Error && error.message.length > 0) {
+    return error.message;
+  }
+
+  return 'Unable to record the decision. Check your connection and try again.';
 }
 
 export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
@@ -40,6 +93,7 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
 
   const [reason, setReason] = useState('');
   const [pendingAction, setPendingAction] = useState<DecisionAction | null>(null);
+  const [decisionStatus, setDecisionStatus] = useState<string | null>(null);
 
   const approveMutation = useMutation({
     mutationFn: () =>
@@ -66,9 +120,27 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
   const reasonTrimmed = reason.trim();
   const rejectDisabled = isSelf || reasonTrimmed.length === 0;
   const isSubmitting = approveMutation.isPending || rejectMutation.isPending;
+  const activeError =
+    pendingAction === 'approve'
+      ? approveMutation.error
+      : pendingAction === 'reject'
+        ? rejectMutation.error
+        : null;
+
+  function resetMutationErrors() {
+    approveMutation.reset();
+    rejectMutation.reset();
+  }
+
+  function openModal(action: DecisionAction) {
+    resetMutationErrors();
+    setDecisionStatus(null);
+    setPendingAction(action);
+  }
 
   function closeModal() {
     if (isSubmitting) return;
+    resetMutationErrors();
     setPendingAction(null);
   }
 
@@ -76,6 +148,7 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
     if (pendingAction === 'approve') {
       approveMutation.mutate(undefined, {
         onSuccess: () => {
+          setDecisionStatus('Submission approved.');
           setPendingAction(null);
           setReason('');
         },
@@ -83,6 +156,7 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
     } else if (pendingAction === 'reject') {
       rejectMutation.mutate(reasonTrimmed, {
         onSuccess: () => {
+          setDecisionStatus('Submission rejected.');
           setPendingAction(null);
           setReason('');
         },
@@ -95,6 +169,12 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
       {isSelf ? (
         <p className="decision-panel-sod-notice" role="note">
           You submitted this version, so you cannot approve or reject it (separation of duties).
+        </p>
+      ) : null}
+
+      {decisionStatus ? (
+        <p className="decision-panel-status" role="status">
+          {decisionStatus}
         </p>
       ) : null}
 
@@ -116,7 +196,7 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
           type="button"
           className="decision-panel-approve"
           disabled={isSelf}
-          onClick={() => setPendingAction('approve')}
+          onClick={() => openModal('approve')}
         >
           Approve
         </button>
@@ -124,7 +204,7 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
           type="button"
           className="decision-panel-reject"
           disabled={rejectDisabled}
-          onClick={() => setPendingAction('reject')}
+          onClick={() => openModal('reject')}
         >
           Reject
         </button>
@@ -150,6 +230,11 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
           </p>
           {pendingAction === 'reject' ? (
             <p className="decision-panel-modal-reason">Reason: {reasonTrimmed}</p>
+          ) : null}
+          {activeError ? (
+            <p className="decision-panel-error" role="alert">
+              {formatDecisionError(activeError)}
+            </p>
           ) : null}
           <div className="decision-panel-modal-actions">
             <button type="button" onClick={closeModal} disabled={isSubmitting}>

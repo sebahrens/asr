@@ -189,4 +189,57 @@ describe('DecisionPanel', () => {
       expect(String(body)).not.toContain('reason');
     }
   });
+
+  it('keeps the modal open and renders a SoD-specific alert when approve fails separation of duties', async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({ error: 'separation_of_duties_violation' }),
+      {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPanel({
+      submission: makeSubmission({ id: 'sub-sod', submittedBy: 'user-submitter' }),
+      session: { sub: 'compliance-officer', name: 'CO', roles: ['Compliance'] },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /approve/i }));
+    const confirm = await screen.findByRole('button', { name: /confirm approve/i });
+    fireEvent.click(confirm);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Separation of duties: submitters cannot approve or reject their own submissions.',
+    );
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(confirm).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('renders a success status and closes the modal when reject succeeds', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({}), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPanel({
+      submission: makeSubmission({ id: 'sub-ok', submittedBy: 'user-submitter' }),
+      session: { sub: 'compliance-officer', name: 'CO', roles: ['Compliance'] },
+    });
+
+    fireEvent.change(screen.getByRole('textbox', { name: /reason/i }), {
+      target: { value: 'Policy exception is not documented.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^reject$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm reject/i }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Submission rejected.');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
 });
