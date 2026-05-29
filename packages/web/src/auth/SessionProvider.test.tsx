@@ -18,6 +18,7 @@ afterEach(() => {
 
 describe('SessionProvider', () => {
   it('provides mock session env values without rendering a competing auth banner', () => {
+    vi.stubEnv('DEV', true);
     vi.stubEnv('VITE_MOCK_SUB', 'u1');
     vi.stubEnv('VITE_MOCK_ROLES', 'Compliance');
 
@@ -31,6 +32,21 @@ describe('SessionProvider', () => {
       JSON.stringify({ sub: 'u1', roles: ['Compliance'] }),
     );
     expect(screen.queryByText('Mock auth: Compliance')).not.toBeInTheDocument();
+  });
+
+  it('rejects mock auth in production builds unless explicitly enabled', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('PROD', true);
+    vi.stubEnv('VITE_AUTH_MODE', 'mock');
+
+    expect(() => render(
+      <SessionProvider>
+        <SessionProbe />
+      </SessionProvider>,
+    )).toThrow('Mock auth is disabled outside dev builds');
+
+    consoleError.mockRestore();
   });
 
   it('throws when useSession is called outside SessionProvider', () => {

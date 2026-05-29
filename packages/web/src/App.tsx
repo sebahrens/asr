@@ -1,4 +1,4 @@
-import { createContext, useState, useEffect, useCallback, useContext, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued';
 import type { ReactDiffViewerProps } from 'react-diff-viewer-continued';
@@ -6,6 +6,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useLocation } from 'react-router-dom';
 import { parseSkillMd, type SkillDetail, type SkillSummary, type VersionDiff } from '@asr/core';
+import { SessionProvider, type Session } from './auth/SessionProvider';
+import { useSession } from './auth/useSession';
+
+export { SessionProvider } from './auth/SessionProvider';
 
 type BrowseKindFilter = 'all' | SkillSummary['kind'];
 type BrowseRiskFilter = 'all' | SkillSummary['riskAssessmentLatest'];
@@ -147,16 +151,8 @@ type PublishStatus = 'idle' | 'submitting' | 'submitted';
 type PublishWizardStep = 'upload' | 'manifest' | 'questionnaire' | 'review';
 type SkillDetailTab = 'preview' | 'versions' | 'permissions' | 'audit';
 type ReviewDetailTab = 'diff' | 'dependencies' | 'permissions' | 'scan' | 'audit';
-type MockRole = 'Viewer' | 'Submitter' | 'Compliance' | 'Admin';
 type RegistryConnectionStatus = 'checking' | 'connected' | 'unavailable';
 type ScanSeverityFilter = 'all' | ReviewSubmission['risk'];
-
-interface Session {
-  sub: string;
-  role: MockRole;
-  canSubmit: boolean;
-  canReview: boolean;
-}
 
 interface PublishFormErrors {
   skillArchive?: string;
@@ -201,41 +197,16 @@ const emptyQuestionnaireDraft: QuestionnaireDraft = {
   reviewNotes: '',
 };
 
-const reviewRoles = new Set<MockRole>(['Compliance', 'Admin']);
-const submitRoles = new Set<MockRole>(['Submitter', 'Admin']);
-const mockRoles: MockRole[] = ['Viewer', 'Submitter', 'Compliance', 'Admin'];
-const SessionContext = createContext<Session | null>(null);
-
-function getMockRole(): MockRole {
-  const configuredRole = import.meta.env.VITE_MOCK_AUTH_ROLE;
-  if (mockRoles.includes(configuredRole as MockRole)) {
-    return configuredRole as MockRole;
-  }
-
-  return 'Admin';
+function sessionCanReview(session: Session): boolean {
+  return session.roles.some((role) => role === 'Compliance' || role === 'Admin');
 }
 
-function createSession(role: MockRole): Session {
-  return {
-    sub: import.meta.env.VITE_MOCK_USER_SUB || 'dev-user',
-    role,
-    canSubmit: submitRoles.has(role),
-    canReview: reviewRoles.has(role),
-  };
+function sessionCanSubmit(session: Session): boolean {
+  return session.roles.some((role) => role === 'Submitter' || role === 'Admin');
 }
 
-export function SessionProvider({ children }: { children: ReactNode }) {
-  const [session] = useState(() => createSession(getMockRole()));
-  return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
-}
-
-function useSession(): Session {
-  const session = useContext(SessionContext);
-  if (!session) {
-    throw new Error('useSession must be used inside SessionProvider');
-  }
-
-  return session;
+function sessionRoleLabel(session: Session): string {
+  return session.roles.length > 0 ? session.roles.join(', ') : 'Viewer';
 }
 
 function mapSkillSummary(skill: SkillSummary): Skill {
@@ -415,6 +386,7 @@ function isOwnSubmission(submission: ReviewSubmission, session: Session): boolea
 function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
   const session = useSession();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const roleLabel = sessionRoleLabel(session);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -425,7 +397,7 @@ function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
       <nav className="primary-nav" aria-label="Primary navigation">
         <a href="/" aria-current={current === 'browse' ? 'page' : undefined}>Browse</a>
         <a href="/publish" aria-current={current === 'publish' ? 'page' : undefined}>Publish</a>
-        {session.canReview ? (
+        {sessionCanReview(session) ? (
           <a href="/review" aria-current={current === 'review' ? 'page' : undefined}>Review</a>
         ) : null}
       </nav>
@@ -466,14 +438,14 @@ function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
             <nav className="mobile-nav-links" aria-label="Mobile navigation links">
               <a href="/" aria-current={current === 'browse' ? 'page' : undefined}>Browse</a>
               <a href="/publish" aria-current={current === 'publish' ? 'page' : undefined}>Publish</a>
-              {session.canReview ? (
+              {sessionCanReview(session) ? (
                 <a href="/review" aria-current={current === 'review' ? 'page' : undefined}>Review</a>
               ) : null}
             </nav>
-            <div className="mobile-session-summary" aria-label={`Development mock auth session for ${session.sub} with ${session.role} role`}>
-              <span>Dev mock auth</span>
+            <div className="mobile-session-summary" aria-label={`${session.authMode === 'mock' ? 'Development mock auth' : 'Signed in'} session for ${session.sub} with ${roleLabel} role`}>
+              <span>{session.authMode === 'mock' ? 'Dev mock auth' : 'Signed in'}</span>
               <strong>{session.sub}</strong>
-              <small>{session.role}</small>
+              <small>{roleLabel}</small>
             </div>
           </aside>
         </div>
@@ -484,15 +456,17 @@ function PrimaryNav({ current }: { current: 'browse' | 'publish' | 'review' }) {
 
 function MockAuthBanner() {
   const session = useSession();
+  const roleLabel = sessionRoleLabel(session);
+  const label = session.authMode === 'mock' ? 'Dev mock auth' : 'Signed in';
   return (
     <div
       className="mock-auth-banner"
       role="status"
-      aria-label={`Development mock auth session for ${session.sub} with ${session.role} role`}
+      aria-label={`${session.authMode === 'mock' ? 'Development mock auth' : 'Signed in'} session for ${session.sub} with ${roleLabel} role`}
     >
-      <span className="mock-auth-label">Dev mock auth</span>
+      <span className="mock-auth-label">{label}</span>
       <span className="mock-auth-identity">{session.sub}</span>
-      <span className="mock-auth-role">{session.role}</span>
+      <span className="mock-auth-role">{roleLabel}</span>
     </div>
   );
 }
@@ -2085,7 +2059,7 @@ function PublishSkill() {
       && manifestDraft.description.trim(),
   );
   const questionnaireIsValid = Boolean(questionnaire.externalNetwork && questionnaire.filesystemAccess);
-  const canSubmit = session.canSubmit && uploadIsValid && manifestIsValid && questionnaireIsValid && status === 'idle';
+  const canSubmit = sessionCanSubmit(session) && uploadIsValid && manifestIsValid && questionnaireIsValid && status === 'idle';
   const archiveSize = skillArchive ? `${(skillArchive.size / 1024 / 1024).toFixed(2)} MB` : null;
   const manifestTags = manifestDraft.tags
     .split(',')
@@ -2202,7 +2176,7 @@ function PublishSkill() {
       return;
     }
 
-    if (!session.canSubmit) {
+    if (!sessionCanSubmit(session)) {
       setSubmitMessage('Submitter role required to publish skills.');
       return;
     }
@@ -3039,7 +3013,7 @@ function AccessDeniedState({
 
 function RequireReviewRole({ children }: { children: ReactNode }) {
   const session = useSession();
-  if (!session.canReview) {
+  if (!sessionCanReview(session)) {
     return <AccessDeniedState />;
   }
 
@@ -3048,7 +3022,7 @@ function RequireReviewRole({ children }: { children: ReactNode }) {
 
 function RequireSubmitRole({ children }: { children: ReactNode }) {
   const session = useSession();
-  if (!session.canSubmit) {
+  if (!sessionCanSubmit(session)) {
     return (
       <AccessDeniedState
         current="publish"

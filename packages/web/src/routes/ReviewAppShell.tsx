@@ -11,6 +11,8 @@ export function ReviewAppShell({ current, children }: ReviewAppShellProps) {
   const session = useSession();
   const canReview = session.roles.some((role) => role === 'Compliance' || role === 'Admin');
   const roleLabel = session.roles.length > 0 ? session.roles.join(', ') : 'Viewer';
+  const authLabel = session.authMode === 'mock' ? 'Dev mock auth' : 'Signed in';
+  const authDescription = session.authMode === 'mock' ? 'Development mock auth' : 'Signed in';
 
   return (
     <>
@@ -30,9 +32,9 @@ export function ReviewAppShell({ current, children }: ReviewAppShellProps) {
           <div
             className="mock-auth-banner"
             role="status"
-            aria-label={`Development mock auth session for ${session.sub} with ${roleLabel} role`}
+            aria-label={`${authDescription} session for ${session.sub} with ${roleLabel} role`}
           >
-            <span className="mock-auth-label">Dev mock auth</span>
+            <span className="mock-auth-label">{authLabel}</span>
             <span className="mock-auth-identity">{session.sub}</span>
             <span className="mock-auth-role">{roleLabel}</span>
           </div>

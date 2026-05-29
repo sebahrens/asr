@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@asr/core": "workspace:*",
+    "@azure/msal-browser": "^5.11.0",
+    "@azure/msal-react": "^5.4.2",
     "@tanstack/react-query": "^5.0.0",
     "react": "^19.0.0",
     "react-diff-viewer-continued": "^4.2.2",
