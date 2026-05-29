@@ -4,6 +4,11 @@ import yauzl from 'yauzl';
 
 const ROOT_SKILL_MD = 'SKILL.md';
 const REF_SKILL_MD = /^skills\/([^/]+)\/SKILL\.md$/;
+export const BUNDLE_TEXT_LIMITS = {
+  maxFiles: 500,
+  maxEntryBytes: 1024 * 1024,
+  maxTotalBytes: 10 * 1024 * 1024,
+};
 
 export interface BundleEntry {
   manifest: SkillManifest;
@@ -60,6 +65,9 @@ function readZipTextEntries(
 
       const out = new Map<string, string>();
       let settled = false;
+      let matchedFiles = 0;
+      let claimedTotalBytes = 0;
+      let streamedTotalBytes = 0;
 
       const fail = (e: unknown) => {
         if (settled) return;
@@ -74,15 +82,51 @@ function readZipTextEntries(
           zip.readEntry();
           return;
         }
+
+        matchedFiles += 1;
+        if (matchedFiles > BUNDLE_TEXT_LIMITS.maxFiles) {
+          fail(new Error(`zip text entry count limit exceeded: ${BUNDLE_TEXT_LIMITS.maxFiles}`));
+          return;
+        }
+
+        if (entry.uncompressedSize > BUNDLE_TEXT_LIMITS.maxEntryBytes) {
+          fail(new Error(`zip text entry too large: ${name}`));
+          return;
+        }
+
+        claimedTotalBytes += entry.uncompressedSize;
+        if (claimedTotalBytes > BUNDLE_TEXT_LIMITS.maxTotalBytes) {
+          fail(new Error('zip text total size limit exceeded'));
+          return;
+        }
+
         zip.openReadStream(entry, (streamErr, stream) => {
           if (streamErr || !stream) {
             fail(streamErr ?? new Error(`failed to read zip entry: ${name}`));
             return;
           }
           const chunks: Buffer[] = [];
-          stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+          let entryBytes = 0;
+          stream.on('data', (chunk: Buffer) => {
+            entryBytes += chunk.length;
+            streamedTotalBytes += chunk.length;
+            if (entryBytes > BUNDLE_TEXT_LIMITS.maxEntryBytes) {
+              const error = new Error(`zip text entry too large: ${name}`);
+              (stream as NodeJS.ReadableStream & { destroy(error: Error): void }).destroy(error);
+              fail(error);
+              return;
+            }
+            if (streamedTotalBytes > BUNDLE_TEXT_LIMITS.maxTotalBytes) {
+              const error = new Error('zip text total size limit exceeded');
+              (stream as NodeJS.ReadableStream & { destroy(error: Error): void }).destroy(error);
+              fail(error);
+              return;
+            }
+            chunks.push(chunk);
+          });
           stream.on('end', () => {
-            out.set(name, Buffer.concat(chunks).toString('utf-8'));
+            if (settled) return;
+            out.set(name, Buffer.concat(chunks, entryBytes).toString('utf-8'));
             zip.readEntry();
           });
           stream.on('error', fail);
