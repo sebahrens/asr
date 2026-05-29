@@ -25,13 +25,21 @@ import { registerSubmissionsMine } from './tools/submissionsMine.js';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SERVER_VERSION = '0.1.0';
+const DEFAULT_SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+const DEFAULT_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const DEFAULT_SESSION_SWEEP_INTERVAL_MS = 60 * 1000;
+const DEFAULT_MAX_SESSIONS = 1000;
 
 interface McpSession {
   transport: WebStandardStreamableHTTPServerTransport;
   principal: Identity;
+  createdAt: number;
+  expiresAt: number;
+  lastSeenAt: number;
 }
 
 const sessions = new Map<string, McpSession>();
+let nextSessionSweepAt = 0;
 
 const defaultLimiter: RateLimiter = createRateLimiter();
 
@@ -152,28 +160,38 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
 export interface McpRouteOptions {
   db?: Database;
   reviewDecisionDeps?: ReviewDecisionDeps;
+  session?: Partial<McpSessionPolicy>;
+}
+
+interface McpSessionPolicy {
+  idleTimeoutMs: number;
+  maxAgeMs: number;
+  maxSessions: number;
+  now: () => number;
+  sweepIntervalMs: number;
 }
 
 export function createMcpRoute(options: McpRouteOptions = {}): Handler {
   return async (c) => {
+    const sessionPolicy = resolveSessionPolicy(options.session);
     if (c.req.method === 'GET') {
-      const session = getSession(c.req.header('mcp-session-id'));
-      if (!session) {
-        return sessionNotFound(c);
+      const lookup = getActiveSession(c.req.header('mcp-session-id'), sessionPolicy);
+      if (!lookup.session) {
+        return lookup.expired ? sessionExpired(c, null) : sessionNotFound(c);
       }
-      return session.transport.handleRequest(c.req.raw, {
-        authInfo: authInfoFor(session.principal),
+      return lookup.session.transport.handleRequest(c.req.raw, {
+        authInfo: authInfoFor(lookup.session.principal),
       });
     }
 
     if (c.req.method === 'DELETE') {
       const sessionId = c.req.header('mcp-session-id');
-      const session = getSession(sessionId);
-      if (!session) {
-        return sessionNotFound(c);
+      const lookup = getActiveSession(sessionId, sessionPolicy);
+      if (!lookup.session) {
+        return lookup.expired ? sessionExpired(c, null) : sessionNotFound(c);
       }
-      const response = await session.transport.handleRequest(c.req.raw, {
-        authInfo: authInfoFor(session.principal),
+      const response = await lookup.session.transport.handleRequest(c.req.raw, {
+        authInfo: authInfoFor(lookup.session.principal),
       });
       if (response.ok && sessionId) {
         sessions.delete(sessionId);
@@ -194,13 +212,15 @@ export function createMcpRoute(options: McpRouteOptions = {}): Handler {
 
     const sessionId = c.req.header('mcp-session-id');
     if (sessionId) {
-      const session = sessions.get(sessionId);
-      if (!session) {
-        return c.json(jsonRpcError(-32000, 'MCP session not found', extractId(body)), 404);
+      const lookup = getActiveSession(sessionId, sessionPolicy);
+      if (!lookup.session) {
+        return lookup.expired
+          ? sessionExpired(c, extractId(body))
+          : c.json(jsonRpcError(-32000, 'MCP session not found', extractId(body)), 404);
       }
-      return session.transport.handleRequest(c.req.raw, {
+      return lookup.session.transport.handleRequest(c.req.raw, {
         parsedBody: body,
-        authInfo: authInfoFor(session.principal),
+        authInfo: authInfoFor(lookup.session.principal),
       });
     }
 
@@ -225,7 +245,7 @@ export function createMcpRoute(options: McpRouteOptions = {}): Handler {
       throw err;
     }
 
-    const transport = await createTransportForInitialize(principal, options);
+    const transport = await createTransportForInitialize(principal, options, sessionPolicy);
     return transport.handleRequest(c.req.raw, {
       parsedBody: body,
       authInfo: authInfoFor(principal),
@@ -235,23 +255,68 @@ export function createMcpRoute(options: McpRouteOptions = {}): Handler {
 
 export const mcpHandler: Handler = createMcpRoute();
 
-function getSession(sessionId: string | undefined): McpSession | undefined {
-  return sessionId ? sessions.get(sessionId) : undefined;
+export function clearMcpSessionsForTest(): void {
+  sessions.clear();
+  nextSessionSweepAt = 0;
+}
+
+function getActiveSession(
+  sessionId: string | undefined,
+  policy: McpSessionPolicy,
+): { expired: boolean; session?: McpSession } {
+  if (!sessionId) {
+    sweepExpiredSessions(policy);
+    return { expired: false };
+  }
+  const session = sessions.get(sessionId);
+  if (!session) {
+    sweepExpiredSessions(policy);
+    return { expired: false };
+  }
+  const now = policy.now();
+  if (isSessionExpired(session, now, policy)) {
+    sessions.delete(sessionId);
+    return { expired: true };
+  }
+  session.lastSeenAt = now;
+  sweepExpiredSessions(policy);
+  return { expired: false, session };
 }
 
 function sessionNotFound(c: Parameters<Handler>[0]): Response {
   return c.json(jsonRpcError(-32000, 'MCP session not found', null), 404);
 }
 
+function sessionExpired(c: Parameters<Handler>[0], id: string | number | null): Response {
+  return c.json(
+    {
+      jsonrpc: '2.0',
+      error: mcpError(MCP_ERROR.authentication_required, 'authentication_required'),
+      id,
+    },
+    401,
+  );
+}
+
 async function createTransportForInitialize(
   principal: Identity,
   options: McpRouteOptions = {},
+  policy = resolveSessionPolicy(options.session),
 ): Promise<WebStandardStreamableHTTPServerTransport> {
+  sweepExpiredSessions(policy);
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,
     sessionIdGenerator: () => randomUUID(),
     onsessioninitialized(sessionId) {
-      sessions.set(sessionId, { transport, principal });
+      const now = policy.now();
+      sessions.set(sessionId, {
+        transport,
+        principal,
+        createdAt: now,
+        expiresAt: sessionExpiresAt(principal, now, policy),
+        lastSeenAt: now,
+      });
+      enforceSessionCap(policy);
     },
   });
   transport.onclose = () => {
@@ -266,6 +331,56 @@ async function createTransportForInitialize(
     reviewDecisionDeps: options.reviewDecisionDeps,
   }).connect(transport);
   return transport;
+}
+
+function resolveSessionPolicy(overrides: Partial<McpSessionPolicy> = {}): McpSessionPolicy {
+  return {
+    idleTimeoutMs: overrides.idleTimeoutMs ?? DEFAULT_SESSION_IDLE_TIMEOUT_MS,
+    maxAgeMs: overrides.maxAgeMs ?? DEFAULT_SESSION_MAX_AGE_MS,
+    maxSessions: overrides.maxSessions ?? DEFAULT_MAX_SESSIONS,
+    now: overrides.now ?? Date.now,
+    sweepIntervalMs: overrides.sweepIntervalMs ?? DEFAULT_SESSION_SWEEP_INTERVAL_MS,
+  };
+}
+
+function sessionExpiresAt(principal: Identity, now: number, policy: McpSessionPolicy): number {
+  const maxExpiresAt = now + policy.maxAgeMs;
+  return typeof principal.tokenExpiresAt === 'number'
+    ? Math.min(principal.tokenExpiresAt, maxExpiresAt)
+    : maxExpiresAt;
+}
+
+function isSessionExpired(
+  session: McpSession,
+  now: number,
+  policy: McpSessionPolicy,
+): boolean {
+  return now >= session.expiresAt || now - session.lastSeenAt >= policy.idleTimeoutMs;
+}
+
+function sweepExpiredSessions(policy: McpSessionPolicy): void {
+  const now = policy.now();
+  if (now < nextSessionSweepAt) {
+    return;
+  }
+  nextSessionSweepAt = now + policy.sweepIntervalMs;
+  for (const [sessionId, session] of sessions) {
+    if (isSessionExpired(session, now, policy)) {
+      sessions.delete(sessionId);
+    }
+  }
+}
+
+function enforceSessionCap(policy: McpSessionPolicy): void {
+  if (sessions.size <= policy.maxSessions) {
+    return;
+  }
+  const sessionsByLastSeen = [...sessions.entries()].sort(
+    ([, a], [, b]) => a.lastSeenAt - b.lastSeenAt,
+  );
+  for (const [sessionId] of sessionsByLastSeen.slice(0, sessions.size - policy.maxSessions)) {
+    sessions.delete(sessionId);
+  }
 }
 
 function authInfoFor(principal: Identity): AuthInfo {

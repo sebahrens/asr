@@ -75,9 +75,10 @@ describe('entraAuth', () => {
     });
 
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({
+    await expect(res.json()).resolves.toMatchObject({
       sub: 'user-1',
       roles: ['Compliance'],
+      tokenExpiresAt: expect.any(Number),
     });
   });
 
@@ -87,9 +88,10 @@ describe('entraAuth', () => {
       includeScp: false,
     });
 
-    await expect(verifyBearer(token, { tenantId, clientId, jwks })).resolves.toEqual({
+    await expect(verifyBearer(token, { tenantId, clientId, jwks })).resolves.toMatchObject({
       sub: 'user-1',
       roles: ['Compliance'],
+      tokenExpiresAt: expect.any(Number),
     });
   });
 

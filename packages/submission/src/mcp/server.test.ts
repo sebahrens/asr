@@ -9,6 +9,7 @@ import { MCP_ERROR, McpToolError } from './errors.js';
 import { createRateLimiter } from './rateLimit.js';
 import {
   MCP_PROTOCOL_VERSION,
+  clearMcpSessionsForTest,
   wrapToolHandler,
   type WrapToolHandlerDeps,
 } from './server.js';
@@ -102,6 +103,7 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
+  clearMcpSessionsForTest();
   db?.close();
   db = undefined;
   vi.stubEnv('AUTH_MODE', 'mock');
@@ -237,6 +239,108 @@ describe('mcpHandler', () => {
       jsonrpc: '2.0',
       id: 2,
       result: { tools: expect.any(Array) },
+    });
+  });
+
+  it('rejects follow-up requests once the MCP session absolute lifetime expires', async () => {
+    let now = 1_000;
+    const app = createApp({
+      mcp: {
+        session: {
+          idleTimeoutMs: 10_000,
+          maxAgeMs: 100,
+          now: () => now,
+          sweepIntervalMs: 0,
+        },
+      },
+    });
+    const init = await initializeMcpSession(app);
+    const sessionId = init.headers.get('mcp-session-id');
+
+    expect(init.status).toBe(200);
+    expect(sessionId).toBeTruthy();
+
+    now += 101;
+    const res = await app.request('/mcp', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-session-id': sessionId ?? '',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/list',
+      }),
+    });
+
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toMatchObject({
+      jsonrpc: '2.0',
+      id: 2,
+      error: { code: MCP_ERROR.authentication_required, message: 'authentication_required' },
+    });
+
+    const retry = await app.request('/mcp', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-session-id': sessionId ?? '',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'tools/list',
+      }),
+    });
+    expect(retry.status).toBe(404);
+  });
+
+  it('rejects idle MCP sessions and removes least-recently-used sessions over the cap', async () => {
+    let now = 10_000;
+    const app = createApp({
+      mcp: {
+        session: {
+          idleTimeoutMs: 50,
+          maxAgeMs: 10_000,
+          maxSessions: 1,
+          now: () => now,
+          sweepIntervalMs: 0,
+        },
+      },
+    });
+    const first = await initializeMcpSession(app);
+    const firstSessionId = first.headers.get('mcp-session-id');
+    expect(firstSessionId).toBeTruthy();
+
+    now += 10;
+    const second = await initializeMcpSession(app);
+    const secondSessionId = second.headers.get('mcp-session-id');
+    expect(secondSessionId).toBeTruthy();
+
+    const capped = await app.request('/mcp', {
+      method: 'GET',
+      headers: {
+        accept: 'text/event-stream',
+        'mcp-session-id': firstSessionId ?? '',
+      },
+    });
+    expect(capped.status).toBe(404);
+
+    now += 51;
+    const idle = await app.request('/mcp', {
+      method: 'GET',
+      headers: {
+        accept: 'text/event-stream',
+        'mcp-session-id': secondSessionId ?? '',
+      },
+    });
+    expect(idle.status).toBe(401);
+    await expect(idle.json()).resolves.toMatchObject({
+      jsonrpc: '2.0',
+      error: { code: MCP_ERROR.authentication_required, message: 'authentication_required' },
     });
   });
 

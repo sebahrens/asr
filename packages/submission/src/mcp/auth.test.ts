@@ -66,7 +66,7 @@ describe('resolveMcpPrincipal (AUTH_MODE=entra)', () => {
     expect((err as McpToolError).code).toBe(MCP_ERROR.authentication_required);
   });
 
-  it('resolves to {sub, roles} for a valid Submitter token', async () => {
+  it('resolves to {sub, roles, tokenExpiresAt} for a valid Submitter token', async () => {
     const { tenantId, clientId, jwks, token } = await signedToken(['Submitter', 'Compliance']);
     const req = new Request('https://example.test/mcp', {
       method: 'POST',
@@ -75,13 +75,14 @@ describe('resolveMcpPrincipal (AUTH_MODE=entra)', () => {
 
     await expect(
       resolveMcpPrincipal(req, { authMode: 'entra', tenantId, clientId, jwks }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       sub: 'user-1',
       roles: ['Submitter', 'Compliance'],
+      tokenExpiresAt: expect.any(Number),
     });
   });
 
-  it('resolves to {sub, roles} for a valid Compliance-only token', async () => {
+  it('resolves to {sub, roles, tokenExpiresAt} for a valid Compliance-only token', async () => {
     const { tenantId, clientId, jwks, token } = await signedToken(['Compliance']);
     const req = new Request('https://example.test/mcp', {
       method: 'POST',
@@ -90,9 +91,10 @@ describe('resolveMcpPrincipal (AUTH_MODE=entra)', () => {
 
     await expect(
       resolveMcpPrincipal(req, { authMode: 'entra', tenantId, clientId, jwks }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       sub: 'user-1',
       roles: ['Compliance'],
+      tokenExpiresAt: expect.any(Number),
     });
   });
 

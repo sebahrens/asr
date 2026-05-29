@@ -82,6 +82,7 @@ export async function verifyBearer(token: string, options: VerifyBearerOptions =
   return {
     sub: payload.sub,
     roles: rolesFromPayload(payload.roles),
+    tokenExpiresAt: typeof payload.exp === 'number' ? payload.exp * 1000 : undefined,
   };
 }
 
