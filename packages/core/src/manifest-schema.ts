@@ -18,12 +18,17 @@ const compatibilityManifestSchema = z
   })
   .strict();
 
+const noAngleBrackets = (field: string) =>
+  z.string().refine((value) => !/[<>]/.test(value), {
+    message: `${field} must not contain angle brackets`,
+  });
+
 const baseSkillManifestSchema = z
   .object({
-    name: z.string(),
+    name: noAngleBrackets('name'),
     version: z.string(),
     author: z.string(),
-    description: z.string(),
+    description: noAngleBrackets('description'),
     tags: z.array(z.string()),
     kind: z.enum(['skill', 'persona']).default('skill'),
     persona_mode: z.enum(['inject', 'delegate']).optional(),

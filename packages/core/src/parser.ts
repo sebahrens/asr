@@ -3,6 +3,24 @@ import { ZodError } from 'zod';
 import { skillManifestSchema } from './manifest-schema.js';
 import type { SkillManifest, SkillMeta } from './types.js';
 
+const escapeXmlText = (value: string): string =>
+  value.replace(/[<>&"']/g, (char) => {
+    switch (char) {
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '&':
+        return '&amp;';
+      case '"':
+        return '&quot;';
+      case "'":
+        return '&apos;';
+      default:
+        return char;
+    }
+  });
+
 export function parseSkillMd(content: string): SkillMeta & { body: string } {
   const { data, content: body } = matter(content);
 
@@ -45,8 +63,8 @@ export function generateAgentsMd(skills: SkillMeta[]): string {
   const skillsXml = skills
     .map(
       (s) => `<skill>
-<name>${s.name}</name>
-<description>${s.description}</description>
+<name>${escapeXmlText(s.name)}</name>
+<description>${escapeXmlText(s.description)}</description>
 <location>project</location>
 </skill>`
     )

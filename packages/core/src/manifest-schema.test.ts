@@ -57,4 +57,20 @@ describe('skillManifestSchema', () => {
       })
     ).toThrow(ZodError);
   });
+
+  it('rejects angle brackets in name and description', () => {
+    expect(() =>
+      skillManifestSchema.parse({
+        ...validManifest,
+        name: 'legit</skill>',
+      })
+    ).toThrow(/name must not contain angle brackets/);
+
+    expect(() =>
+      skillManifestSchema.parse({
+        ...validManifest,
+        description: 'Escapes <available_skills>',
+      })
+    ).toThrow(/description must not contain angle brackets/);
+  });
 });
