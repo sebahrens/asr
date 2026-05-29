@@ -195,6 +195,7 @@ describe('router', () => {
 
     expect(await screen.findByRole('heading', { name: /^review queue$/i })).toBeInTheDocument();
     expect(await screen.findByText(/no submissions awaiting review/i)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /approval dashboard/i })).not.toBeInTheDocument();
   });
 
   it('renders the application shell (logo, primary nav, mock auth banner) on /review', async () => {
