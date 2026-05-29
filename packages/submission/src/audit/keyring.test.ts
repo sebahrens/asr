@@ -8,7 +8,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../db/migrations/index.js';
 import { computeHash } from './hash.js';
 import { emitAudit } from './emit.js';
-import { loadKeyRing, rotateKey } from './keyring.js';
+import {
+  assertRetainedAuditKeys,
+  loadKeyRing,
+  MissingAuditKeyMaterialError,
+  rotateKey,
+} from './keyring.js';
+import { verifyChain } from './verify.js';
 
 const keyB64 = (byte: number): string =>
   Buffer.alloc(32, byte).toString('base64');
@@ -220,5 +226,76 @@ describe('rotateKey', () => {
       firstK1!,
     );
     expect(firstRow!.hash).toBe(recomputed);
+  });
+
+  it('fails startup retention check when a historical rotated key is missing', () => {
+    const database = db!;
+    const k1Bytes = Buffer.alloc(32, 0x11);
+    const k2Bytes = Buffer.alloc(32, 0x22);
+
+    const initialRing = loadKeyRing({
+      AUDIT_HMAC_KEY_ID: 'k1',
+      AUDIT_HMAC_KEY_BYTES: k1Bytes.toString('base64'),
+    });
+
+    emitAudit(
+      database,
+      {
+        action: 'submission.created',
+        actor: 'submitter@example.com',
+        actorType: 'user',
+        detail: { source: 'cli' },
+      },
+      initialRing,
+    );
+    rotateKey(database, initialRing, 'k2', k2Bytes);
+
+    const restartedRing = loadKeyRing({
+      AUDIT_HMAC_KEY_ID: 'k2',
+      AUDIT_HMAC_KEY_BYTES: k2Bytes.toString('base64'),
+    });
+
+    expect(() => assertRetainedAuditKeys(database, restartedRing)).toThrow(
+      MissingAuditKeyMaterialError,
+    );
+    expect(() => assertRetainedAuditKeys(database, restartedRing)).toThrow(
+      /AUDIT_HMAC_KEY_BYTES_<id>/,
+    );
+  });
+
+  it('accepts a retired key retained for verification after restart', () => {
+    const database = db!;
+    const k1Bytes = Buffer.alloc(32, 0x11);
+    const k2Bytes = Buffer.alloc(32, 0x22);
+
+    const initialRing = loadKeyRing({
+      AUDIT_HMAC_KEY_ID: 'k1',
+      AUDIT_HMAC_KEY_BYTES: k1Bytes.toString('base64'),
+    });
+
+    emitAudit(
+      database,
+      {
+        action: 'submission.created',
+        actor: 'submitter@example.com',
+        actorType: 'user',
+        detail: { source: 'cli' },
+      },
+      initialRing,
+    );
+    rotateKey(database, initialRing, 'k2', k2Bytes);
+
+    const restartedRing = loadKeyRing({
+      AUDIT_HMAC_KEY_ID: 'k2',
+      AUDIT_HMAC_KEY_BYTES: k2Bytes.toString('base64'),
+      AUDIT_HMAC_KEY_BYTES_k1: k1Bytes.toString('base64'),
+    });
+
+    expect(() => assertRetainedAuditKeys(database, restartedRing)).not.toThrow();
+    expect(verifyChain(database, restartedRing)).toMatchObject({
+      valid: true,
+      eventCount: 2,
+      lastHmacKeyId: 'k1',
+    });
   });
 });

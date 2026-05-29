@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3';
 import type { MiddlewareHandler } from 'hono';
 import { apiError } from '../http/errors.js';
 import { emitAudit } from './emit.js';
-import type { KeyRing } from './keyring.js';
+import { assertRetainedAuditKeys, type KeyRing } from './keyring.js';
 import { verifyChain, type VerifyResult } from './verify.js';
 
 export interface AuditChainGuardOptions {
@@ -20,6 +20,8 @@ export function auditChainGuard(
   keys: KeyRing,
   options: AuditChainGuardOptions = {},
 ): MiddlewareHandler {
+  assertRetainedAuditKeys(db, keys);
+
   const cacheMs = options.cacheMs ?? 1000;
   let cached: { result: VerifyResult; expiresAt: number } | null = null;
 

@@ -11,6 +11,17 @@ export interface KeyRing {
 
 const PREVIOUS_KEY_PREFIX = 'AUDIT_HMAC_KEY_BYTES_';
 
+export class MissingAuditKeyMaterialError extends Error {
+  constructor(readonly keyIds: string[]) {
+    super(
+      `missing audit HMAC key material for historical key id(s): ${keyIds.join(
+        ', ',
+      )}; restore AUDIT_HMAC_KEY_BYTES_<id> env vars for retired keys before startup`,
+    );
+    this.name = 'MissingAuditKeyMaterialError';
+  }
+}
+
 export function loadKeyRing(
   env: NodeJS.ProcessEnv = process.env,
 ): KeyRing {
@@ -59,6 +70,21 @@ export function loadKeyRing(
       currentActiveId = id;
     },
   };
+}
+
+export function assertRetainedAuditKeys(
+  db: Database.Database,
+  keys: KeyRing,
+): void {
+  const usedKeyIds = db
+    .prepare('SELECT DISTINCT hmac_key_id FROM audit_events')
+    .pluck()
+    .all() as string[];
+  const missingKeyIds = usedKeyIds.filter((id) => !keys.get(id));
+
+  if (missingKeyIds.length > 0) {
+    throw new MissingAuditKeyMaterialError(missingKeyIds);
+  }
 }
 
 /**
