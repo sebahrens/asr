@@ -108,3 +108,47 @@ describe('BrowseRegistry empty state (asr-4e0)', () => {
     expect(screen.queryByRole('button', { name: /clear search and filters/i })).not.toBeInTheDocument();
   });
 });
+
+describe('BrowseRegistry skill card tags (asr-d5yj)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', makeFetchStub(skills));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    cleanup();
+  });
+
+  it('keeps tag buttons outside skill detail links', async () => {
+    const { container } = renderBrowse();
+
+    expect(await screen.findByText('release-notes')).toBeInTheDocument();
+
+    const cardLinks = container.querySelectorAll<HTMLAnchorElement>('.skill-card a[href]');
+    expect(cardLinks.length).toBeGreaterThan(0);
+    for (const link of cardLinks) {
+      expect(link.querySelector('button, [role="button"]')).toBeNull();
+    }
+
+    const cardTag = container.querySelector<HTMLButtonElement>('.skill-card .tag-action');
+    expect(cardTag?.tagName).toBe('BUTTON');
+  });
+
+  it('filters the browse list when a card tag button is activated', async () => {
+    const { container } = renderBrowse();
+
+    expect(await screen.findByText('release-notes')).toBeInTheDocument();
+
+    const releaseCard = screen.getByRole('link', { name: /open platform\/release-notes details/i }).closest('.skill-card');
+    const releaseTag = releaseCard?.querySelector<HTMLButtonElement>('button.tag-action');
+    expect(releaseTag).toBeTruthy();
+
+    fireEvent.click(releaseTag!);
+
+    await waitFor(() => {
+      expect(screen.queryByText('secure-review')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('release-notes')).toBeInTheDocument();
+    expect(container.querySelector('.skill-card a[href] button')).toBeNull();
+  });
+});

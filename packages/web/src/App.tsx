@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import type { ReactDiffViewerProps } from 'react-diff-viewer-continued';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -1340,19 +1340,7 @@ export function BrowseRegistry() {
     setActiveTag((currentTag) => currentTag === tag ? null : tag);
   }
 
-  function handleCardTagClick(event: ReactMouseEvent, tag: string) {
-    event.preventDefault();
-    event.stopPropagation();
-    applyTagFilter(tag);
-  }
-
-  function handleCardTagKeyDown(event: ReactKeyboardEvent, tag: string) {
-    if (event.key !== 'Enter' && event.key !== ' ') {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
+  function handleCardTagClick(tag: string) {
     applyTagFilter(tag);
   }
 
@@ -1523,64 +1511,66 @@ export function BrowseRegistry() {
           ) : (
             <div className="skills-grid">
               {filteredSkills.map((skill) => (
-                <a
+                <article
                   key={skill.id}
                   className="skill-card"
-                  href={getSkillPath(skill.owner, skill.name)}
-                  aria-label={`Open ${skill.owner}/${skill.name} details`}
                 >
-                  <div className="skill-header">
-                    <div>
-                      <div className="skill-name">{skill.name}</div>
-                      <div className="skill-repo">{skill.owner}</div>
+                  <a
+                    className="skill-card-link"
+                    href={getSkillPath(skill.owner, skill.name)}
+                    aria-label={`Open ${skill.owner}/${skill.name} details`}
+                  >
+                    <div className="skill-header">
+                      <div>
+                        <div className="skill-name">{skill.name}</div>
+                        <div className="skill-repo">{skill.owner}</div>
+                      </div>
+                      {skill.version && (
+                        <span className="skill-version">v{skill.version}</span>
+                      )}
                     </div>
-                    {skill.version && (
-                      <span className="skill-version">v{skill.version}</span>
-                    )}
-                  </div>
-                  <div className="skill-card-badges" aria-label="Skill metadata">
-                    <span className="skill-kind-badge">{skill.kind}</span>
-                    <span className={`risk-pill risk-${skill.riskAssessmentLatest}`}>
-                      {skill.riskAssessmentLatest} risk
-                    </span>
-                  </div>
-                  <div className="skill-description">
-                    {skill.description || 'No description available'}
-                  </div>
-                  <div className="skill-footer">
-                    <div className="skill-stat stars">
-                      <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                      </svg>
-                      {skill.stars.toLocaleString()}
+                    <div className="skill-card-badges" aria-label="Skill metadata">
+                      <span className="skill-kind-badge">{skill.kind}</span>
+                      <span className={`risk-pill risk-${skill.riskAssessmentLatest}`}>
+                        {skill.riskAssessmentLatest} risk
+                      </span>
                     </div>
-                    {skill.installs > 0 && (
-                      <div className="skill-stat">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                    <div className="skill-description">
+                      {skill.description || 'No description available'}
+                    </div>
+                    <div className="skill-footer">
+                      <div className="skill-stat stars">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                         </svg>
-                        {skill.installs}
+                        {skill.stars.toLocaleString()}
                       </div>
-                    )}
-                    {skill.tags.length > 0 && (
-                      <div className="skill-tags">
-                        {skill.tags.slice(0, 2).map((tag) => (
-                          <span
-                            key={tag}
-                            className={`tag tag-action${activeTag === tag ? ' tag-active' : ''}`}
-                            role="button"
-                            tabIndex={0}
-                            aria-pressed={activeTag === tag}
-                            onClick={(event) => handleCardTagClick(event, tag)}
-                            onKeyDown={(event) => handleCardTagKeyDown(event, tag)}
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </a>
+                      {skill.installs > 0 && (
+                        <div className="skill-stat">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                          </svg>
+                          {skill.installs}
+                        </div>
+                      )}
+                    </div>
+                  </a>
+                  {skill.tags.length > 0 && (
+                    <div className="skill-tags" aria-label={`${skill.owner}/${skill.name} tags`}>
+                      {skill.tags.slice(0, 2).map((tag) => (
+                        <button
+                          key={tag}
+                          className={`tag tag-action${activeTag === tag ? ' tag-active' : ''}`}
+                          type="button"
+                          aria-pressed={activeTag === tag}
+                          onClick={() => handleCardTagClick(tag)}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </article>
               ))}
             </div>
           )}
