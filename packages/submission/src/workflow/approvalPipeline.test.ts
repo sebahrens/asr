@@ -2,6 +2,7 @@ import { ForgejoClient, type AuditAction, type ScanReport, type SkillManifest, t
 import { describe, expect, it } from 'vitest';
 import {
   approvalPipeline,
+  HitlAuthorizationError,
   hitlNodes,
   resumeApprovalPipeline,
   runApprovalPipeline,
@@ -56,6 +57,7 @@ describe('approvalPipeline', () => {
 
     const published = await resumeApprovalPipeline(confirmation.serializedContext, {
       actor: 'reviewer-1',
+      roles: ['Compliance'],
       decision: 'approved',
     }, 'review', dependencies);
 
@@ -138,6 +140,9 @@ describe('approvalPipeline', () => {
 
   it('carries the expected HITL metadata on wait nodes', () => {
     const graph = approvalPipeline.toBlueprint();
+    const confirmation = graph.nodes.find((node) => node.id === 'confirmation');
+    const review = graph.nodes.find((node) => node.id === 'review');
+
     expect(graph.nodes).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'questionnaire',
@@ -145,18 +150,21 @@ describe('approvalPipeline', () => {
       }),
       expect.objectContaining({
         id: 'confirmation',
-        params: { type: 'scan-results', timeout: '14d', allowedActors: 'submitter' },
+        params: expect.objectContaining({ type: 'scan-results', timeout: '14d' }),
       }),
       expect.objectContaining({
         id: 'review',
-        params: {
+        params: expect.objectContaining({
           type: 'compliance-approval',
           timeout: '30d',
           requiredRole: 'Compliance',
-          forbiddenActors: 'submitter',
-        },
+        }),
       }),
     ]));
+    expect(confirmation?.params?.allowedActors).toEqual(['submission.submittedBy']);
+    expect(review?.params?.forbiddenActors).toEqual(['submission.submittedBy']);
+    expect(confirmation?.params?.allowedActors).not.toBe('submitter');
+    expect(review?.params?.forbiddenActors).not.toBe('submitter');
   });
 
   it('carries spec timeouts and SoD actor selectors on code-path HITL nodes', () => {
@@ -175,6 +183,32 @@ describe('approvalPipeline', () => {
     };
     expect(hitlNodes.confirmation.allowedActors(ctxStub)).toEqual(['u1']);
     expect(hitlNodes.review.forbiddenActors(ctxStub)).toEqual(['u1']);
+  });
+
+  it('rejects a submitter approving their own submission at the HITL engine boundary', async () => {
+    const forgejo = new FakeForgejoClient();
+    const audit: Array<{ action: AuditAction; detail: Record<string, unknown> }> = [];
+    const dependencies = makeDependencies(forgejo, audit, makeScanReport('review_required'));
+
+    const started = await runApprovalPipeline(makeContext({
+      files: [{ path: 'SKILL.md', contentBase64: b64('# test') }, { path: 'scripts/check.ts', contentBase64: b64('export {};') }],
+    }), dependencies);
+    const questionnaire = await resumeApprovalPipeline(started.serializedContext, {
+      actor: 'submitter-1',
+      responses: [],
+    }, 'questionnaire', dependencies);
+    const confirmation = await resumeApprovalPipeline(questionnaire.serializedContext, {
+      actor: 'submitter-1',
+      confirmed: true,
+    }, 'confirmation', dependencies);
+
+    await expect(resumeApprovalPipeline(confirmation.serializedContext, {
+      actor: 'submitter-1',
+      roles: ['Compliance'],
+      decision: 'approved',
+    }, 'review', dependencies)).rejects.toBeInstanceOf(HitlAuthorizationError);
+    expect(forgejo.mergeCalls).toBe(0);
+    expect(forgejo.publishCalls).toBe(0);
   });
 
   it('wires code-path edges and a rejected node short-circuit from scan', () => {

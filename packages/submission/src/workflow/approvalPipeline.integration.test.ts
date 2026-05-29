@@ -57,6 +57,7 @@ describe('approvalPipeline (integration)', () => {
 
     const published = await resumeApprovalPipeline(confirmation.serializedContext, {
       actor: 'reviewer-1',
+      roles: ['Compliance'],
       decision: 'approved',
     }, 'review', dependencies);
 

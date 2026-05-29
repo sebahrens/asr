@@ -36,6 +36,7 @@ export interface ApprovalPipelineContext {
 
 export interface HitlSignal {
   actor: string;
+  roles?: string[];
   responses?: unknown;
   confirmed?: boolean;
   decision?: 'approved' | 'rejected';
@@ -69,23 +70,15 @@ const submitterActors = (ctx: HitlActorContext): string[] => [
   ctx.get<Submission>('submission').submittedBy,
 ];
 
-const hitlNodeParams = {
-  questionnaire: {
-    type: 'questionnaire',
-    timeout: '7d',
-  },
-  confirmation: {
-    type: 'scan-results',
-    timeout: '14d',
-    allowedActors: 'submitter',
-  },
-  review: {
-    type: 'compliance-approval',
-    timeout: '30d',
-    requiredRole: 'Compliance',
-    forbiddenActors: 'submitter',
-  },
-} as const;
+type HitlActorSelector = (ctx: HitlActorContext) => string[];
+
+interface HitlNodeDescriptor {
+  type: 'questionnaire' | 'scan-results' | 'compliance-approval';
+  timeout: '7d' | '14d' | '30d';
+  allowedActors?: HitlActorSelector;
+  forbiddenActors?: HitlActorSelector;
+  requiredRole?: string;
+}
 
 export const hitlNodes = {
   questionnaire: {
@@ -103,7 +96,25 @@ export const hitlNodes = {
     requiredRole: 'Compliance' as const,
     forbiddenActors: submitterActors,
   },
-};
+} satisfies Record<'questionnaire' | 'confirmation' | 'review', HitlNodeDescriptor>;
+
+const hitlNodeParams = {
+  questionnaire: {
+    type: hitlNodes.questionnaire.type,
+    timeout: hitlNodes.questionnaire.timeout,
+  },
+  confirmation: {
+    type: hitlNodes.confirmation.type,
+    timeout: hitlNodes.confirmation.timeout,
+    allowedActors: ['submission.submittedBy'],
+  },
+  review: {
+    type: hitlNodes.review.type,
+    timeout: hitlNodes.review.timeout,
+    requiredRole: hitlNodes.review.requiredRole,
+    forbiddenActors: ['submission.submittedBy'],
+  },
+} as const;
 
 export const approvalPipeline = createFlow<ApprovalPipelineContext, ApprovalPipelineDependencies>(
   'skill-approval',
@@ -168,10 +179,50 @@ export async function resumeApprovalPipeline(
   nodeId: 'questionnaire' | 'confirmation' | 'review',
   dependencies: ApprovalPipelineDependencies,
 ): Promise<WorkflowResult<ApprovalPipelineContext>> {
+  validateHitlSignal(serializedContext, signal, nodeId);
+
   return approvalPipeline.resume(createApprovalPipelineRuntime(dependencies), serializedContext, {
     output: signal,
     action: signal.decision ?? 'completed',
   }, nodeId);
+}
+
+export class HitlAuthorizationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'HitlAuthorizationError';
+  }
+}
+
+function validateHitlSignal(
+  serializedContext: string,
+  signal: HitlSignal,
+  nodeId: 'questionnaire' | 'confirmation' | 'review',
+): void {
+  const descriptor: HitlNodeDescriptor = hitlNodes[nodeId];
+  const ctx = hitlValidationContext(JSON.parse(serializedContext) as ApprovalPipelineContext);
+
+  if (descriptor.requiredRole && !signal.roles?.includes(descriptor.requiredRole)) {
+    throw new HitlAuthorizationError(`HITL node '${nodeId}' requires role '${descriptor.requiredRole}'`);
+  }
+
+  const allowedActors = descriptor.allowedActors?.(ctx);
+  if (allowedActors && !allowedActors.includes(signal.actor)) {
+    throw new HitlAuthorizationError(`actor '${signal.actor}' is not allowed to resume HITL node '${nodeId}'`);
+  }
+
+  const forbiddenActors = descriptor.forbiddenActors?.(ctx) ?? [];
+  if (forbiddenActors.includes(signal.actor)) {
+    throw new HitlAuthorizationError(`actor '${signal.actor}' is forbidden from resuming HITL node '${nodeId}'`);
+  }
+}
+
+function hitlValidationContext(context: ApprovalPipelineContext): HitlActorContext {
+  return {
+    get<T = unknown>(key: string): T {
+      return context[key as keyof ApprovalPipelineContext] as T;
+    },
+  };
 }
 
 async function classifyNode({ context, dependencies }: PipelineNodeContext) {

@@ -98,6 +98,7 @@ describe('pipeline notify', () => {
 
     await resumeApprovalPipeline(afterConfirm.serializedContext, {
       actor: 'reviewer-1',
+      roles: ['Compliance'],
       decision: 'approved',
     }, 'review', dependencies);
 
@@ -131,6 +132,7 @@ describe('pipeline notify', () => {
 
     await resumeApprovalPipeline(afterConfirm.serializedContext, {
       actor: 'reviewer-1',
+      roles: ['Compliance'],
       decision: 'rejected',
       reason: 'policy violation: needs revisions',
     }, 'review', dependencies);

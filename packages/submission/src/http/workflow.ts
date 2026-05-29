@@ -122,6 +122,7 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
 
     const result = await resumeAndSave(options, store, record, 'questionnaire', {
       actor: identity.sub,
+      roles: identity.roles,
       responses: body.responses,
     }, dependencies, now);
 
@@ -179,6 +180,7 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
 
     await resumeAndSave(options, store, record, 'confirmation', {
       actor: identity.sub,
+      roles: identity.roles,
       confirmed: true,
     }, dependencies, now);
 
@@ -211,6 +213,7 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
 
     const result = await resumeAndSave(options, store, record, 'review', {
       actor: identity.sub,
+      roles: identity.roles,
       decision: 'approved',
     }, dependencies, now);
     const publishedAt = now().toISOString();
@@ -252,6 +255,7 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
 
     await resumeAndSave(options, store, record, 'review', {
       actor: identity.sub,
+      roles: identity.roles,
       decision: 'rejected',
       reason: body.reason,
     }, dependencies, now);
