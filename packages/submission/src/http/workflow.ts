@@ -1,9 +1,17 @@
 import { ForgejoClient, parseSkillMd, type ScanReport, type SkillManifest, type Submission, type SubmissionStatus, type VersionDiff } from '@asr/core';
+import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { createHash, randomUUID } from 'node:crypto';
 import { apiError } from './errors.js';
 import { requireRole } from '../auth/requireRole.js';
 import type { AuthVariables, Identity } from '../auth/types.js';
+import { getSkillVersion, insertSkillVersion } from '../db/repositories/skillVersions.js';
+import { getSubmissionById, updateSubmissionStatus } from '../db/repositories/submissions.js';
+import {
+  getWorkflowRun,
+  listWorkflowRuns,
+  saveWorkflowRun,
+} from '../db/repositories/workflowRuns.js';
 import {
   resumeApprovalPipeline,
   runApprovalPipeline,
@@ -29,6 +37,7 @@ export interface WorkflowSubmissionStore {
 
 export interface WorkflowRouteOptions {
   store?: WorkflowSubmissionStore;
+  db?: Database.Database;
   dependencies?: ApprovalPipelineDependencies;
   now?: () => Date;
 }
@@ -52,11 +61,30 @@ class MemoryWorkflowSubmissionStore implements WorkflowSubmissionStore {
 const defaultStore = new MemoryWorkflowSubmissionStore();
 seedDefaultStore(defaultStore);
 
+class SqliteWorkflowSubmissionStore implements WorkflowSubmissionStore {
+  constructor(
+    private readonly db: Database.Database,
+    private readonly now: () => Date,
+  ) {}
+
+  get(id: string): WorkflowSubmissionRecord | undefined {
+    return getWorkflowRun(this.db, id);
+  }
+
+  list(): WorkflowSubmissionRecord[] {
+    return listWorkflowRuns(this.db);
+  }
+
+  save(record: WorkflowSubmissionRecord): void {
+    saveWorkflowRun(this.db, record, this.now());
+  }
+}
+
 export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
   const routes = new Hono<{ Variables: AuthVariables }>();
-  const store = options.store ?? defaultStore;
-  const dependencies = options.dependencies ?? defaultDependencies();
   const now = options.now ?? (() => new Date());
+  const store = options.store ?? (options.db ? new SqliteWorkflowSubmissionStore(options.db, now) : defaultStore);
+  const dependencies = options.dependencies ?? defaultDependencies();
 
   routes.post('/', requireRole('Submitter', 'Admin'), async (c) => {
     const body = await c.req.parseBody();
@@ -146,10 +174,10 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       return apiError(c, 400, 'invalid_manifest', { message: 'responses must be an array' });
     }
 
-    const result = await resumeAndSave(store, record, 'questionnaire', {
+    const result = await resumeAndSave(options.db, store, record, 'questionnaire', {
       actor: identity.sub,
       responses: body.responses,
-    }, dependencies);
+    }, dependencies, now);
 
     const report = result.context.scanReport;
     if (report?.verdict === 'block') {
@@ -200,10 +228,10 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       return apiError(c, 403, 'insufficient_permissions');
     }
 
-    await resumeAndSave(store, record, 'confirmation', {
+    await resumeAndSave(options.db, store, record, 'confirmation', {
       actor: identity.sub,
       confirmed: true,
-    }, dependencies);
+    }, dependencies, now);
 
     return c.json({ status: { phase: 'compliance-review' } satisfies SubmissionStatus });
   });
@@ -224,10 +252,10 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       });
     }
 
-    const result = await resumeAndSave(store, record, 'review', {
+    const result = await resumeAndSave(options.db, store, record, 'review', {
       actor: identity.sub,
       decision: 'approved',
-    }, dependencies);
+    }, dependencies, now);
     const publishedAt = now().toISOString();
     const status = {
       phase: 'published',
@@ -257,11 +285,11 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       return apiError(c, 400, 'invalid_manifest', { message: 'reason must be 10-500 characters' });
     }
 
-    await resumeAndSave(store, record, 'review', {
+    await resumeAndSave(options.db, store, record, 'review', {
       actor: identity.sub,
       decision: 'rejected',
       reason: body.reason,
-    }, dependencies);
+    }, dependencies, now);
 
     return c.json({ status: rejectedStatus(now(), body.reason) });
   });
@@ -320,19 +348,115 @@ function toRisk(risk: VersionDiff['riskAssessment'] | undefined, findings: numbe
 }
 
 async function resumeAndSave(
+  db: Database.Database | undefined,
   store: WorkflowSubmissionStore,
   record: WorkflowSubmissionRecord,
   nodeId: WorkflowNodeId,
   signal: HitlSignal,
   dependencies: ApprovalPipelineDependencies,
+  now: () => Date,
 ) {
   const result = await resumeApprovalPipeline(record.serializedContext, signal, nodeId, dependencies);
+  const status = statusFromWorkflowResult(record.id, result.context, now);
+  const context = {
+    ...result.context,
+    status: status.phase,
+    submission: {
+      ...result.context.submission,
+      status,
+    },
+  };
   await store.save({
     ...record,
     serializedContext: result.serializedContext,
-    context: result.context,
+    context,
   });
-  return result;
+  if (db) {
+    updatePersistedSubmissionStatus(db, record.id, status);
+    if (status.phase === 'published') {
+      persistPublishedVersion(db, record.id, record.submittedBy, context, status);
+    }
+  }
+  return { ...result, context };
+}
+
+function persistPublishedVersion(
+  db: Database.Database,
+  submissionId: string,
+  submittedBy: string,
+  context: ApprovalPipelineContext,
+  status: Extract<SubmissionStatus, { phase: 'published' }>,
+): void {
+  const manifest = context.manifest;
+  if (getSkillVersion(db, manifest.name, manifest.version)) {
+    return;
+  }
+
+  insertSkillVersion(db, {
+    skill_name: manifest.name,
+    version: manifest.version,
+    content_hash: context.contentHash,
+    submission_id: submissionId,
+    published_at: status.publishedAt,
+    published_by: submittedBy,
+    approved_by: context.review?.actor ?? null,
+    pr_number: context.prNumber ?? 0,
+    merge_commit: status.mergeCommit,
+    scan_report_id: null,
+    yanked_at: null,
+    yanked_by: null,
+    yank_reason: null,
+  });
+}
+
+function updatePersistedSubmissionStatus(
+  db: Database.Database,
+  submissionId: string,
+  status: SubmissionStatus,
+): void {
+  const row = getSubmissionById(db, submissionId);
+  if (!row) {
+    return;
+  }
+  updateSubmissionStatus(db, submissionId, row.lock_version, {
+    statusPhase: status.phase,
+    statusJson: JSON.stringify(status),
+  });
+}
+
+function statusFromWorkflowResult(
+  submissionId: string,
+  context: ApprovalPipelineContext,
+  now: () => Date,
+): SubmissionStatus {
+  if (context.status === 'published') {
+    return {
+      phase: 'published',
+      publishedAt: now().toISOString(),
+      mergeCommit: context.mergeCommit ?? '',
+    };
+  }
+
+  if (context.status === 'rejected') {
+    return {
+      phase: 'rejected',
+      rejectedAt: now().toISOString(),
+      reason: context.review?.reason ?? 'scan_block',
+    };
+  }
+
+  const awaiting = context._awaitingNodeIds?.[0];
+  if (awaiting === 'questionnaire') {
+    return { phase: 'questionnaire-pending', questionnaireId: `questionnaire:${submissionId}` };
+  }
+  if (awaiting === 'confirmation') {
+    return { phase: 'user-confirmation-pending' };
+  }
+  if (awaiting === 'review') {
+    return { phase: 'compliance-review' };
+  }
+
+  return { phase: 'uploaded' };
 }
 
 function defaultDependencies(): ApprovalPipelineDependencies {

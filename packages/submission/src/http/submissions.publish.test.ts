@@ -1,13 +1,16 @@
-import type { ForgejoClient, SkillManifest, Submission } from '@asr/core';
+import { ForgejoClient, type AuditAction, type ScanReport, type SkillManifest, type Submission } from '@asr/core';
 import Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 import yazl from 'yazl';
-import type { AuthVariables } from '../auth/types.js';
+import type { AuthVariables, Identity } from '../auth/types.js';
 import { runMigrations } from '../db/migrations/index.js';
+import { getWorkflowRun } from '../db/repositories/workflowRuns.js';
+import type { ApprovalPipelineDependencies } from '../workflow/approvalPipeline.js';
 import { createSubmissionRoutes } from './submissions.js';
+import { createWorkflowRoutes } from './workflow.js';
 
-describe('POST /api/v1/submissions (md-only auto-publish)', () => {
+describe('POST /api/v1/submissions (Flowcraft pipeline)', () => {
   let db: Database.Database | undefined;
 
   afterEach(() => {
@@ -15,7 +18,7 @@ describe('POST /api/v1/submissions (md-only auto-publish)', () => {
     db = undefined;
   });
 
-  it('publishes an md-only submission inline and exposes published status via GET', async () => {
+  it('publishes an md-only submission through Flowcraft and exposes published status via GET', async () => {
     db = new Database(':memory:');
     runMigrations(db);
 
@@ -62,7 +65,6 @@ describe('POST /api/v1/submissions (md-only auto-publish)', () => {
       autoApprove: true,
     });
     expect(forgejo.openCalls[0].files.map((file) => file.path).sort()).toEqual([
-      '.publish-record.json',
       'README.md',
       'SKILL.md',
     ]);
@@ -80,9 +82,13 @@ describe('POST /api/v1/submissions (md-only auto-publish)', () => {
     const fetched = (await getRes.json()) as Submission;
     expect(fetched.classification).toBe('md-only');
     expect(fetched.status).toMatchObject({ phase: 'published', mergeCommit: 'abc' });
+
+    const workflowRun = getWorkflowRun(db, created.id);
+    expect(workflowRun?.serializedContext).not.toBe('{}');
+    expect(workflowRun?.context.status).toBe('published');
   });
 
-  it('does not invoke publish for code-containing submissions and stays in uploaded', async () => {
+  it('starts Flowcraft for code-containing submissions and stores the awaiting questionnaire run', async () => {
     db = new Database(':memory:');
     runMigrations(db);
 
@@ -117,14 +123,102 @@ describe('POST /api/v1/submissions (md-only auto-publish)', () => {
     });
     expect(postRes.status).toBe(201);
     const created = (await postRes.json()) as { id: string; status: { phase: string } };
-    expect(created.status.phase).toBe('uploaded');
-    expect(forgejo.openCalls).toHaveLength(0);
+    expect(created.status.phase).toBe('questionnaire-pending');
+    expect(forgejo.openCalls).toHaveLength(1);
+    expect(forgejo.openCalls[0]).toMatchObject({
+      submissionId: created.id,
+      autoApprove: false,
+    });
+    expect(forgejo.mergeCalls).toEqual([]);
+    expect(forgejo.publishCalls).toHaveLength(0);
+
+    const workflowRun = getWorkflowRun(db, created.id);
+    expect(workflowRun?.serializedContext).not.toBe('{}');
+    expect(workflowRun?.context._awaitingNodeIds).toEqual(['questionnaire']);
 
     const getRes = await app.request(`/api/v1/submissions/${created.id}`);
     expect(getRes.status).toBe(200);
     const fetched = (await getRes.json()) as Submission;
     expect(fetched.classification).toBe('code-containing');
-    expect(fetched.status).toEqual({ phase: 'uploaded' });
+    expect(fetched.status).toMatchObject({ phase: 'questionnaire-pending' });
+  });
+
+  it('resumes a code-containing submission questionnaire from the SQLite workflow run', async () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    const forgejo = new FakeForgejoClient();
+    const dependencies = makeDependencies(forgejo, makeScanReport('pass'));
+    const app = new Hono<{ Variables: AuthVariables }>();
+    let identity: Identity = { sub: 'alice', roles: ['Submitter'] };
+    app.use('*', async (c, next) => {
+      c.set('identity', identity);
+      await next();
+    });
+    app.route(
+      '/api/v1/submissions',
+      createSubmissionRoutes({
+        db,
+        forgejo: forgejo as unknown as ForgejoClient,
+        workflowDependencies: dependencies,
+      }),
+    );
+    app.route('/api/v1/submissions', createWorkflowRoutes({ db, dependencies }));
+
+    const zipBytes = await buildZip([
+      {
+        path: 'SKILL.md',
+        contents: skillMdFixture({ name: 'demo-skill', version: '1.0.0', author: 'alice' }),
+      },
+      { path: 'run.py', contents: 'print("hi")\n' },
+    ]);
+    const formData = new FormData();
+    formData.set(
+      'file',
+      new Blob([new Uint8Array(zipBytes)], { type: 'application/zip' }),
+      'skill.zip',
+    );
+
+    const createdRes = await app.request('/api/v1/submissions', {
+      method: 'POST',
+      body: formData,
+    });
+    const created = (await createdRes.json()) as { id: string };
+
+    const questionnaireRes = await app.request(`/api/v1/submissions/${created.id}/questionnaire`, {
+      method: 'POST',
+      body: JSON.stringify({ responses: [{ questionId: 'network', answer: false }] }),
+      headers: { 'content-type': 'application/json' },
+    });
+
+    expect(questionnaireRes.status).toBe(200);
+    await expect(questionnaireRes.json()).resolves.toEqual({
+      status: { phase: 'scanning', scanJobId: `scan:${created.id}` },
+    });
+
+    const workflowRun = getWorkflowRun(db, created.id);
+    expect(workflowRun?.context.scanReport).toMatchObject({ verdict: 'pass' });
+    expect(workflowRun?.context.status).toBe('user-confirmation-pending');
+
+    const confirmRes = await app.request(`/api/v1/submissions/${created.id}/confirm`, {
+      method: 'POST',
+    });
+    expect(confirmRes.status).toBe(200);
+
+    identity = { sub: 'reviewer-1', roles: ['Compliance'] };
+    const approveRes = await app.request(`/api/v1/submissions/${created.id}/approve`, {
+      method: 'POST',
+    });
+    expect(approveRes.status).toBe(200);
+
+    const versionRow = db
+      .prepare('SELECT skill_name, version, approved_by FROM skill_versions WHERE submission_id = ?')
+      .get(created.id) as { skill_name: string; version: string; approved_by: string | null } | undefined;
+    expect(versionRow).toEqual({
+      skill_name: 'demo-skill',
+      version: '1.0.0',
+      approved_by: 'reviewer-1',
+    });
   });
 });
 
@@ -167,6 +261,45 @@ class FakeForgejoClient {
   async deleteBranch(branch: string) {
     this.deleteCalls.push(branch);
   }
+}
+
+function makeDependencies(
+  forgejo: FakeForgejoClient,
+  scanReport: ScanReport,
+): ApprovalPipelineDependencies {
+  return {
+    svc(token) {
+      if (token === ForgejoClient) {
+        return forgejo as never;
+      }
+      throw new Error('unexpected service token');
+    },
+    audit(_action: AuditAction, _detail: Record<string, unknown>) {},
+    async runScanner() {
+      return scanReport;
+    },
+  };
+}
+
+function makeScanReport(verdict: ScanReport['verdict']): ScanReport {
+  return {
+    submissionId: 'sub-1',
+    scanId: 'scan-1',
+    contentHash: 'abc123',
+    scannerImage: 'registry.example/asr-scanner:latest',
+    startedAt: '2026-05-24T00:00:00.000Z',
+    completedAt: '2026-05-24T00:00:01.000Z',
+    durationMs: 1000,
+    verdict,
+    findings: [],
+    toolResults: {
+      gitleaks: { exitCode: 0, findingCount: 0 },
+      trivy: { exitCode: 0, findingCount: 0 },
+      foxguard: { exitCode: 0, findingCount: 0 },
+      opengrep: { exitCode: 0, findingCount: 0 },
+      veracode: { exitCode: 0, findingCount: 0, skipped: true },
+    },
+  };
 }
 
 function skillMdFixture(input: { name: string; version: string; author: string }): string {

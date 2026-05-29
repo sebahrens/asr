@@ -29,6 +29,10 @@ export interface CreateAppOptions {
 
 export function createApp(options: CreateAppOptions = {}) {
   const app = new Hono<{ Variables: AuthVariables }>();
+  const workflowOptions =
+    (options.workflow ?? options.submissions?.db)
+      ? { ...options.workflow, db: options.workflow?.db ?? options.submissions?.db }
+      : undefined;
 
   app.use('*', devCorsMiddleware);
   app.route('/health', healthRoutes);
@@ -37,8 +41,8 @@ export function createApp(options: CreateAppOptions = {}) {
   app.all('/mcp', createMcpRoute(options.mcp));
   app.use('*', authMiddleware({ authMode: env.AUTH_MODE }));
   app.route('/api/v1/submissions', createSubmissionRoutes(options.submissions));
-  app.route('/api/v1/submissions', createWorkflowRoutes(options.workflow));
-  app.route('/submissions', createWorkflowRoutes(options.workflow));
+  app.route('/api/v1/submissions', createWorkflowRoutes(workflowOptions));
+  app.route('/submissions', createWorkflowRoutes(workflowOptions));
   app.route('/api/v1/skills', createYankRoutes(options.yank));
   app.route('/api/v1/audit', createAuditRoutes(options.audit));
 

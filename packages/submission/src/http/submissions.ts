@@ -4,8 +4,8 @@ import {
   parseSkillManifest,
   selectApprovalPath,
   validateVersionUpgrade,
+  ForgejoClient,
   type ApprovalPath,
-  type ForgejoClient,
   type SkillManifest,
   type Submission,
   type SubmissionStatus,
@@ -20,23 +20,30 @@ import { ulid } from 'ulid';
 import type { AuthVariables } from '../auth/types.js';
 import {
   getSkillVersion,
+  insertSkillVersion,
   resolveLatestVersion,
 } from '../db/repositories/skillVersions.js';
 import {
   getSubmissionById,
   insertSubmission,
   rowToSubmission,
+  updateSubmissionStatus,
   type SubmissionInsertRow,
 } from '../db/repositories/submissions.js';
 import { insertVersionDiff } from '../db/repositories/versionDiffs.js';
 import { findSubmissionIdByContentHash, getBlockedHash } from '../db/repositories/versions.js';
+import { saveWorkflowRun } from '../db/repositories/workflowRuns.js';
 import { forgejoFromEnv } from '../forgejo/index.js';
 import { requireRole } from '../auth/requireRole.js';
 import {
   acquirePendingVersion,
   releasePendingVersion,
 } from '../workflow/pendingVersionLock.js';
-import { publishMdOnly } from '../workflow/publishMdOnly.js';
+import {
+  runApprovalPipeline,
+  type ApprovalPipelineContext,
+  type ApprovalPipelineDependencies,
+} from '../workflow/approvalPipeline.js';
 import { classifySkill } from '../zip/classify.js';
 import { extractSafe } from '../zip/extract.js';
 import { apiError } from './errors.js';
@@ -59,6 +66,7 @@ export interface SubmissionRouteOptions {
   forgejo?: ForgejoClient;
   getPriorFiles?: GetPriorFiles;
   triggerMarketplaceSync?: (skillName: string) => Promise<void>;
+  workflowDependencies?: ApprovalPipelineDependencies;
 }
 
 interface UploadedFile {
@@ -261,32 +269,75 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
         status,
       };
 
-      const isFirstPublish = currentVersion === undefined;
-
-      if (isFirstPublish && classification === 'md-only' && db) {
+      if (db) {
         try {
-          const forgejo = options.forgejo ?? forgejoFromEnv();
-          const result = await publishMdOnly(
-            { db, forgejo, triggerMarketplaceSync: options.triggerMarketplaceSync },
-            { submission, files: fileEntries, lockVersion: 0 },
+          const result = await runApprovalPipeline(
+            {
+              submissionId: id,
+              submission,
+              manifest,
+              files: fileEntries.map((file) => ({
+                path: file.path,
+                contentBase64: file.content.toString('base64'),
+              })),
+              contentHash,
+              extractedDir,
+              zipBufferBase64: zipBytes.toString('base64'),
+              classification,
+              ...(versionDiff !== undefined ? { versionDiff } : {}),
+            },
+            options.workflowDependencies ?? defaultWorkflowDependencies(options, manifest.name),
           );
-          submission.status = {
-            phase: 'published',
-            publishedAt: now().toISOString(),
-            mergeCommit: result.mergeCommit,
+          if (result.status === 'failed') {
+            throw new Error(result.errors?.[0]?.message ?? 'approval pipeline failed');
+          }
+          const workflowStatus = statusFromWorkflowResult(id, result.context, now);
+          const context = {
+            ...result.context,
+            status: workflowStatus.phase,
+            submission: {
+              ...result.context.submission,
+              status: workflowStatus,
+            },
           };
+          saveWorkflowRun(db, {
+            id,
+            submittedBy,
+            serializedContext: result.serializedContext,
+            context,
+          }, now());
+          if (workflowStatus.phase === 'published' && !getSkillVersion(db, manifest.name, manifest.version)) {
+            insertSkillVersion(db, {
+              skill_name: manifest.name,
+              version: manifest.version,
+              content_hash: contentHash,
+              submission_id: id,
+              published_at: workflowStatus.publishedAt,
+              published_by: submittedBy,
+              approved_by: null,
+              pr_number: result.context.prNumber ?? 0,
+              merge_commit: workflowStatus.mergeCommit,
+              scan_report_id: null,
+              yanked_at: null,
+              yanked_by: null,
+              yank_reason: null,
+            });
+          }
+          updateSubmissionStatus(db, id, 0, {
+            statusPhase: workflowStatus.phase,
+            statusJson: JSON.stringify(statusJsonWithApprovalPath(workflowStatus, approvalPath)),
+          });
+          submission.status = workflowStatus;
         } catch (error) {
           releasePendingVersion(db, manifest.name, manifest.version);
           return apiError(c, 500, 'internal_error', {
-            message: error instanceof Error ? error.message : 'md-only publish failed',
+            message: error instanceof Error ? error.message : 'approval pipeline failed',
           });
         }
       }
 
       const responseStatus =
-        approvalPath !== undefined && submission.status.phase === 'uploaded'
-          ? { ...submission.status, approvalPath }
-          : submission.status;
+        statusJsonWithApprovalPath(submission.status, approvalPath);
 
       return c.json(
         {
@@ -304,6 +355,13 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
   });
 
   return routes;
+}
+
+function statusJsonWithApprovalPath(
+  status: SubmissionStatus,
+  approvalPath: ApprovalPath | undefined,
+): SubmissionStatus & { approvalPath?: ApprovalPath } {
+  return approvalPath !== undefined ? { ...status, approvalPath } : status;
 }
 
 function filesAsRecord(
@@ -346,6 +404,61 @@ async function buildPriorSnapshot(
     contentHash: versionRow.content_hash,
     files: priorFiles ? filesAsRecord(priorFiles) : {},
     manifest: priorManifest,
+  };
+}
+
+function statusFromWorkflowResult(
+  submissionId: string,
+  context: ApprovalPipelineContext,
+  now: () => Date,
+): SubmissionStatus {
+  if (context.status === 'published') {
+    return {
+      phase: 'published',
+      publishedAt: now().toISOString(),
+      mergeCommit: context.mergeCommit ?? '',
+    };
+  }
+
+  if (context.status === 'rejected') {
+    return {
+      phase: 'rejected',
+      rejectedAt: now().toISOString(),
+      reason: context.review?.reason ?? 'scan_block',
+    };
+  }
+
+  const awaiting = context._awaitingNodeIds?.[0];
+  if (awaiting === 'questionnaire') {
+    return { phase: 'questionnaire-pending', questionnaireId: `questionnaire:${submissionId}` };
+  }
+  if (awaiting === 'confirmation') {
+    return { phase: 'user-confirmation-pending' };
+  }
+  if (awaiting === 'review') {
+    return { phase: 'compliance-review' };
+  }
+
+  return { phase: 'uploaded' };
+}
+
+function defaultWorkflowDependencies(
+  options: SubmissionRouteOptions,
+  skillName: string,
+): ApprovalPipelineDependencies {
+  return {
+    svc(token) {
+      if (token !== ForgejoClient) {
+        throw new Error('unexpected service token');
+      }
+      return (options.forgejo ?? forgejoFromEnv()) as never;
+    },
+    audit() {},
+    async regenerateRegistryIndex() {
+      if (options.triggerMarketplaceSync) {
+        await options.triggerMarketplaceSync(skillName);
+      }
+    },
   };
 }
 

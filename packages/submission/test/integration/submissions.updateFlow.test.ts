@@ -135,7 +135,7 @@ describe('POST /api/v1/submissions update flow', () => {
     const submissionRow = db
       .prepare('SELECT status_phase, status_json FROM submissions WHERE id = ?')
       .get(body.id) as { status_phase: string; status_json: string } | undefined;
-    expect(submissionRow?.status_phase).toBe('uploaded');
+    expect(submissionRow?.status_phase).toBe('questionnaire-pending');
     const persistedStatus = JSON.parse(submissionRow!.status_json) as {
       approvalPath: string;
     };
@@ -204,10 +204,28 @@ function makeApp(db: Database.Database, getPriorFiles?: GetPriorFiles) {
     '/api/v1/submissions',
     createSubmissionRoutes({
       db,
+      forgejo: makeFakeForgejo() as never,
       ...(getPriorFiles ? { getPriorFiles } : {}),
     }),
   );
   return app;
+}
+
+function makeFakeForgejo() {
+  return {
+    async openSubmissionPR() {
+      return { branch: 'submit/x', prNumber: 2, headSha: 'head-sha' };
+    },
+    async mergePR() {
+      return { sha: 'merge-sha' };
+    },
+    async publishArtifact() {
+      return 'https://forgejo.example/package/url';
+    },
+    async deleteBranch() {
+      // no-op
+    },
+  };
 }
 
 interface SeedInput {
