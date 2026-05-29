@@ -3511,7 +3511,24 @@ main {
     overflow-wrap: anywhere;
   }
 
+  .app-topbar-right {
+    grid-column: 1 / -1;
+    justify-content: space-between;
+    min-width: 0;
+    width: 100%;
+  }
+
   .mock-auth-banner {
+    display: inline-flex;
+    font-size: 0.68rem;
+    justify-content: center;
+    max-width: 100%;
+    min-height: 32px;
+    padding: 7px 9px;
+  }
+
+  .mock-auth-identity,
+  .mock-auth-role {
     display: none;
   }
 
