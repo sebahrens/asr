@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -34,6 +34,19 @@ describe('extractSafe malicious zip rejection suite', () => {
 
   it('rejects declared uncompressed-size overflow fixture with uncompressed size limit', async () => {
     await expectRejects('uncompressedSize', /uncompressed size limit/, { maxUncompressedBytes: 20 });
+  });
+
+  it('rejects streamed bytes when declared uncompressed size is lower than the actual payload', async () => {
+    await expectRejects('misdeclaredUncompressedSize', /uncompressed size limit/, { maxUncompressedBytes: 128 });
+  });
+
+  it('unlinks partial files when streamed bytes breach the uncompressed size limit', async () => {
+    await buildMaliciousZip('misdeclaredUncompressedSize', zipPath);
+
+    await expect(extractSafe(zipPath, targetDir, limits({ maxUncompressedBytes: 128 }))).rejects.toThrow(
+      /uncompressed size limit/,
+    );
+    await expect(access(join(targetDir, 'payload.txt'))).rejects.toThrow();
   });
 
   it('rejects excessive file-count fixture with max files', async () => {

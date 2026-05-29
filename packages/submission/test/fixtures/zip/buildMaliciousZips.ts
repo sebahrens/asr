@@ -6,6 +6,7 @@ export type MaliciousZipKind =
   | 'maxDepth'
   | 'symlink'
   | 'uncompressedSize'
+  | 'misdeclaredUncompressedSize'
   | 'maxFiles'
   | 'maxPathLen'
   | 'illegalChars';
@@ -28,6 +29,10 @@ export async function buildMaliciousZip(kind: MaliciousZipKind, zipPath: string)
         { path: 'two.txt', contents: 'y'.repeat(16) },
       ]);
       return;
+    case 'misdeclaredUncompressedSize':
+      await writeZip(zipPath, [{ path: 'payload.txt', contents: 'x'.repeat(1024) }]);
+      await rewriteDeclaredUncompressedSizes(zipPath, 0);
+      return;
     case 'maxFiles':
       await writeZip(zipPath, [
         { path: 'one.txt', contents: 'one' },
@@ -42,6 +47,26 @@ export async function buildMaliciousZip(kind: MaliciousZipKind, zipPath: string)
       await writeZip(zipPath, [{ path: 'safe\u202etxt.md', contents: '# rtl override' }]);
       return;
   }
+}
+
+async function rewriteDeclaredUncompressedSizes(zipPath: string, size: number): Promise<void> {
+  const zipBuffer = await readFile(zipPath);
+  const replacement = Buffer.alloc(4);
+  replacement.writeUInt32LE(size, 0);
+
+  for (let offset = 0; offset <= zipBuffer.length - 4; offset += 1) {
+    const signature = zipBuffer.readUInt32LE(offset);
+    if (signature === 0x04034b50 && offset + 26 <= zipBuffer.length) {
+      replacement.copy(zipBuffer, offset + 22);
+      continue;
+    }
+
+    if (signature === 0x02014b50 && offset + 28 <= zipBuffer.length) {
+      replacement.copy(zipBuffer, offset + 24);
+    }
+  }
+
+  await writeFile(zipPath, zipBuffer);
 }
 
 async function writeZip(

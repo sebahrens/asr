@@ -1,6 +1,7 @@
-import { createWriteStream } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { createWriteStream, statSync } from 'node:fs';
+import { mkdir, unlink } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
+import { Transform, type TransformCallback } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import yauzl from 'yauzl';
 
@@ -28,9 +29,12 @@ export async function extractSafe(
   const canonical = resolve(targetDir);
   await mkdir(canonical, { recursive: true });
 
+  if (statSync(zipPath).size > limits.maxCompressedBytes) {
+    throw new Error('compressed size limit');
+  }
+
   const zip = await openZip(zipPath);
 
-  let totalCompressedBytes = 0;
   let totalUncompressedBytes = 0;
   let fileCount = 0;
   const files: string[] = [];
@@ -114,24 +118,55 @@ export async function extractSafe(
       throw new Error('max files');
     }
 
-    totalCompressedBytes += entry.compressedSize;
-    if (totalCompressedBytes > limits.maxCompressedBytes) {
-      throw new Error('compressed size limit');
-    }
-
-    totalUncompressedBytes += entry.uncompressedSize;
-    if (totalUncompressedBytes > limits.maxUncompressedBytes) {
-      throw new Error('uncompressed size limit');
-    }
-
     if (isDirectory) {
       await mkdir(entryPath, { recursive: true });
       return;
     }
 
     await mkdir(dirname(entryPath), { recursive: true });
-    await pipeline(await openReadStream(zip, entry), createWriteStream(entryPath, { flags: 'wx' }));
+    let entryBytes = 0;
+    try {
+      await pipeline(
+        await openReadStream(zip, entry),
+        new ByteLimitTransform((bytes) => {
+          entryBytes += bytes;
+          totalUncompressedBytes += bytes;
+          if (entryBytes > limits.maxUncompressedBytes || totalUncompressedBytes > limits.maxUncompressedBytes) {
+            throw new Error('uncompressed size limit');
+          }
+        }),
+        createWriteStream(entryPath, { flags: 'wx' }),
+      );
+
+      const writtenBytes = statSync(entryPath).size;
+      if (writtenBytes !== entryBytes) {
+        throw new Error(`zip extraction size mismatch: ${name}`);
+      }
+    } catch (error) {
+      await unlink(entryPath).catch((unlinkError: NodeJS.ErrnoException) => {
+        if (unlinkError.code !== 'ENOENT') {
+          throw unlinkError;
+        }
+      });
+      throw error;
+    }
+
     files.push(relativePath);
+  }
+}
+
+class ByteLimitTransform extends Transform {
+  constructor(private readonly addBytes: (bytes: number) => void) {
+    super();
+  }
+
+  override _transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback): void {
+    try {
+      this.addBytes(chunk.byteLength);
+      callback(null, chunk);
+    } catch (error) {
+      callback(error instanceof Error ? error : new Error(String(error)));
+    }
   }
 }
 
@@ -155,7 +190,7 @@ function openReadStream(zip: yauzl.ZipFile, entry: yauzl.Entry): Promise<NodeJS.
 
 function openZip(path: string): Promise<yauzl.ZipFile> {
   return new Promise((resolveZip, rejectZip) => {
-    yauzl.open(path, { lazyEntries: true, autoClose: true }, (error, zip) => {
+    yauzl.open(path, { lazyEntries: true, autoClose: true, validateEntrySizes: false }, (error, zip) => {
       if (error) {
         rejectZip(error);
         return;
