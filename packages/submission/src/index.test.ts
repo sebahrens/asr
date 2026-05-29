@@ -17,6 +17,8 @@ let createApp: typeof CreateApp;
 beforeAll(async () => {
   vi.stubEnv('NODE_ENV', 'development');
   vi.stubEnv('AUTH_MODE', 'mock');
+  vi.stubEnv('MOCK_USER_SUB', 'mock-user');
+  vi.stubEnv('MOCK_USER_ROLES', 'Submitter,Compliance');
 
   ({ app, createApp } = await import('./index.js'));
 });

@@ -14,6 +14,8 @@ let server: ServerType;
 beforeAll(async () => {
   vi.stubEnv('NODE_ENV', 'development');
   vi.stubEnv('AUTH_MODE', 'mock');
+  vi.stubEnv('MOCK_USER_SUB', 'mock-user');
+  vi.stubEnv('MOCK_USER_ROLES', 'Submitter');
 
   ({ createApp } = await import('../../src/index.js'));
 
@@ -44,10 +46,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await new Promise<void>((resolve, reject) => {
-    server.close((err) => (err ? reject(err) : resolve()));
-  });
-  db.close();
+  if (server) {
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+  }
+  db?.close();
   vi.unstubAllEnvs();
 });
 

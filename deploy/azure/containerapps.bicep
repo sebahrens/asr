@@ -25,6 +25,27 @@ param clientId string
 @description('Internal URL of the Forgejo Container App (e.g. https://forgejo.internal.<fqdn>).')
 param forgejoUrl string
 
+@description('Forgejo owner that hosts approved skill packages.')
+param forgejoOwner string = 'asr'
+
+@description('Forgejo repository that hosts approved skill packages.')
+param forgejoRepo string = 'skills-registry'
+
+@description('Forgejo owner that hosts the generated marketplace index.')
+param forgejoMarketplaceOwner string = 'asr'
+
+@description('Forgejo repository that hosts the generated marketplace index.')
+param forgejoMarketplaceRepo string = 'skill-marketplace'
+
+@description('Container image for the scanner. In production this must be pinned by sha256 digest.')
+param scannerImage string
+
+@description('Public base URL used by API-generated links.')
+param publicBaseUrl string
+
+@description('Active audit HMAC key id corresponding to the audit-hmac-key Key Vault secret.')
+param auditHmacKeyId string = 'primary'
+
 @description('Public origin of the web Container App used in CORS allowedOrigins (e.g. https://web.<fqdn>).')
 param webOrigin string
 
@@ -88,6 +109,11 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           keyVaultUrl: '${keyVaultUri}secrets/audit-hmac-key'
           identity: managedIdentityId
         }
+        {
+          name: 'scan-signing-key'
+          keyVaultUrl: '${keyVaultUri}secrets/scan-signing-key'
+          identity: managedIdentityId
+        }
       ]
     }
     template: {
@@ -121,8 +147,36 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
               value: forgejoUrl
             }
             {
+              name: 'FORGEJO_OWNER'
+              value: forgejoOwner
+            }
+            {
+              name: 'FORGEJO_REPO'
+              value: forgejoRepo
+            }
+            {
+              name: 'FORGEJO_MARKETPLACE_OWNER'
+              value: forgejoMarketplaceOwner
+            }
+            {
+              name: 'FORGEJO_MARKETPLACE_REPO'
+              value: forgejoMarketplaceRepo
+            }
+            {
               name: 'DATABASE_PATH'
               value: '/app/data/workflow.db'
+            }
+            {
+              name: 'PUBLIC_BASE_URL'
+              value: publicBaseUrl
+            }
+            {
+              name: 'SCANNER_IMAGE'
+              value: scannerImage
+            }
+            {
+              name: 'AUDIT_HMAC_KEY_ID'
+              value: auditHmacKeyId
             }
             {
               name: 'FORGEJO_UPLOAD_TOKEN'
@@ -135,6 +189,10 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'AUDIT_HMAC_KEY_BYTES'
               secretRef: 'audit-hmac-key'
+            }
+            {
+              name: 'SCAN_SIGNING_KEY'
+              secretRef: 'scan-signing-key'
             }
           ]
           volumeMounts: [

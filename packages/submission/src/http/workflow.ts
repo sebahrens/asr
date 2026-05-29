@@ -7,6 +7,7 @@ import { SeparationOfDutiesError, assertSeparation } from '../auth/separation.js
 import type { AuthVariables, Identity } from '../auth/types.js';
 import { getSkillVersion, insertSkillVersion } from '../db/repositories/skillVersions.js';
 import { getSubmissionById, updateSubmissionStatus } from '../db/repositories/submissions.js';
+import { forgejoFromEnv } from '../forgejo/index.js';
 import {
   getWorkflowRun,
   listWorkflowRuns,
@@ -446,13 +447,7 @@ function defaultDependencies(): ApprovalPipelineDependencies {
       if (token !== ForgejoClient) {
         throw new Error('unexpected service token');
       }
-      return new ForgejoClient({
-        baseUrl: requiredEnv('FORGEJO_API_URL'),
-        uploadToken: requiredEnv('FORGEJO_UPLOAD_TOKEN'),
-        mergeToken: requiredEnv('FORGEJO_MERGE_TOKEN'),
-        owner: requiredEnv('FORGEJO_OWNER'),
-        repo: requiredEnv('FORGEJO_REPO'),
-      }) as never;
+      return forgejoFromEnv() as never;
     },
     audit() {},
   };
@@ -666,12 +661,4 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function rejectedStatus(date: Date, reason: string): SubmissionStatus {
   return { phase: 'rejected', rejectedAt: date.toISOString(), reason };
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
 }

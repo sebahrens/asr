@@ -17,6 +17,8 @@ const stubEnv: Env = {
   NODE_ENV: 'development',
   AUTH_MODE: 'mock',
   PORT: 3001,
+  MOCK_USER_SUB: 'mock-user',
+  MOCK_USER_ROLES: 'Submitter',
   FORGEJO_URL: 'http://forgejo:3000/api/v1',
   FORGEJO_UPLOAD_TOKEN: 'upload-token',
   FORGEJO_MERGE_TOKEN: 'merge-token',
@@ -24,6 +26,7 @@ const stubEnv: Env = {
   FORGEJO_REPO: 'skills-registry',
   FORGEJO_MARKETPLACE_OWNER: 'asr-marketplace',
   FORGEJO_MARKETPLACE_REPO: 'skill-marketplace',
+  NOTIFY_TRANSPORT: 'memory',
 };
 
 describe('forgejoFromEnv', () => {

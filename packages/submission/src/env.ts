@@ -5,7 +5,15 @@ const envSchema = z
     PORT: z.coerce.number().default(3001),
     NODE_ENV: z.enum(['development', 'production']),
     AUTH_MODE: z.enum(['mock', 'entra']),
+    MOCK_USER_SUB: z.string().optional(),
+    MOCK_USER_ROLES: z.string().optional(),
+    AZURE_TENANT_ID: z.string().optional(),
+    AZURE_CLIENT_ID: z.string().optional(),
     SCANNER_IMAGE: z.string().optional(),
+    SCANNER_TIMEOUT_SECONDS: z.string().optional(),
+    SCAN_TIMEOUT_SECONDS: z.string().optional(),
+    SCANNER_SEVERITY_THRESHOLD: z.string().optional(),
+    SCAN_SEVERITY_THRESHOLD: z.string().optional(),
     SCAN_SIGNING_KEY: z.string().optional(),
     SCAN_SIGNING_DISABLED: z.enum(['true', 'false']).optional(),
     FORGEJO_URL: z.string().optional(),
@@ -17,8 +25,15 @@ const envSchema = z
     FORGEJO_MARKETPLACE_REPO: z.string().default('skill-marketplace'),
     DATABASE_PATH: z.string().optional(),
     REGISTRY_INDEX_PATH: z.string().optional(),
+    AUDIT_HMAC_KEY_ID: z.string().optional(),
+    AUDIT_HMAC_KEY_BYTES: z.string().optional(),
+    AUDIT_GPG_PRIVATE_KEY: z.string().optional(),
+    AUDIT_GPG_PASSPHRASE: z.string().optional(),
     NOTIFY_TRANSPORT: z.enum(['memory', 'smtp', 'graph']).default('memory'),
     PUBLIC_BASE_URL: z.string().url().optional(),
+    VERACODE_API_KEY_ID: z.string().optional(),
+    VERACODE_API_KEY_SECRET: z.string().optional(),
+    VERACODE_POLICY: z.string().optional(),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && env.AUTH_MODE === 'mock') {
@@ -37,20 +52,34 @@ const envSchema = z
       });
     }
 
-    if (env.NODE_ENV === 'production' && !env.SCAN_SIGNING_KEY) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['SCAN_SIGNING_KEY'],
-        message: 'FATAL: SCAN_SIGNING_KEY is required in production',
-      });
+    if (env.AUTH_MODE === 'mock') {
+      requireEnv(env, ctx, 'MOCK_USER_SUB', 'when AUTH_MODE=mock');
+      requireEnv(env, ctx, 'MOCK_USER_ROLES', 'when AUTH_MODE=mock');
     }
 
-    if (env.NODE_ENV === 'production' && !env.SCANNER_IMAGE) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['SCANNER_IMAGE'],
-        message: 'FATAL: SCANNER_IMAGE is required in production',
-      });
+    if (env.AUTH_MODE === 'entra') {
+      requireEnv(env, ctx, 'AZURE_TENANT_ID', 'when AUTH_MODE=entra');
+      requireEnv(env, ctx, 'AZURE_CLIENT_ID', 'when AUTH_MODE=entra');
+    }
+
+    if (env.NODE_ENV === 'production') {
+      for (const name of [
+        'FORGEJO_URL',
+        'FORGEJO_UPLOAD_TOKEN',
+        'FORGEJO_MERGE_TOKEN',
+        'FORGEJO_OWNER',
+        'FORGEJO_REPO',
+        'FORGEJO_MARKETPLACE_OWNER',
+        'FORGEJO_MARKETPLACE_REPO',
+        'DATABASE_PATH',
+        'PUBLIC_BASE_URL',
+        'AUDIT_HMAC_KEY_ID',
+        'AUDIT_HMAC_KEY_BYTES',
+        'SCAN_SIGNING_KEY',
+        'SCANNER_IMAGE',
+      ] as const) {
+        requireEnv(env, ctx, name, 'in production');
+      }
     }
 
     if (
@@ -67,6 +96,22 @@ const envSchema = z
   });
 
 export type Env = z.infer<typeof envSchema>;
+type EnvShape = z.infer<typeof envSchema>;
+
+function requireEnv(
+  env: EnvShape,
+  ctx: z.RefinementCtx,
+  name: keyof EnvShape,
+  context: string,
+): void {
+  if (!env[name]) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [name],
+      message: `FATAL: ${name} is required ${context}`,
+    });
+  }
+}
 
 export function parseEnv(raw: NodeJS.ProcessEnv): Env {
   const env = envSchema.parse(raw);
