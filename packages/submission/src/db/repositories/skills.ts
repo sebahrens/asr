@@ -23,6 +23,8 @@ interface PublishedSubmissionRow {
   submitted_by: string;
   pr_number: number | null;
   status_json: string;
+  yanked_at: string | null;
+  yank_reason: string | null;
 }
 
 interface PublishedSkillVersion {
@@ -100,7 +102,7 @@ export function getPublishedSkillVersion(
   const sortedVersions = sortVersions(group.versions);
   const target =
     version === undefined
-      ? sortedVersions.find((entry) => !entry.status.yankedAt)
+      ? sortedVersions.find((entry) => entry.row.yanked_at === null)
       : sortedVersions.find((entry) => entry.manifest.version === version);
   if (!target) {
     return undefined;
@@ -118,14 +120,18 @@ function readPublishedRows(db: Database.Database): PublishedSubmissionRow[] {
     .prepare(
       `
         SELECT
-          id,
-          manifest_json,
-          content_hash,
-          submitted_at,
-          submitted_by,
-          pr_number,
-          status_json
+          submissions.id,
+          submissions.manifest_json,
+          submissions.content_hash,
+          submissions.submitted_at,
+          submissions.submitted_by,
+          submissions.pr_number,
+          submissions.status_json,
+          sv.yanked_at,
+          sv.yank_reason
         FROM submissions
+        LEFT JOIN skill_versions sv
+          ON sv.submission_id = submissions.id
         WHERE status_phase = 'published'
         ORDER BY submitted_at DESC
       `,
@@ -179,7 +185,7 @@ function sortVersions(versions: PublishedSkillVersion[]): PublishedSkillVersion[
 }
 
 function toSkillVersion(version: PublishedSkillVersion): SkillVersion {
-  const yanked = Boolean(version.status.yankedAt);
+  const yanked = version.row.yanked_at !== null;
 
   return {
     owner: version.manifest.author,
@@ -192,8 +198,8 @@ function toSkillVersion(version: PublishedSkillVersion): SkillVersion {
     prNumber: version.row.pr_number ?? 0,
     mergeCommit: version.status.mergeCommit ?? '',
     yanked,
-    ...(version.status.yankedAt ? { yankedAt: version.status.yankedAt } : {}),
-    ...(version.status.yankReason ? { yankReason: version.status.yankReason } : {}),
+    ...(version.row.yanked_at ? { yankedAt: version.row.yanked_at } : {}),
+    ...(version.row.yank_reason ? { yankReason: version.row.yank_reason } : {}),
     riskAssessment: version.status.riskAssessment ?? 'low',
   };
 }

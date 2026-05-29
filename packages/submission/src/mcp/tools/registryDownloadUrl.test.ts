@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Identity } from '../../auth/types.js';
 import { runMigrations } from '../../db/migrations/index.js';
+import { insertSkillVersion, markVersionYanked } from '../../db/repositories/skillVersions.js';
 import { insertSubmission } from '../../db/repositories/submissions.js';
 import { MCP_ERROR, McpToolError } from '../errors.js';
 import { createRateLimiter } from '../rateLimit.js';
@@ -53,17 +54,36 @@ function seedPublished(
   };
   if (yankedAt) status.yankedAt = yankedAt;
   if (yankReason) status.yankReason = yankReason;
+  const resolvedContentHash = contentHash ?? `sha256:${id}`;
   insertSubmission(db, {
     id,
     manifestJson: JSON.stringify(manifest),
     classification: 'md-only',
-    contentHash: contentHash ?? `sha256:${id}`,
+    contentHash: resolvedContentHash,
     submittedAt,
     submittedBy: 'submitter@example.com',
     prNumber: 42,
     statusPhase: 'published',
     statusJson: JSON.stringify(status),
   });
+
+  if (yankedAt) {
+    insertSkillVersion(db, {
+      skill_name: manifest.name,
+      version: manifest.version,
+      content_hash: resolvedContentHash,
+      submission_id: id,
+      published_at: publishedAt,
+      published_by: 'submitter@example.com',
+      approved_by: null,
+      pr_number: 42,
+      merge_commit: `merge-${id}`,
+      scan_report_id: null,
+      yanked_at: yankedAt,
+      yanked_by: 'compliance@example.com',
+      yank_reason: yankReason ?? null,
+    });
+  }
 }
 
 function extraFor(principal: Identity): unknown {
@@ -212,6 +232,59 @@ describe('registryDownloadUrlHandler', () => {
       name: 'x',
       version: '0.9.0',
       yankReason: 'CVE-2026-0001',
+    });
+  });
+
+  it('throws version_yanked when yank state is only present in skill_versions', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    seedPublished(db, {
+      id: 's-1',
+      manifest: makeManifest({ version: '1.0.0' }),
+      submittedAt: '2026-05-24T10:00:00.000Z',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+      contentHash: 'sha256:abc',
+    });
+    insertSkillVersion(db, {
+      skill_name: 'x',
+      version: '1.0.0',
+      content_hash: 'sha256:abc',
+      submission_id: 's-1',
+      published_at: '2026-05-24T10:05:00.000Z',
+      published_by: 'submitter@example.com',
+      approved_by: null,
+      pr_number: 42,
+      merge_commit: 'merge-s-1',
+      scan_report_id: null,
+      yanked_at: null,
+      yanked_by: null,
+      yank_reason: null,
+    });
+    markVersionYanked(db, 'x', '1.0.0', {
+      yankedAt: '2026-05-24T11:00:00.000Z',
+      yankedBy: 'compliance@example.com',
+      reason: 'security',
+    });
+
+    let caught: unknown;
+    try {
+      registryDownloadUrlHandler(
+        db,
+        { owner: 'acme', name: 'x', version: '1.0.0' },
+        extraFor({ sub: 'p1', roles: ['Submitter'] }),
+      );
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(McpToolError);
+    expect((caught as McpToolError).code).toBe(MCP_ERROR.version_yanked);
+    expect((caught as McpToolError).data).toMatchObject({
+      owner: 'acme',
+      name: 'x',
+      version: '1.0.0',
+      yankReason: 'security',
     });
   });
 

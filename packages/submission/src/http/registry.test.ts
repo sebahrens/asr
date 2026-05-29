@@ -382,6 +382,7 @@ interface PublishedSubmissionFixture {
 }
 
 function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubmissionFixture): void {
+  const contentHash = `sha256:${fixture.id}`;
   insertSubmission(db, {
     id: fixture.id,
     manifestJson: JSON.stringify(
@@ -393,7 +394,7 @@ function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubm
       }),
     ),
     classification: 'md-only',
-    contentHash: `sha256:${fixture.id}`,
+    contentHash,
     submittedAt: fixture.publishedAt,
     submittedBy: 'submitter@example.com',
     prNumber: 42,
@@ -407,6 +408,24 @@ function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubm
       ...(fixture.yankReason ? { yankReason: fixture.yankReason } : {}),
     }),
   });
+
+  if (fixture.yankedAt) {
+    insertSkillVersion(db, {
+      skill_name: fixture.name,
+      version: fixture.version,
+      content_hash: contentHash,
+      submission_id: fixture.id,
+      published_at: fixture.publishedAt,
+      published_by: 'submitter@example.com',
+      approved_by: null,
+      pr_number: 42,
+      merge_commit: `merge-${fixture.id}`,
+      scan_report_id: null,
+      yanked_at: fixture.yankedAt,
+      yanked_by: 'compliance@example.com',
+      yank_reason: fixture.yankReason ?? null,
+    });
+  }
 }
 
 function manifest(overrides: Partial<SkillManifest>): SkillManifest {

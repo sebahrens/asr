@@ -7,6 +7,7 @@ import {
   getPublishedSkillVersion,
   listPublishedSkills,
 } from './skills.js';
+import { insertSkillVersion, markVersionYanked } from './skillVersions.js';
 import { insertSubmission } from './submissions.js';
 
 describe('published skills repository', () => {
@@ -176,6 +177,32 @@ describe('published skills repository', () => {
     expect(getPublishedSkillVersion(db, 'acme', 'x', '9.9.9')).toBeUndefined();
     expect(getPublishedSkillVersion(db, 'acme', 'missing')).toBeUndefined();
   });
+
+  it('derives yanked state from skill_versions instead of submission status_json', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    insertPublishedSubmission(db, {
+      id: 'submission-x-100',
+      version: '1.0.0',
+      submittedAt: '2026-05-23T10:00:00.000Z',
+      publishedAt: '2026-05-23T10:05:00.000Z',
+      contentHash: 'sha256:x-100',
+      includeSkillVersion: true,
+    });
+
+    markVersionYanked(db, 'x', '1.0.0', {
+      yankedAt: '2026-05-23T11:00:00.000Z',
+      yankedBy: 'compliance@example.com',
+      reason: 'security',
+    });
+
+    const resolved = getPublishedSkillVersion(db, 'acme', 'x', '1.0.0');
+
+    expect(resolved?.skillVersion.yanked).toBe(true);
+    expect(resolved?.skillVersion.yankedAt).toBe('2026-05-23T11:00:00.000Z');
+    expect(resolved?.skillVersion.yankReason).toBe('security');
+  });
 });
 
 interface PublishedSubmissionFixture {
@@ -190,6 +217,7 @@ interface PublishedSubmissionFixture {
   contentHash?: string;
   yankedAt?: string;
   yankReason?: string;
+  includeSkillVersion?: boolean;
 }
 
 function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubmissionFixture): void {
@@ -220,6 +248,25 @@ function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubm
     statusPhase: 'published',
     statusJson: JSON.stringify(status),
   });
+
+  if (fixture.includeSkillVersion || fixture.yankedAt) {
+    const name = fixture.name ?? 'x';
+    insertSkillVersion(db, {
+      skill_name: name,
+      version: fixture.version,
+      content_hash: fixture.contentHash ?? `sha256:${fixture.id}`,
+      submission_id: fixture.id,
+      published_at: fixture.publishedAt,
+      published_by: 'submitter@example.com',
+      approved_by: null,
+      pr_number: 42,
+      merge_commit: `merge-${fixture.id}`,
+      scan_report_id: null,
+      yanked_at: fixture.yankedAt ?? null,
+      yanked_by: fixture.yankedAt ? 'compliance@example.com' : null,
+      yank_reason: fixture.yankReason ?? null,
+    });
+  }
 }
 
 function manifest(overrides: Partial<SkillManifest>): SkillManifest {
