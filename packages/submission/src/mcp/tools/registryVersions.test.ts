@@ -69,23 +69,22 @@ function seedPublished(
     statusJson: JSON.stringify(status),
   });
 
-  if (yankedAt) {
-    insertSkillVersion(db, {
-      skill_name: manifest.name,
-      version: manifest.version,
-      content_hash: `sha256:${id}`,
-      submission_id: id,
-      published_at: publishedAt,
-      published_by: 'submitter@example.com',
-      approved_by: null,
-      pr_number: 42,
-      merge_commit: `merge-${id}`,
-      scan_report_id: null,
-      yanked_at: yankedAt,
-      yanked_by: 'compliance@example.com',
-      yank_reason: yankReason ?? null,
-    });
-  }
+  insertSkillVersion(db, {
+    owner: manifest.author,
+    skill_name: manifest.name,
+    version: manifest.version,
+    content_hash: `sha256:${id}`,
+    submission_id: id,
+    published_at: publishedAt,
+    published_by: 'submitter@example.com',
+    approved_by: null,
+    pr_number: 42,
+    merge_commit: `merge-${id}`,
+    scan_report_id: null,
+    yanked_at: yankedAt ?? null,
+    yanked_by: yankedAt ? 'compliance@example.com' : null,
+    yank_reason: yankReason ?? null,
+  });
 }
 
 function extraFor(principal: Identity): unknown {

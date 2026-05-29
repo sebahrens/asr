@@ -94,20 +94,24 @@ describe('registryRoutes', () => {
       name: 'x',
       version: '1.1.0',
       publishedAt: '2026-05-24T10:05:00.000Z',
+      skipSkillVersion: true,
     });
     insertPublishedSubmission(db!, {
       id: 'submission-x-100',
       name: 'x',
       version: '1.0.0',
       publishedAt: '2026-05-23T10:05:00.000Z',
+      skipSkillVersion: true,
     });
     insertPublishedSubmission(db!, {
       id: 'submission-x-120',
       name: 'x',
       version: '1.2.0',
       publishedAt: '2026-05-25T10:05:00.000Z',
+      skipSkillVersion: true,
     });
     insertSkillVersion(db!, {
+      owner: 'acme',
       skill_name: 'x',
       version: '1.0.0',
       content_hash: 'sha256:x-100',
@@ -123,6 +127,7 @@ describe('registryRoutes', () => {
       yank_reason: null,
     });
     insertSkillVersion(db!, {
+      owner: 'acme',
       skill_name: 'x',
       version: '1.1.0',
       content_hash: 'sha256:x-110',
@@ -138,6 +143,7 @@ describe('registryRoutes', () => {
       yank_reason: null,
     });
     insertSkillVersion(db!, {
+      owner: 'acme',
       skill_name: 'x',
       version: '1.2.0',
       content_hash: 'sha256:x-120',
@@ -357,8 +363,10 @@ describe('registryRoutes', () => {
       name: 'x',
       version: '1.0.0',
       publishedAt: '2026-05-24T10:05:00.000Z',
+      skipSkillVersion: true,
     });
     insertSkillVersion(db!, {
+      owner: 'acme',
       skill_name: 'x',
       version: '1.0.0',
       content_hash: 'sha256:x-100',
@@ -378,8 +386,10 @@ describe('registryRoutes', () => {
       name: 'x',
       version: '1.1.0',
       publishedAt: '2026-05-25T10:05:00.000Z',
+      skipSkillVersion: true,
     });
     insertSkillVersion(db!, {
+      owner: 'acme',
       skill_name: 'x',
       version: '1.1.0',
       content_hash: 'sha256:x-110',
@@ -450,6 +460,7 @@ interface PublishedSubmissionFixture {
   publishedAt: string;
   yankedAt?: string;
   yankReason?: string;
+  skipSkillVersion?: boolean;
 }
 
 function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubmissionFixture): void {
@@ -480,23 +491,26 @@ function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubm
     }),
   });
 
-  if (fixture.yankedAt) {
-    insertSkillVersion(db, {
-      skill_name: fixture.name,
-      version: fixture.version,
-      content_hash: contentHash,
-      submission_id: fixture.id,
-      published_at: fixture.publishedAt,
-      published_by: 'submitter@example.com',
-      approved_by: null,
-      pr_number: 42,
-      merge_commit: `merge-${fixture.id}`,
-      scan_report_id: null,
-      yanked_at: fixture.yankedAt,
-      yanked_by: 'compliance@example.com',
-      yank_reason: fixture.yankReason ?? null,
-    });
+  if (fixture.skipSkillVersion) {
+    return;
   }
+
+  insertSkillVersion(db, {
+    owner: 'acme',
+    skill_name: fixture.name,
+    version: fixture.version,
+    content_hash: contentHash,
+    submission_id: fixture.id,
+    published_at: fixture.publishedAt,
+    published_by: 'submitter@example.com',
+    approved_by: null,
+    pr_number: 42,
+    merge_commit: `merge-${fixture.id}`,
+    scan_report_id: null,
+    yanked_at: fixture.yankedAt ?? null,
+    yanked_by: fixture.yankedAt ? 'compliance@example.com' : null,
+    yank_reason: fixture.yankReason ?? null,
+  });
 }
 
 function manifest(overrides: Partial<SkillManifest>): SkillManifest {

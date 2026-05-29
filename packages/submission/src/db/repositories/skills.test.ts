@@ -326,24 +326,23 @@ function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubm
     statusJson: JSON.stringify(status),
   });
 
-  if (fixture.includeSkillVersion || fixture.yankedAt) {
-    const name = fixture.name ?? 'x';
-    insertSkillVersion(db, {
-      skill_name: name,
-      version: fixture.version,
-      content_hash: fixture.contentHash ?? `sha256:${fixture.id}`,
-      submission_id: fixture.id,
-      published_at: fixture.publishedAt,
-      published_by: 'submitter@example.com',
-      approved_by: null,
-      pr_number: 42,
-      merge_commit: `merge-${fixture.id}`,
-      scan_report_id: null,
-      yanked_at: fixture.yankedAt ?? null,
-      yanked_by: fixture.yankedAt ? 'compliance@example.com' : null,
-      yank_reason: fixture.yankReason ?? null,
-    });
-  }
+  const name = fixture.name ?? 'x';
+  insertSkillVersion(db, {
+    owner: 'acme',
+    skill_name: name,
+    version: fixture.version,
+    content_hash: fixture.contentHash ?? `sha256:${fixture.id}`,
+    submission_id: fixture.id,
+    published_at: fixture.publishedAt,
+    published_by: 'submitter@example.com',
+    approved_by: null,
+    pr_number: 42,
+    merge_commit: `merge-${fixture.id}`,
+    scan_report_id: null,
+    yanked_at: fixture.yankedAt ?? null,
+    yanked_by: fixture.yankedAt ? 'compliance@example.com' : null,
+    yank_reason: fixture.yankReason ?? null,
+  });
 }
 
 function manifest(overrides: Partial<SkillManifest>): SkillManifest {

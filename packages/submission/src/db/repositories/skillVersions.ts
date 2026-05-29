@@ -1,7 +1,9 @@
 import { rsortVersions } from '@asr/core';
 import type Database from 'better-sqlite3';
+import { ownerFromPrincipal } from '../../identity/owners.js';
 
 export interface SkillVersionRow {
+  owner: string;
   skill_name: string;
   version: string;
   content_hash: string;
@@ -17,10 +19,14 @@ export interface SkillVersionRow {
   yank_reason: string | null;
 }
 
-export function insertSkillVersion(db: Database.Database, row: SkillVersionRow): void {
+export type InsertSkillVersionRow = Omit<SkillVersionRow, 'owner'> & { owner?: string };
+
+export function insertSkillVersion(db: Database.Database, row: InsertSkillVersionRow): void {
+  const owner = row.owner ?? ownerFromPrincipal(row.published_by);
   db.prepare(
     `
       INSERT INTO skill_versions (
+        owner,
         skill_name,
         version,
         content_hash,
@@ -35,6 +41,7 @@ export function insertSkillVersion(db: Database.Database, row: SkillVersionRow):
         yanked_by,
         yank_reason
       ) VALUES (
+        @owner,
         @skill_name,
         @version,
         @content_hash,
@@ -50,18 +57,22 @@ export function insertSkillVersion(db: Database.Database, row: SkillVersionRow):
         @yank_reason
       )
     `,
-  ).run(row);
+  ).run({ ...row, owner });
 }
 
 export function getSkillVersion(
   db: Database.Database,
   skillName: string,
   version: string,
+  owner?: string,
 ): SkillVersionRow | undefined {
+  const ownerSql = owner === undefined ? '' : 'AND owner = ?';
+  const params = owner === undefined ? [skillName, version] : [skillName, version, owner];
   const row = db
     .prepare(
       `
         SELECT
+          owner,
           skill_name,
           version,
           content_hash,
@@ -77,9 +88,10 @@ export function getSkillVersion(
           yank_reason
         FROM skill_versions
         WHERE skill_name = ? AND version = ?
+          ${ownerSql}
       `,
     )
-    .get(skillName, version) as SkillVersionRow | undefined;
+    .get(...params) as SkillVersionRow | undefined;
 
   return row;
 }
@@ -87,11 +99,15 @@ export function getSkillVersion(
 export function listVersions(
   db: Database.Database,
   skillName: string,
+  owner?: string,
 ): SkillVersionRow[] {
+  const ownerSql = owner === undefined ? '' : 'AND owner = ?';
+  const params = owner === undefined ? [skillName] : [skillName, owner];
   return db
     .prepare(
       `
         SELECT
+          owner,
           skill_name,
           version,
           content_hash,
@@ -107,9 +123,10 @@ export function listVersions(
           yank_reason
         FROM skill_versions
         WHERE skill_name = ?
+          ${ownerSql}
       `,
     )
-    .all(skillName) as SkillVersionRow[];
+    .all(...params) as SkillVersionRow[];
 }
 
 export function markVersionYanked(
@@ -117,16 +134,23 @@ export function markVersionYanked(
   skillName: string,
   version: string,
   input: { yankedAt: string; yankedBy: string; reason: string },
+  owner?: string,
 ): boolean {
+  const ownerSql = owner === undefined ? '' : 'AND owner = ?';
+  const params =
+    owner === undefined
+      ? [input.yankedAt, input.yankedBy, input.reason, skillName, version]
+      : [input.yankedAt, input.yankedBy, input.reason, skillName, version, owner];
   const info = db
     .prepare(
       `
         UPDATE skill_versions
         SET yanked_at = ?, yanked_by = ?, yank_reason = ?
         WHERE skill_name = ? AND version = ? AND yanked_at IS NULL
+          ${ownerSql}
       `,
     )
-    .run(input.yankedAt, input.yankedBy, input.reason, skillName, version);
+    .run(...params);
 
   return info.changes === 1;
 }
@@ -134,16 +158,20 @@ export function markVersionYanked(
 export function resolveLatestVersion(
   db: Database.Database,
   skillName: string,
+  owner?: string,
 ): string | undefined {
+  const ownerSql = owner === undefined ? '' : 'AND owner = ?';
+  const params = owner === undefined ? [skillName] : [skillName, owner];
   const rows = db
     .prepare(
       `
         SELECT version
         FROM skill_versions
         WHERE skill_name = ? AND yanked_at IS NULL
+          ${ownerSql}
       `,
     )
-    .all(skillName) as Array<{ version: string }>;
+    .all(...params) as Array<{ version: string }>;
 
   if (rows.length === 0) {
     return undefined;

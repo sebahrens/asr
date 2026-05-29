@@ -4,6 +4,7 @@ import type { Hono } from 'hono';
 import { SeparationOfDutiesError, assertSeparation } from '../../auth/separation.js';
 import type { AuthVariables } from '../../auth/types.js';
 import { getSubmissionById, rowToSubmission } from '../../db/repositories/submissions.js';
+import { ownerFromPrincipal } from '../../identity/owners.js';
 import { apiError } from '../errors.js';
 
 export interface ApproveReviewResult {
@@ -86,7 +87,7 @@ export function registerApproveRoute(
         mergeCommit: result.mergeCommit,
       },
       publishedVersion: submission.manifest.version,
-      registryUrl: `/skills/${submission.manifest.author}/${submission.manifest.name}`,
+      registryUrl: `/skills/${ownerFromPrincipal(submission.submittedBy)}/${submission.manifest.name}`,
     });
   });
 }

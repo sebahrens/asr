@@ -197,7 +197,7 @@ describe('POST /api/v1/submissions update flow', () => {
 function makeApp(db: Database.Database, getPriorFiles?: GetPriorFiles) {
   const app = new Hono<{ Variables: AuthVariables }>();
   app.use('*', async (c, next) => {
-    c.set('identity', { sub: 'submitter-1', roles: ['Submitter'] });
+    c.set('identity', { sub: 'alice', roles: ['Submitter'] });
     await next();
   });
   app.route(
@@ -265,13 +265,14 @@ function seedPriorVersion(db: Database.Database, input: SeedInput): void {
   db.prepare(
     `
       INSERT INTO skill_versions (
-        skill_name, version, content_hash, submission_id,
+        owner, skill_name, version, content_hash, submission_id,
         published_at, published_by, approved_by, pr_number, merge_commit,
         scan_report_id, yanked_at, yanked_by, yank_reason
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
+    'alice',
     input.skillName,
     input.version,
     contentHash,

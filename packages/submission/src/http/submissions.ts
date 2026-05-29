@@ -34,6 +34,7 @@ import { insertVersionDiff } from '../db/repositories/versionDiffs.js';
 import { findSubmissionIdByContentHash, getBlockedHash } from '../db/repositories/versions.js';
 import { saveWorkflowRun } from '../db/repositories/workflowRuns.js';
 import { forgejoFromEnv } from '../forgejo/index.js';
+import { ownerFromPrincipal } from '../identity/owners.js';
 import { requireRole } from '../auth/requireRole.js';
 import {
   acquirePendingVersion,
@@ -169,6 +170,14 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
       let currentVersion: string | undefined;
       let versionDiff: ReturnType<typeof computeVersionDiff> | undefined;
       let approvalPath: ApprovalPath | undefined;
+      const identity = c.get('identity');
+      if (!identity) {
+        return apiError(c, 401, 'authentication_required');
+      }
+      const submittedBy = identity.sub;
+      if (submittedBy.trim() === '') {
+        return apiError(c, 401, 'authentication_required');
+      }
 
       if (db) {
         const blocked = getBlockedHash(db, contentHash);
@@ -184,7 +193,7 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
           });
         }
 
-        currentVersion = resolveLatestVersion(db, manifest.name);
+        currentVersion = resolveLatestVersion(db, manifest.name, ownerFromPrincipal(submittedBy));
 
         if (currentVersion !== undefined) {
           const upgrade = validateVersionUpgrade(manifest.version, currentVersion);
@@ -220,14 +229,6 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
       const id = generateId();
       const createdAt = now().toISOString();
       const status: SubmissionStatus = { phase: 'uploaded' };
-      const identity = c.get('identity');
-      if (!identity) {
-        return apiError(c, 401, 'authentication_required');
-      }
-      const submittedBy = identity.sub;
-      if (submittedBy.trim() === '') {
-        return apiError(c, 401, 'authentication_required');
-      }
 
       const statusJsonPayload =
         approvalPath !== undefined ? { ...status, approvalPath } : status;
@@ -322,8 +323,10 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
             serializedContext: result.serializedContext,
             context,
           }, now());
-          if (workflowStatus.phase === 'published' && !getSkillVersion(db, manifest.name, manifest.version)) {
+          const owner = ownerFromPrincipal(submittedBy);
+          if (workflowStatus.phase === 'published' && !getSkillVersion(db, manifest.name, manifest.version, owner)) {
             insertSkillVersion(db, {
+              owner,
               skill_name: manifest.name,
               version: manifest.version,
               content_hash: contentHash,

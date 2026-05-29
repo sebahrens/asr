@@ -17,6 +17,7 @@ export interface RegistryIndexFile {
 }
 
 interface RegistryIndexRow {
+  owner: string;
   manifest_json: string;
   published_at: string;
   status_json: string;
@@ -74,6 +75,7 @@ function readLiveSkillSummaries(db: Database.Database): SkillSummary[] {
     .prepare(
       `
         SELECT
+          sv.owner AS owner,
           s.manifest_json AS manifest_json,
           sv.published_at AS published_at,
           s.status_json   AS status_json
@@ -89,7 +91,7 @@ function readLiveSkillSummaries(db: Database.Database): SkillSummary[] {
   const bySkill = new Map<string, Array<RegistryIndexRow & { manifest: SkillManifest }>>();
   for (const row of rows) {
     const manifest = JSON.parse(row.manifest_json) as SkillManifest;
-    const key = `${manifest.author}\0${manifest.name}`;
+    const key = `${row.owner}\0${manifest.name}`;
     const versions = bySkill.get(key) ?? [];
     versions.push({ ...row, manifest });
     bySkill.set(key, versions);
@@ -101,7 +103,7 @@ function readLiveSkillSummaries(db: Database.Database): SkillSummary[] {
       const latest = versions.find((row) => row.manifest.version === latestVersion) ?? versions[0]!;
       const status = JSON.parse(latest.status_json) as PublishedStatus;
       return {
-        owner: latest.manifest.author,
+        owner: latest.owner,
         name: latest.manifest.name,
         latestVersion: latest.manifest.version,
         description: latest.manifest.description,

@@ -41,6 +41,7 @@ function insertSubmissionRow(db: Database.Database, id: string): void {
 
 function sampleRow(overrides: Partial<SkillVersionRow> = {}): SkillVersionRow {
   return {
+    owner: 'acme',
     skill_name: 'acme/x',
     version: '1.0.0',
     content_hash: 'sha256:abc',
@@ -104,6 +105,27 @@ describe('skillVersions repository', () => {
         sampleRow({ content_hash: 'sha256:other', merge_commit: 'merge-sha-2' }),
       );
     }).toThrow();
+  });
+
+  it('allows the same skill/version under different owners', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+    insertSubmissionRow(db, SUBMISSION_ID);
+    insertSubmissionRow(db, `${SUBMISSION_ID}-other`);
+
+    insertSkillVersion(db, sampleRow());
+    insertSkillVersion(
+      db,
+      sampleRow({
+        owner: 'other-team',
+        content_hash: 'sha256:other',
+        submission_id: `${SUBMISSION_ID}-other`,
+        merge_commit: 'merge-other',
+      }),
+    );
+
+    expect(getSkillVersion(db, 'acme/x', '1.0.0', 'acme')?.merge_commit).toBe('merge-sha-1');
+    expect(getSkillVersion(db, 'acme/x', '1.0.0', 'other-team')?.merge_commit).toBe('merge-other');
   });
 
   describe('markVersionYanked', () => {

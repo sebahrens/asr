@@ -68,7 +68,7 @@ describe('approvalPipeline (integration)', () => {
     expect(published.context.confirmation).toMatchObject({ actor: 'submitter-1', confirmed: true });
     expect(published.context.review).toMatchObject({ actor: 'reviewer-1', decision: 'approved' });
     expect(forgejo.opened).toMatchObject({ autoApprove: false });
-    expect(forgejo.publishedArtifact).toMatchObject({ owner: 'alice', name: 'demo-skill', version: '1.0.0' });
+    expect(forgejo.publishedArtifact).toMatchObject({ owner: 'submitter-1', name: 'demo-skill', version: '1.0.0' });
     expect(forgejo.deletedBranch).toBe('submit/x');
 
     const actions = audit.map((entry) => entry.action);
@@ -108,7 +108,7 @@ describe('approvalPipeline (integration)', () => {
     expect(result.context.review).toBeUndefined();
     expect(state.runScannerCalls).toBe(0);
     expect(forgejo.opened).toMatchObject({ autoApprove: true });
-    expect(forgejo.publishedArtifact).toMatchObject({ owner: 'alice', name: 'demo-skill', version: '1.0.0' });
+    expect(forgejo.publishedArtifact).toMatchObject({ owner: 'submitter-1', name: 'demo-skill', version: '1.0.0' });
     expect(forgejo.deletedBranch).toBe('submit/x');
 
     const actions = audit.map((entry) => entry.action);

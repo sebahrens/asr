@@ -8,6 +8,7 @@ import type { AuthVariables, Identity } from '../auth/types.js';
 import { getSkillVersion, insertSkillVersion } from '../db/repositories/skillVersions.js';
 import { getSubmissionById, updateSubmissionStatus } from '../db/repositories/submissions.js';
 import { forgejoFromEnv } from '../forgejo/index.js';
+import { ownerFromPrincipal } from '../identity/owners.js';
 import {
   getWorkflowRun,
   listWorkflowRuns,
@@ -227,7 +228,7 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
     return c.json({
       status,
       publishedVersion: result.context.manifest.version,
-      registryUrl: `/skills/${result.context.manifest.author}/${result.context.manifest.name}`,
+      registryUrl: `/skills/${ownerFromPrincipal(record.submittedBy)}/${result.context.manifest.name}`,
     });
   });
 
@@ -275,7 +276,7 @@ function toReviewSubmission(record: WorkflowSubmissionRecord) {
   return {
     id: record.id,
     skillName: manifest.name,
-    owner: manifest.author,
+    owner: ownerFromPrincipal(record.submittedBy),
     version: manifest.version,
     submitter: record.submittedBy,
     submittedBy: record.submittedBy,
@@ -370,11 +371,13 @@ function persistPublishedVersion(
   status: Extract<SubmissionStatus, { phase: 'published' }>,
 ): void {
   const manifest = context.manifest;
-  if (getSkillVersion(db, manifest.name, manifest.version)) {
+  const owner = ownerFromPrincipal(submittedBy);
+  if (getSkillVersion(db, manifest.name, manifest.version, owner)) {
     return;
   }
 
   insertSkillVersion(db, {
+    owner,
     skill_name: manifest.name,
     version: manifest.version,
     content_hash: context.contentHash,

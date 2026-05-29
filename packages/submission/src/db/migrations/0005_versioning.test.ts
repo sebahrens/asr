@@ -74,6 +74,7 @@ describe('migration0005Versioning', () => {
     runMigrations(database);
 
     expect(columnNames(database, 'skill_versions')).toEqual([
+      'owner',
       'skill_name',
       'version',
       'content_hash',
@@ -122,8 +123,8 @@ describe('migration0005Versioning', () => {
     expect(indexes).toEqual(
       expect.arrayContaining([
         'idx_versions_hash',
+        'idx_versions_owner_name_yanked',
         'idx_versions_pub',
-        'idx_versions_yanked',
       ]),
     );
   });
@@ -137,6 +138,7 @@ describe('migration0005Versioning', () => {
 
     const insertVersion = database.prepare(`
       INSERT INTO skill_versions (
+        owner,
         skill_name,
         version,
         content_hash,
@@ -146,10 +148,11 @@ describe('migration0005Versioning', () => {
         pr_number,
         merge_commit
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     insertVersion.run(
+      'owner',
       'owner/example',
       '1.0.0',
       'sha256:abc',
@@ -162,6 +165,7 @@ describe('migration0005Versioning', () => {
 
     expect(() => {
       insertVersion.run(
+        'owner',
         'owner/example',
         '1.0.0',
         'sha256:def',

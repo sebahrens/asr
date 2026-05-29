@@ -1,6 +1,7 @@
 import type { ForgejoClient, Submission } from '@asr/core';
 import type { Database } from '../db/index.js';
 import { getSkillVersion, insertSkillVersion } from '../db/repositories/skillVersions.js';
+import { ownerFromPrincipal } from '../identity/owners.js';
 import { updateSubmissionStatus } from '../db/repositories/submissions.js';
 import { packSkillZip } from '../zip/pack.js';
 import { buildPublishRecord, serializePublishRecord } from './publishRecord.js';
@@ -29,6 +30,7 @@ export async function publishMdOnly(
   const { db, forgejo } = deps;
   const { submission, files, lockVersion } = input;
   const { manifest } = submission;
+  const owner = ownerFromPrincipal(submission.submittedBy);
 
   const publishedAt = new Date().toISOString();
   const publishRecord = buildPublishRecord({
@@ -54,7 +56,7 @@ export async function publishMdOnly(
 
   const zipBuffer = await packSkillZip(files);
   const packageUrl = await forgejo.publishArtifact({
-    owner: manifest.author,
+    owner,
     name: manifest.name,
     version: manifest.version,
     zipBuffer,
@@ -62,8 +64,9 @@ export async function publishMdOnly(
 
   await forgejo.deleteBranch(branch);
 
-  if (!getSkillVersion(db, manifest.name, manifest.version)) {
+  if (!getSkillVersion(db, manifest.name, manifest.version, owner)) {
     insertSkillVersion(db, {
+      owner,
       skill_name: manifest.name,
       version: manifest.version,
       content_hash: submission.contentHash,

@@ -4,6 +4,7 @@ import { runScanner, type RunScannerInput } from '../scan/runScanner.js';
 import { notify, type NotifyEvent } from '../notify/mailer.js';
 import type { EmailTransport } from '../notify/transport.js';
 import { classifySkill } from '../zip/classify.js';
+import { ownerFromPrincipal } from '../identity/owners.js';
 
 const dayMs = 24 * 60 * 60 * 1000;
 
@@ -346,10 +347,12 @@ async function publishNode({ context, dependencies }: PipelineNodeContext) {
 
   const forgejo = dependencies.svc<ForgejoClient>(ForgejoClient);
   const manifest = required(await context.get('manifest'), 'manifest');
+  const submission = required(await context.get('submission'), 'submission');
+  const owner = ownerFromPrincipal(submission.submittedBy);
   const prNumber = required(await context.get('prNumber'), 'prNumber');
   const merge = await forgejo.mergePR(prNumber);
   await forgejo.publishArtifact({
-    owner: manifest.author,
+    owner,
     name: manifest.name,
     version: manifest.version,
     zipBuffer: Buffer.from(required(await context.get('zipBufferBase64'), 'zipBufferBase64'), 'base64'),
@@ -365,7 +368,6 @@ async function publishNode({ context, dependencies }: PipelineNodeContext) {
   await context.set('status', 'published');
   await dependencies.audit('workflow.published', { mergeCommit: merge.sha });
   if (review?.decision === 'approved') {
-    const submission = required(await context.get('submission'), 'submission');
     await tryNotifySubmitter(dependencies, submission, submissionId, 'approved');
   }
   return { action: 'published' };

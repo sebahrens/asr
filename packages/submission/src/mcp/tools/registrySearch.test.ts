@@ -4,6 +4,7 @@ import { pino } from 'pino';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Identity } from '../../auth/types.js';
 import { runMigrations } from '../../db/migrations/index.js';
+import { insertSkillVersion } from '../../db/repositories/skillVersions.js';
 import { insertSubmission } from '../../db/repositories/submissions.js';
 import { MCP_ERROR, McpToolError } from '../errors.js';
 import { createRateLimiter } from '../rateLimit.js';
@@ -53,6 +54,22 @@ function seedPublished(
       publishedAt,
       mergeCommit: `merge-${id}`,
     }),
+  });
+  insertSkillVersion(db, {
+    owner: manifest.author,
+    skill_name: manifest.name,
+    version: manifest.version,
+    content_hash: `sha256:${id}`,
+    submission_id: id,
+    published_at: publishedAt,
+    published_by: 'submitter@example.com',
+    approved_by: null,
+    pr_number: 42,
+    merge_commit: `merge-${id}`,
+    scan_report_id: null,
+    yanked_at: null,
+    yanked_by: null,
+    yank_reason: null,
   });
 }
 

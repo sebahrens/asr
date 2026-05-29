@@ -18,6 +18,7 @@ export interface ListPublishedSkillsResult {
 }
 
 interface PublishedSubmissionRow {
+  owner: string;
   id: string;
   manifest_json: string;
   content_hash: string;
@@ -140,14 +141,14 @@ function readPublishedSkillKeys(
   const filters = buildPublishedSkillFilters(opts);
   return db
     .prepare(
-      `
+    `
         SELECT
           owner,
           name,
           MAX(published_at) AS published_at
         FROM (
           SELECT
-            json_extract(submissions.manifest_json, '$.author') AS owner,
+            sv.owner AS owner,
             json_extract(submissions.manifest_json, '$.name') AS name,
             COALESCE(
               json_extract(submissions.status_json, '$.publishedAt'),
@@ -155,6 +156,8 @@ function readPublishedSkillKeys(
             ) AS published_at,
             submissions.manifest_json
           FROM submissions
+          JOIN skill_versions sv
+            ON sv.submission_id = submissions.id
           WHERE submissions.status_phase = 'published'
             ${filters.sql}
         )
@@ -177,7 +180,7 @@ function readPublishedRowsForSkillKeys(
   const clauses = keys
     .map(
       () =>
-        "(json_extract(submissions.manifest_json, '$.author') = ? AND json_extract(submissions.manifest_json, '$.name') = ?)",
+        "(sv.owner = ? AND json_extract(submissions.manifest_json, '$.name') = ?)",
     )
     .join(' OR ');
   const params = keys.flatMap((key) => [key.owner, key.name]);
@@ -193,7 +196,7 @@ function readPublishedRowsForSkill(
   return readPublishedRowsWhere(
     db,
     `
-      AND json_extract(submissions.manifest_json, '$.author') = ?
+      AND sv.owner = ?
       AND json_extract(submissions.manifest_json, '$.name') = ?
     `,
     [owner, name],
@@ -209,7 +212,7 @@ function readPublishedRowsForSkillVersion(
   return readPublishedRowsWhere(
     db,
     `
-      AND json_extract(submissions.manifest_json, '$.author') = ?
+      AND sv.owner = ?
       AND json_extract(submissions.manifest_json, '$.name') = ?
       AND json_extract(submissions.manifest_json, '$.version') = ?
     `,
@@ -227,6 +230,7 @@ function readPublishedRowsWhere(
       `
         SELECT
           submissions.id,
+          sv.owner,
           submissions.manifest_json,
           submissions.content_hash,
           submissions.submitted_at,
@@ -236,7 +240,7 @@ function readPublishedRowsWhere(
           sv.yanked_at,
           sv.yank_reason
         FROM submissions
-        LEFT JOIN skill_versions sv
+        JOIN skill_versions sv
           ON sv.submission_id = submissions.id
         WHERE status_phase = 'published'
           ${whereSql}
@@ -254,7 +258,7 @@ function buildPublishedSkillFilters(opts: ListPublishedSkillsOptions): {
   const params: unknown[] = [];
 
   if (opts.owner) {
-    sql.push("AND json_extract(submissions.manifest_json, '$.author') = ?");
+    sql.push('AND sv.owner = ?');
     params.push(opts.owner);
   }
 
@@ -296,7 +300,7 @@ function groupPublishedSkills(rows: PublishedSubmissionRow[]): PublishedSkillGro
 
   for (const row of rows) {
     const manifest = parseManifest(row.manifest_json);
-    const owner = manifest.author;
+    const owner = row.owner;
     const key = `${owner}\0${manifest.name}`;
     const group = groups.get(key) ?? { owner, name: manifest.name, versions: [] };
 
@@ -340,7 +344,7 @@ function toSkillVersion(version: PublishedSkillVersion): SkillVersion {
   const yanked = version.row.yanked_at !== null;
 
   return {
-    owner: version.manifest.author,
+    owner: version.row.owner,
     name: version.manifest.name,
     version: version.manifest.version,
     contentHash: version.row.content_hash,

@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { listVersions as cliListVersions } from '../../../cli/src/registry-client.js';
 import { runMigrations } from '../../src/db/migrations/index.js';
+import { insertSkillVersion } from '../../src/db/repositories/skillVersions.js';
 import { insertSubmission } from '../../src/db/repositories/submissions.js';
 import type { createApp as CreateApp } from '../../src/index.js';
 
@@ -97,5 +98,21 @@ function insertPublishedSubmission(input: {
       mergeCommit: `merge-${input.id}`,
       skillMd: '# code-review',
     }),
+  });
+  insertSkillVersion(db, {
+    owner: 'acme',
+    skill_name: 'code-review',
+    version: input.version,
+    content_hash: `sha256:${input.id}`,
+    submission_id: input.id,
+    published_at: input.publishedAt,
+    published_by: 'submitter@example.com',
+    approved_by: 'reviewer@example.com',
+    pr_number: 42,
+    merge_commit: `merge-${input.id}`,
+    scan_report_id: null,
+    yanked_at: null,
+    yanked_by: null,
+    yank_reason: null,
   });
 }

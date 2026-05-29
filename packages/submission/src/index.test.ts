@@ -65,7 +65,7 @@ describe('app', () => {
     await expect(res.json()).resolves.toMatchObject({
       items: [
         {
-          owner: 'asr',
+          owner: 'submitter-1',
           name: 'security-review',
           latestVersion: '1.0.0',
         },
@@ -98,7 +98,7 @@ describe('app', () => {
         {
           id: 'sub-1',
           skillName: 'demo-skill',
-          owner: 'alice',
+          owner: 'submitter-1',
           version: '1.0.0',
           status: 'pending review',
         },
@@ -118,7 +118,7 @@ describe('app', () => {
         {
           id: 'sub-1042',
           skillName: 'secure-code-review',
-          owner: 'platform',
+          owner: 'maria-chen',
           version: '1.4.0',
           status: 'pending review',
           risk: 'high',
@@ -127,7 +127,7 @@ describe('app', () => {
         {
           id: 'sub-1039',
           skillName: 'release-notes',
-          owner: 'docs',
+          owner: 'eli-warner',
           version: '0.8.2',
           status: 'pending review',
           risk: 'medium',
@@ -310,9 +310,9 @@ permissions:
         mergeCommit: 'merge-sha',
       },
       publishedVersion: '1.0.0',
-      registryUrl: '/skills/alice/demo-skill',
+      registryUrl: '/skills/submitter-1/demo-skill',
     });
-    expect(forgejo.publishedArtifact).toMatchObject({ owner: 'alice', name: 'demo-skill', version: '1.0.0' });
+    expect(forgejo.publishedArtifact).toMatchObject({ owner: 'submitter-1', name: 'demo-skill', version: '1.0.0' });
   });
 
   it('accepts approval decisions on the versioned API route used by the web dashboard', async () => {
@@ -338,7 +338,7 @@ permissions:
       },
       publishedVersion: '1.0.0',
     });
-    expect(forgejo.publishedArtifact).toMatchObject({ owner: 'alice', name: 'demo-skill', version: '1.0.0' });
+    expect(forgejo.publishedArtifact).toMatchObject({ owner: 'submitter-1', name: 'demo-skill', version: '1.0.0' });
   });
 
   it('does not report placeholder workflow records as published on approval', async () => {

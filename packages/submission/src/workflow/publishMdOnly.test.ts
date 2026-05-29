@@ -27,7 +27,7 @@ describe('publishMdOnly', () => {
     const manifest: SkillManifest = {
       name: 'demo-skill',
       version: '1.0.0',
-      author: 'alice',
+      author: 'security-team',
       description: 'Demo md-only skill',
       tags: ['demo'],
       kind: 'skill',
@@ -128,6 +128,7 @@ describe('publishMdOnly', () => {
     expect(versionRow).toBeDefined();
     expect(versionRow).toMatchObject({
       skill_name: manifest.name,
+      owner: submission.submittedBy,
       version: manifest.version,
       content_hash: submission.contentHash,
       submission_id: submission.id,

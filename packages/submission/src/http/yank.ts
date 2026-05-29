@@ -50,7 +50,7 @@ export function createYankRoutes(options: YankRouteOptions = {}) {
     const name = c.req.param('name');
     const version = c.req.param('version');
 
-    const row = getSkillVersion(db, name, version);
+    const row = getSkillVersion(db, name, version, owner);
     if (!row) {
       return apiError(c, 404, 'submission_not_found');
     }
@@ -73,11 +73,17 @@ export function createYankRoutes(options: YankRouteOptions = {}) {
     const yankedAt = now().toISOString();
 
     db.transaction(() => {
-      markVersionYanked(db, name, version, {
-        yankedAt,
-        yankedBy: identity.sub,
-        reason: body.reason,
-      });
+      markVersionYanked(
+        db,
+        name,
+        version,
+        {
+          yankedAt,
+          yankedBy: identity.sub,
+          reason: body.reason,
+        },
+        owner,
+      );
       insertBlockedHash(db, {
         content_hash: row.content_hash,
         skill_name: name,

@@ -68,7 +68,7 @@ describe('approvalPipeline', () => {
     expect(forgejo.mergeCalls).toBe(1);
     expect(forgejo.publishCalls).toBe(1);
     expect(forgejo.publishedArtifact).toMatchObject({
-      owner: 'alice',
+      owner: 'submitter-1',
       name: 'demo-skill',
       version: '1.0.0',
     });
