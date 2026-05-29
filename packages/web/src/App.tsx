@@ -65,6 +65,12 @@ interface PublishFormErrors {
   owner?: string;
 }
 
+interface PublishValidationSummaryItem {
+  fieldId?: string;
+  id: string;
+  message: string;
+}
+
 interface PublishManifestDraft {
   name: string;
   version: string;
@@ -564,6 +570,7 @@ function createManifestDraft(content: string): PublishManifestDraft {
 function PublishSkill() {
   const session = useSession();
   const archiveSelectionId = useRef(0);
+  const validationSummaryRef = useRef<HTMLDivElement>(null);
   const [owner, setOwner] = useState('');
   const [skillMd, setSkillMd] = useState('');
   const [skillArchive, setSkillArchive] = useState<File | null>(null);
@@ -572,6 +579,7 @@ function PublishSkill() {
   const [manifestDraft, setManifestDraft] = useState<PublishManifestDraft>(emptyManifestDraft);
   const [questionnaire, setQuestionnaire] = useState<QuestionnaireDraft>(emptyQuestionnaireDraft);
   const [errors, setErrors] = useState<PublishFormErrors>({});
+  const [validationSummary, setValidationSummary] = useState<PublishValidationSummaryItem[]>([]);
   const [status, setStatus] = useState<PublishStatus>('idle');
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
 
@@ -583,7 +591,6 @@ function PublishSkill() {
       && manifestDraft.description.trim(),
   );
   const questionnaireIsValid = Boolean(questionnaire.externalNetwork && questionnaire.filesystemAccess);
-  const canSubmit = sessionCanSubmit(session) && uploadIsValid && manifestIsValid && questionnaireIsValid && status === 'idle';
   const archiveSize = skillArchive ? `${(skillArchive.size / 1024 / 1024).toFixed(2)} MB` : null;
   const manifestTags = manifestDraft.tags
     .split(',')
@@ -602,7 +609,29 @@ function PublishSkill() {
     }
   }
 
-  function validateUploadStep() {
+  useEffect(() => {
+    if (validationSummary.length > 0) {
+      validationSummaryRef.current?.focus();
+    }
+  }, [validationSummary]);
+
+  function summarizeUploadErrors(nextErrors: PublishFormErrors): PublishValidationSummaryItem[] {
+    const items: Array<PublishValidationSummaryItem | null> = [
+      nextErrors.owner
+        ? { id: 'owner', fieldId: 'publish-owner', message: nextErrors.owner }
+        : null,
+      nextErrors.skillArchive
+        ? { id: 'skillArchive', fieldId: 'publish-archive', message: nextErrors.skillArchive }
+        : null,
+      nextErrors.skillMd
+        ? { id: 'skillMd', fieldId: 'publish-skill-md', message: nextErrors.skillMd }
+        : null,
+    ];
+
+    return items.filter((item): item is PublishValidationSummaryItem => Boolean(item));
+  }
+
+  function getUploadErrors() {
     const nextErrors: PublishFormErrors = {};
 
     if (!owner.trim()) {
@@ -621,8 +650,67 @@ function PublishSkill() {
       nextErrors.skillMd = skillMdError;
     }
 
+    return nextErrors;
+  }
+
+  function validateUploadStep() {
+    const nextErrors = getUploadErrors();
     setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    const nextSummary = summarizeUploadErrors(nextErrors);
+    setValidationSummary(nextSummary);
+    return nextSummary.length === 0;
+  }
+
+  function getManifestValidationSummary(): PublishValidationSummaryItem[] {
+    const items: Array<PublishValidationSummaryItem | null> = [
+      manifestDraft.name.trim()
+        ? null
+        : { id: 'manifest-name', fieldId: 'publish-skill-md', message: 'SKILL.md frontmatter must include a name.' },
+      manifestDraft.version.trim()
+        ? null
+        : { id: 'manifest-version', fieldId: 'publish-skill-md', message: 'SKILL.md frontmatter must include a version.' },
+      manifestDraft.author.trim()
+        ? null
+        : { id: 'manifest-author', fieldId: 'publish-skill-md', message: 'SKILL.md frontmatter must include an author.' },
+      manifestDraft.description.trim()
+        ? null
+        : { id: 'manifest-description', fieldId: 'publish-skill-md', message: 'SKILL.md frontmatter must include a description.' },
+    ];
+
+    return items.filter((item): item is PublishValidationSummaryItem => Boolean(item));
+  }
+
+  function validateManifestStep() {
+    const nextSummary = getManifestValidationSummary();
+    setValidationSummary(nextSummary);
+    return nextSummary.length === 0;
+  }
+
+  function getQuestionnaireValidationSummary(): PublishValidationSummaryItem[] {
+    const items: Array<PublishValidationSummaryItem | null> = [
+      questionnaire.externalNetwork
+        ? null
+        : {
+          id: 'externalNetwork',
+          fieldId: 'publish-external-network-group',
+          message: 'Select whether this skill requires external network access.',
+        },
+      questionnaire.filesystemAccess
+        ? null
+        : {
+          id: 'filesystemAccess',
+          fieldId: 'publish-filesystem-access',
+          message: 'Select a filesystem access level.',
+        },
+    ];
+
+    return items.filter((item): item is PublishValidationSummaryItem => Boolean(item));
+  }
+
+  function validateQuestionnaireStep() {
+    const nextSummary = getQuestionnaireValidationSummary();
+    setValidationSummary(nextSummary);
+    return nextSummary.length === 0;
   }
 
   function goToStep(step: PublishWizardStep) {
@@ -660,7 +748,7 @@ function PublishSkill() {
   }
 
   function continueFromManifest() {
-    if (!manifestIsValid) {
+    if (!validateManifestStep()) {
       return;
     }
 
@@ -669,7 +757,7 @@ function PublishSkill() {
   }
 
   function continueFromQuestionnaire() {
-    if (!questionnaireIsValid) {
+    if (!validateQuestionnaireStep()) {
       return;
     }
 
@@ -702,17 +790,23 @@ function PublishSkill() {
 
     if (!sessionCanSubmit(session)) {
       setSubmitMessage('Submitter role required to publish skills.');
+      setValidationSummary([{ id: 'session-role', message: 'Submitter role required to publish skills.' }]);
       return;
     }
 
     const uploadStepIsValid = validateUploadStep();
-    if (!uploadStepIsValid || !skillArchive || !manifestIsValid || !questionnaireIsValid) {
+    const manifestStepIsValid = validateManifestStep();
+    const questionnaireStepIsValid = validateQuestionnaireStep();
+    if (!uploadStepIsValid || !skillArchive || !manifestStepIsValid || !questionnaireStepIsValid) {
       if (!uploadStepIsValid || !skillArchive) {
         setCurrentStep('upload');
-      } else if (!manifestIsValid) {
+        setValidationSummary(summarizeUploadErrors(getUploadErrors()));
+      } else if (!manifestStepIsValid) {
         setCurrentStep('manifest');
-      } else if (!questionnaireIsValid) {
+        setValidationSummary(getManifestValidationSummary());
+      } else if (!questionnaireStepIsValid) {
         setCurrentStep('questionnaire');
+        setValidationSummary(getQuestionnaireValidationSummary());
       }
       return;
     }
@@ -754,6 +848,9 @@ function PublishSkill() {
     if (archiveError) {
       setSkillArchive(null);
       setErrors((current) => ({ ...current, skillArchive: archiveError }));
+      setValidationSummary([
+        { id: 'skillArchive', fieldId: 'publish-archive', message: archiveError },
+      ]);
       input.value = '';
       return;
     }
@@ -764,6 +861,7 @@ function PublishSkill() {
       delete next.skillArchive;
       return next;
     });
+    setValidationSummary((current) => current.filter((item) => item.id !== 'skillArchive'));
   }
 
   return (
@@ -815,6 +913,25 @@ function PublishSkill() {
                 );
               })}
             </ol>
+
+            {validationSummary.length > 0 ? (
+              <div
+                ref={validationSummaryRef}
+                className="publish-validation-summary"
+                role="alert"
+                aria-live="assertive"
+                tabIndex={-1}
+              >
+                <strong>Complete these fields before continuing:</strong>
+                <ul>
+                  {validationSummary.map((item) => (
+                    <li key={item.id}>
+                      {item.fieldId ? <a href={`#${item.fieldId}`}>{item.message}</a> : item.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             {currentStep === 'upload' ? (
               <section className="wizard-panel" aria-labelledby="publish-upload-title">
@@ -951,10 +1068,11 @@ function PublishSkill() {
                   <p className="eyebrow">Step 3</p>
                   <h2 id="publish-questionnaire-title">Questionnaire</h2>
                 </div>
-                <fieldset className="question-group">
+                <fieldset className="question-group" id="publish-external-network-group">
                   <legend>Does this skill require external network access?</legend>
                   <label>
                     <input
+                      id="publish-external-network-yes"
                       type="radio"
                       name="external-network"
                       value="yes"
@@ -965,6 +1083,7 @@ function PublishSkill() {
                   </label>
                   <label>
                     <input
+                      id="publish-external-network-no"
                       type="radio"
                       name="external-network"
                       value="no"
@@ -1052,7 +1171,7 @@ function PublishSkill() {
                 </button>
               ) : null}
               {currentStep === 'upload' ? (
-                <button className="submit-btn" type="button" onClick={continueFromUpload} disabled={!uploadIsValid}>
+                <button className="submit-btn" type="button" onClick={continueFromUpload}>
                   Continue
                 </button>
               ) : null}
@@ -1061,7 +1180,6 @@ function PublishSkill() {
                   className="submit-btn"
                   type="button"
                   onClick={continueFromManifest}
-                  disabled={!manifestIsValid}
                 >
                   Continue
                 </button>
@@ -1071,13 +1189,12 @@ function PublishSkill() {
                   className="submit-btn"
                   type="button"
                   onClick={continueFromQuestionnaire}
-                  disabled={!questionnaireIsValid}
                 >
                   Continue
                 </button>
               ) : null}
               {currentStep === 'review' ? (
-                <button className="submit-btn" type="submit" disabled={!canSubmit}>
+                <button className="submit-btn" type="submit" disabled={status !== 'idle'}>
                   {status === 'submitted' ? 'Submitted' : status === 'submitting' ? 'Submitting...' : 'Submit for review'}
                 </button>
               ) : null}

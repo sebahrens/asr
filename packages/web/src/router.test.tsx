@@ -156,6 +156,12 @@ function renderRoute(initialEntry: string) {
   );
 }
 
+function renderPublishRoute() {
+  vi.stubEnv('VITE_MOCK_SUB', 'dev-submitter');
+  vi.stubEnv('VITE_MOCK_ROLES', 'Submitter');
+  return renderRoute('/publish');
+}
+
 function stubMatchMedia(matches: boolean) {
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
     matches,
@@ -187,6 +193,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllEnvs();
 });
 
 describe('router', () => {
@@ -318,22 +325,32 @@ describe('router', () => {
   });
 
   it('renders the publish wizard on direct non-root navigation', () => {
-    renderRoute('/publish');
+    renderPublishRoute();
 
     expect(screen.getByRole('heading', { name: /publish a skill/i })).toBeInTheDocument();
   });
 
-  it('keeps publish wizard advancement disabled until upload fields are valid', () => {
-    renderRoute('/publish');
+  it('announces missing upload fields when publish wizard advancement is attempted', () => {
+    renderPublishRoute();
 
-    expect(screen.getByRole('button', { name: /^continue$/i })).toBeDisabled();
+    const continueButton = screen.getByRole('button', { name: /^continue$/i });
+    expect(continueButton).toBeEnabled();
     expect(screen.getByRole('button', { name: /manifest/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /questionnaire/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
+
+    fireEvent.click(continueButton);
+
+    const summary = screen.getByRole('alert');
+    expect(summary).toHaveTextContent(/complete these fields before continuing/i);
+    expect(within(summary).getByRole('link', { name: /registry owner or namespace is required/i })).toHaveAttribute('href', '#publish-owner');
+    expect(within(summary).getByRole('link', { name: /upload a skill archive/i })).toHaveAttribute('href', '#publish-archive');
+    expect(within(summary).getByRole('link', { name: /paste the skill.md content/i })).toHaveAttribute('href', '#publish-skill-md');
+    expect(summary).toHaveFocus();
   });
 
   it('marks every required upload-step field with aria-required and a visible indicator', () => {
-    renderRoute('/publish');
+    renderPublishRoute();
 
     const ownerField = screen.getByLabelText(/registry owner/i);
     const archiveField = screen.getByLabelText(/skill archive/i);
@@ -347,7 +364,7 @@ describe('router', () => {
   });
 
   it('keeps future publish steps locked after invalid archive validation', async () => {
-    renderRoute('/publish');
+    renderPublishRoute();
 
     fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'asr' } });
     fireEvent.change(screen.getByLabelText(/skill.md/i), {
@@ -368,8 +385,8 @@ Use this skill when testing upload validation.`,
       },
     });
 
-    expect(await screen.findByText(/archive must include manifest.yaml/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^continue$/i })).toBeDisabled();
+    expect(await screen.findAllByText(/archive must include manifest.yaml/i)).toHaveLength(2);
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
     expect(screen.getByRole('button', { name: /manifest/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /questionnaire/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
@@ -377,7 +394,7 @@ Use this skill when testing upload validation.`,
   });
 
   it('keeps oversized archive validation after submit validation runs', async () => {
-    const { container } = renderRoute('/publish');
+    const { container } = renderPublishRoute();
 
     fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'asr' } });
     fireEvent.change(screen.getByLabelText(/skill.md/i), {
@@ -398,18 +415,18 @@ Use this skill when testing upload validation.`,
       },
     });
 
-    expect(await screen.findByText(/archive must be 50 mb or smaller/i)).toBeInTheDocument();
+    expect(await screen.findAllByText(/archive must be 50 mb or smaller/i)).toHaveLength(2);
 
     const form = container.querySelector('form');
     expect(form).not.toBeNull();
     fireEvent.submit(form as HTMLFormElement);
 
-    expect(screen.getByText(/archive must be 50 mb or smaller/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/archive must be 50 mb or smaller/i)).toHaveLength(2);
     expect(screen.queryByText(/upload a skill archive/i)).not.toBeInTheDocument();
   });
 
-  it('shows SKILL.md validation while upload advancement is disabled', async () => {
-    renderRoute('/publish');
+  it('shows SKILL.md validation while upload advancement is blocked', async () => {
+    renderPublishRoute();
 
     fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'asr' } });
     fireEvent.change(screen.getByLabelText(/skill archive/i), {
@@ -428,11 +445,11 @@ Use this skill when testing upload validation.`,
 
     expect(screen.getByText(/skill.md must start with yaml frontmatter/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/skill.md/i)).toHaveAttribute('aria-describedby', 'publish-skill-md-error');
-    expect(screen.getByRole('button', { name: /^continue$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
   });
 
   it('keeps later publish steps locked until each previous step is completed', async () => {
-    renderRoute('/publish');
+    renderPublishRoute();
 
     fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'asr' } });
     fireEvent.change(screen.getByLabelText(/skill.md/i), {
@@ -453,9 +470,7 @@ Use this skill when testing step navigation.`,
       },
     });
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
-    });
+    expect(await screen.findByText('skill.zip')).toBeInTheDocument();
 
     expect(screen.getByRole('button', { name: /manifest/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /questionnaire/i })).toBeDisabled();
@@ -463,20 +478,20 @@ Use this skill when testing step navigation.`,
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
-    expect(screen.getByRole('heading', { name: /review manifest/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /review manifest/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /manifest/i })).toBeEnabled();
     expect(screen.getByRole('button', { name: /questionnaire/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
-    expect(screen.getByRole('heading', { name: /questionnaire/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /questionnaire/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /questionnaire/i })).toBeEnabled();
     expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
   });
 
   it('rejects archive uploads that omit manifest.yaml from the root directory', async () => {
-    renderRoute('/publish');
+    renderPublishRoute();
 
     fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'asr' } });
     fireEvent.change(screen.getByLabelText(/skill.md/i), {
@@ -497,7 +512,7 @@ Use this skill when testing upload validation.`,
       },
     });
 
-    expect(await screen.findByText(/archive must include manifest.yaml/i)).toBeInTheDocument();
+    expect(await screen.findAllByText(/archive must include manifest.yaml/i)).toHaveLength(2);
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
