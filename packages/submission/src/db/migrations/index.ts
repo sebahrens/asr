@@ -9,6 +9,7 @@ import { migration0007WorkflowRuns } from './0007_workflow_runs.js';
 import { migration0008PublishedSkillIndexes } from './0008_published_skill_indexes.js';
 import { migration0009SkillVersionOwners } from './0009_skill_version_owners.js';
 import { migration0010AuditHashVersion } from './0010_audit_hash_version.js';
+import { migration0011AuditAnchorIntents } from './0011_audit_anchor_intents.js';
 
 export interface Migration {
   id: number;
@@ -27,6 +28,7 @@ export const migrations: Migration[] = [
   migration0008PublishedSkillIndexes,
   migration0009SkillVersionOwners,
   migration0010AuditHashVersion,
+  migration0011AuditAnchorIntents,
 ];
 
 export function runMigrations(db: Database.Database): void {

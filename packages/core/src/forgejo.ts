@@ -34,6 +34,18 @@ interface ForgejoPullResponse {
 
 interface ForgejoGitTagResponse {
   sha: string;
+  message?: string;
+  object?: {
+    sha?: string;
+    type?: string;
+  };
+}
+
+interface ForgejoGitRefResponse {
+  object: {
+    sha: string;
+    type?: string;
+  };
 }
 
 export class ForgejoClient {
@@ -317,29 +329,87 @@ export class ForgejoClient {
     const { owner, repo } = this.cfg;
     const message = input.signature ? `${input.message}\n\n${input.signature}` : input.message;
 
-    const { data } = await this.upload.request('POST /repos/{owner}/{repo}/git/tags', {
-      owner,
-      repo,
-      tag: input.tag,
-      message,
-      object: input.targetSha,
-      type: 'commit',
-      tagger: {
-        name: 'asr-audit-anchor',
-        email: process.env.AUDIT_ANCHOR_EMAIL ?? 'audit@asr.local',
-        date: new Date().toISOString(),
-      },
-    });
-    const tagObject = data as ForgejoGitTagResponse;
+    let tagObject: ForgejoGitTagResponse | undefined;
 
-    await this.upload.request('POST /repos/{owner}/{repo}/git/refs', {
-      owner,
-      repo,
-      ref: `refs/tags/${input.tag}`,
-      sha: tagObject.sha,
-    });
+    try {
+      const { data } = await this.upload.request('POST /repos/{owner}/{repo}/git/tags', {
+        owner,
+        repo,
+        tag: input.tag,
+        message,
+        object: input.targetSha,
+        type: 'commit',
+        tagger: {
+          name: 'asr-audit-anchor',
+          email: process.env.AUDIT_ANCHOR_EMAIL ?? 'audit@asr.local',
+          date: new Date().toISOString(),
+        },
+      });
+      tagObject = data as ForgejoGitTagResponse;
+    } catch (err) {
+      if (!isOctokitStatus(err, 409)) {
+        throw err;
+      }
+
+      await this.assertExistingAnchorTag(input.tag, input.targetSha, message);
+      return { tagName: input.tag, commitSha: input.targetSha };
+    }
+
+    try {
+      await this.upload.request('POST /repos/{owner}/{repo}/git/refs', {
+        owner,
+        repo,
+        ref: `refs/tags/${input.tag}`,
+        sha: tagObject.sha,
+      });
+    } catch (err) {
+      if (!isOctokitStatus(err, 409)) {
+        throw err;
+      }
+
+      const ref = await this.getTagRef(input.tag);
+      if (ref.object.sha !== tagObject.sha) {
+        throw err;
+      }
+    }
 
     return { tagName: input.tag, commitSha: input.targetSha };
+  }
+
+  private async getTagRef(tag: string): Promise<ForgejoGitRefResponse> {
+    const { owner, repo } = this.cfg;
+    const { data } = await this.upload.request('GET /repos/{owner}/{repo}/git/refs/{ref}', {
+      owner,
+      repo,
+      ref: `tags/${tag}`,
+    });
+
+    return data as ForgejoGitRefResponse;
+  }
+
+  private async getTagObject(sha: string): Promise<ForgejoGitTagResponse> {
+    const { owner, repo } = this.cfg;
+    const { data } = await this.upload.request('GET /repos/{owner}/{repo}/git/tags/{sha}', {
+      owner,
+      repo,
+      sha,
+    });
+
+    return data as ForgejoGitTagResponse;
+  }
+
+  private async assertExistingAnchorTag(
+    tag: string,
+    targetSha: string,
+    message: string,
+  ): Promise<void> {
+    const ref = await this.getTagRef(tag);
+    const tagObject = await this.getTagObject(ref.object.sha);
+    const objectSha = tagObject.object?.sha;
+
+    if (objectSha !== targetSha || tagObject.message !== message) {
+      throw new Error(`anchor tag ${tag} already exists with different content`);
+    }
   }
 
   async publishArtifact(input: {

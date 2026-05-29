@@ -9,7 +9,7 @@ import type { ForgejoClient } from '@asr/core';
 import { runMigrations } from '../db/migrations/index.js';
 import { emitAudit } from './emit.js';
 import { runAnchorOnce } from './anchor.js';
-import { loadKeyRing } from './keyring.js';
+import { loadKeyRing, type KeyRing } from './keyring.js';
 
 const HMAC_KEY_BYTES = Buffer.alloc(32, 0x7a);
 const HMAC_KEY_B64 = HMAC_KEY_BYTES.toString('base64');
@@ -135,7 +135,7 @@ describe('runAnchorOnce (unit, mocked Forgejo)', () => {
     const result = await runAnchorOnce(database, forgejo, key, loadKeyRing());
     expect(result).not.toBeNull();
     expect(result!.eventCount).toBe(3);
-    expect(result!.tagName).toMatch(/^audit-anchor-\d{8}T\d{6}Z$/);
+    expect(result!.tagName).toBe(`audit-anchor-${before.hash.slice(0, 16)}-3`);
 
     expect(getDefaultBranchHeadSha).toHaveBeenCalledTimes(1);
     expect(createAnchorTag).toHaveBeenCalledTimes(1);
@@ -167,6 +167,91 @@ describe('runAnchorOnce (unit, mocked Forgejo)', () => {
     };
     expect(detail.tag).toBe(result!.tagName);
     expect(detail.commitSha).toBe('main-head-sha');
+
+    const intent = database
+      .prepare('SELECT status, target_sha, commit_sha FROM audit_anchor_intents WHERE tag_name = ?')
+      .get(result!.tagName) as {
+      status: string;
+      target_sha: string;
+      commit_sha: string;
+    };
+    expect(intent).toEqual({
+      status: 'anchored',
+      target_sha: 'main-head-sha',
+      commit_sha: 'main-head-sha',
+    });
+  });
+
+  it('reuses a pending anchor intent after a remote write succeeds but audit recording fails', async () => {
+    const database = db!;
+    seedEvents(database, 2);
+    const before = database
+      .prepare('SELECT hash FROM audit_events ORDER BY rowid DESC LIMIT 1')
+      .get() as { hash: string };
+    const key = await makeKey();
+
+    const firstCreateAnchorTag = vi.fn(async (input: { tag: string; targetSha: string }) => ({
+      tagName: input.tag,
+      commitSha: input.targetSha,
+    }));
+    const firstForgejo = {
+      getDefaultBranchHeadSha: vi.fn(async () => 'main-head-before-crash'),
+      createAnchorTag: firstCreateAnchorTag,
+    } as unknown as ForgejoClient;
+
+    const verifyOnlyKeys: KeyRing = {
+      activeId: 'missing-active-key',
+      get(id: string) {
+        return id === HMAC_KEY_ID ? HMAC_KEY_BYTES : undefined;
+      },
+      addKey() {},
+      setActive() {},
+    };
+
+    await expect(runAnchorOnce(database, firstForgejo, key, verifyOnlyKeys)).rejects.toThrow(
+      "audit KeyRing has no bytes for active key id 'missing-active-key'",
+    );
+
+    const tagName = `audit-anchor-${before.hash.slice(0, 16)}-2`;
+    expect(firstCreateAnchorTag).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tag: tagName,
+        targetSha: 'main-head-before-crash',
+      }),
+    );
+    expect(
+      database
+        .prepare('SELECT status FROM audit_anchor_intents WHERE tag_name = ?')
+        .pluck()
+        .get(tagName),
+    ).toBe('pending');
+
+    const secondCreateAnchorTag = vi.fn(async (input: { tag: string; targetSha: string }) => ({
+      tagName: input.tag,
+      commitSha: input.targetSha,
+    }));
+    const secondForgejo = {
+      getDefaultBranchHeadSha: vi.fn(async () => 'new-main-head'),
+      createAnchorTag: secondCreateAnchorTag,
+    } as unknown as ForgejoClient;
+
+    await expect(runAnchorOnce(database, secondForgejo, key, loadKeyRing())).resolves.toEqual({
+      tagName,
+      eventCount: 2,
+    });
+    expect(secondForgejo.getDefaultBranchHeadSha).not.toHaveBeenCalled();
+    expect(secondCreateAnchorTag).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tag: tagName,
+        targetSha: 'main-head-before-crash',
+      }),
+    );
+    expect(
+      database
+        .prepare("SELECT COUNT(*) FROM audit_events WHERE action = 'audit.anchored'")
+        .pluck()
+        .get(),
+    ).toBe(1);
   });
 
   it('does not leak the GPG signature into the persisted audit row', async () => {
@@ -289,7 +374,7 @@ describe.skipIf(!shouldRun)('runAnchorOnce (integration, dev Forgejo)', () => {
 
     const result = await runAnchorOnce(db!, forgejo, key, loadKeyRing());
     expect(result).not.toBeNull();
-    expect(result!.tagName).toMatch(/^audit-anchor-\d{8}T\d{6}Z$/);
+    expect(result!.tagName).toMatch(/^audit-anchor-[0-9a-f]{16}-3$/);
     expect(result!.eventCount).toBe(3);
 
     const rows = db!

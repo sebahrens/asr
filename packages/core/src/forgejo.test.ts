@@ -698,6 +698,68 @@ describe('ForgejoClient', () => {
     );
   });
 
+  it('treats an existing identical anchor tag as success when tag creation conflicts', async () => {
+    const client = new ForgejoClient(cfg);
+    const uploadRequest = vi
+      .spyOn(internals(client).upload, 'request')
+      .mockRejectedValueOnce({ status: 409 })
+      .mockResolvedValueOnce({ data: { object: { sha: 'existing-tag-object-sha' } } } as never)
+      .mockResolvedValueOnce({
+        data: {
+          message: 'lastHash=ab eventCount=3',
+          object: { sha: 'abc', type: 'commit' },
+        },
+      } as never);
+
+    await expect(
+      client.createAnchorTag({
+        tag: 'audit-anchor-ab-3',
+        message: 'lastHash=ab eventCount=3',
+        targetSha: 'abc',
+      }),
+    ).resolves.toEqual({
+      tagName: 'audit-anchor-ab-3',
+      commitSha: 'abc',
+    });
+
+    expect(uploadRequest).toHaveBeenNthCalledWith(2, 'GET /repos/{owner}/{repo}/git/refs/{ref}', {
+      owner: 'asr',
+      repo: 'skills',
+      ref: 'tags/audit-anchor-ab-3',
+    });
+    expect(uploadRequest).toHaveBeenNthCalledWith(3, 'GET /repos/{owner}/{repo}/git/tags/{sha}', {
+      owner: 'asr',
+      repo: 'skills',
+      sha: 'existing-tag-object-sha',
+    });
+  });
+
+  it('treats an existing identical anchor ref as success when ref creation conflicts', async () => {
+    const client = new ForgejoClient(cfg);
+    const uploadRequest = vi
+      .spyOn(internals(client).upload, 'request')
+      .mockResolvedValueOnce({ data: { sha: 'tag-object-sha' } } as never)
+      .mockRejectedValueOnce({ status: 409 })
+      .mockResolvedValueOnce({ data: { object: { sha: 'tag-object-sha' } } } as never);
+
+    await expect(
+      client.createAnchorTag({
+        tag: 'audit-anchor-cd-4',
+        message: 'lastHash=cd eventCount=4',
+        targetSha: 'def',
+      }),
+    ).resolves.toEqual({
+      tagName: 'audit-anchor-cd-4',
+      commitSha: 'def',
+    });
+
+    expect(uploadRequest).toHaveBeenNthCalledWith(3, 'GET /repos/{owner}/{repo}/git/refs/{ref}', {
+      owner: 'asr',
+      repo: 'skills',
+      ref: 'tags/audit-anchor-cd-4',
+    });
+  });
+
   it('returns the artifact url when the package already exists', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 409 }));
     vi.stubGlobal('fetch', fetch);

@@ -11,11 +11,60 @@ export interface AnchorResult {
   eventCount: number;
 }
 
-function anchorTagName(now: Date): string {
-  return `audit-anchor-${now
-    .toISOString()
-    .replace(/[-:]/g, '')
-    .replace(/\.\d+Z$/, 'Z')}`;
+interface AnchorIntent {
+  tag_name: string;
+  target_sha: string;
+  status: 'pending' | 'anchored';
+}
+
+function anchorTagName(lastHash: string, eventCount: number): string {
+  return `audit-anchor-${lastHash.slice(0, 16)}-${eventCount}`;
+}
+
+function upsertPendingIntent(
+  db: Database.Database,
+  input: {
+    tagName: string;
+    lastHash: string;
+    eventCount: number;
+    hmacKeyId: string;
+    targetSha: string;
+  },
+): AnchorIntent {
+  const now = new Date().toISOString();
+  db.prepare(
+    `
+      INSERT INTO audit_anchor_intents (
+        tag_name,
+        last_hash,
+        event_count,
+        hmac_key_id,
+        target_sha,
+        status,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+      ON CONFLICT(tag_name) DO NOTHING
+    `,
+  ).run(
+    input.tagName,
+    input.lastHash,
+    input.eventCount,
+    input.hmacKeyId,
+    input.targetSha,
+    now,
+    now,
+  );
+
+  return db
+    .prepare(
+      `
+        SELECT tag_name, target_sha, status
+        FROM audit_anchor_intents
+        WHERE tag_name = ?
+      `,
+    )
+    .get(input.tagName) as AnchorIntent;
 }
 
 export async function runAnchorOnce(
@@ -49,23 +98,57 @@ export async function runAnchorOnce(
   if (verified.eventCount === 0) {
     return null;
   }
+  if (!verified.lastHmacKeyId) {
+    throw new Error('verified audit chain has events but no last HMAC key id');
+  }
 
-  const tagName = anchorTagName(new Date());
+  const tagName = anchorTagName(verified.lastHash, verified.eventCount);
   const message =
     `lastHash=${verified.lastHash}\n` +
     `eventCount=${verified.eventCount}\n` +
     `hmacKeyId=${verified.lastHmacKeyId}`;
   const signature = await signAnchorMessage(message, key);
 
-  const targetSha = await forgejo.getDefaultBranchHeadSha();
+  const existingIntent = db
+    .prepare(
+      `
+        SELECT tag_name, target_sha, status
+        FROM audit_anchor_intents
+        WHERE tag_name = ?
+      `,
+    )
+    .get(tagName) as AnchorIntent | undefined;
+  const targetSha = existingIntent?.target_sha ?? (await forgejo.getDefaultBranchHeadSha());
+  const intent = upsertPendingIntent(db, {
+    tagName,
+    lastHash: verified.lastHash,
+    eventCount: verified.eventCount,
+    hmacKeyId: verified.lastHmacKeyId,
+    targetSha,
+  });
+
+  if (intent.status === 'anchored') {
+    return { tagName: intent.tag_name, eventCount: verified.eventCount };
+  }
+
   const { tagName: tn, commitSha } = await forgejo.createAnchorTag({
     tag: tagName,
     message,
-    targetSha,
+    targetSha: intent.target_sha,
     signature,
   });
 
   db.transaction(() => {
+    db.prepare(
+      `
+        UPDATE audit_anchor_intents
+        SET status = 'anchored',
+            commit_sha = ?,
+            updated_at = ?
+        WHERE tag_name = ?
+      `,
+    ).run(commitSha, new Date().toISOString(), tn);
+
     emitAudit(
       db,
       {
