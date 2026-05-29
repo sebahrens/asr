@@ -117,7 +117,11 @@ export interface ScanReport {
 `verdict` is the single field consumers branch on. The verdict computation lives in `@asr/core/scan-verdict` and is pure:
 
 ```typescript
-export function computeVerdict(findings: ScanFinding[], severityThreshold: ScanSeverity = 'high'): ScanVerdict;
+export function computeVerdict(
+  findings: ScanFinding[],
+  severityThreshold: ScanSeverity = 'high',
+  toolResults?: ScanReport['toolResults'],
+): ScanVerdict;
 ```
 
 ## Questionnaire

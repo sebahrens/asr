@@ -153,7 +153,7 @@ function parseReport(stdout: string): ScanReport {
 }
 
 function assertExpectedVerdict(report: ScanReport, severityThreshold: ScanSeverity): void {
-  const expectedVerdict = computeVerdict(report.findings, severityThreshold);
+  const expectedVerdict = computeVerdict(report.findings, severityThreshold, report.toolResults);
   if (expectedVerdict !== report.verdict) {
     throw new Error(
       `Scanner verdict mismatch: expected ${expectedVerdict}, received ${report.verdict}`,

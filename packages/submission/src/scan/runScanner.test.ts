@@ -60,8 +60,8 @@ describe('runScanner', () => {
     vi.stubEnv('SCANNER_IMAGE', 'asr-scanner:test');
     vi.stubEnv('SCAN_SIGNING_KEY', 'test-signing-key');
 
-    const tampered = signedReport(buildReport({ verdict: 'pass' }), 'test-signing-key');
-    tampered.verdict = 'block';
+    const tampered = signedReport(buildReport(), 'test-signing-key');
+    tampered.scannerImage = 'asr-scanner:tampered';
     const runContainer = vi.fn<RunContainer>(async () => ({ stdout: JSON.stringify(tampered) }));
 
     await expect(runScanner(input, runContainer)).rejects.toThrow(/signature is invalid/);
@@ -76,7 +76,7 @@ describe('runScanner', () => {
     vi.stubEnv('VERACODE_POLICY', '');
 
     const report = signedReport(
-      buildReport({ verdict: 'pass', findings: [] }),
+      buildReport({ verdict: 'pass', findings: [], toolResults: cleanToolResults() }),
       'test-signing-key',
     );
     const unsetRun = vi.fn<RunContainer>(async () => ({ stdout: JSON.stringify(report) }));
@@ -104,6 +104,44 @@ describe('runScanner', () => {
         ['--env', 'VERACODE_API_KEY_SECRET'],
         ['--env', 'VERACODE_POLICY'],
       ]),
+    );
+  });
+
+  it('rejects a pass report when a required scanner errored without findings', async () => {
+    vi.stubEnv('SCANNER_IMAGE', 'asr-scanner:test');
+    vi.stubEnv('SCAN_SIGNING_KEY', 'test-signing-key');
+
+    const report = signedReport(
+      buildReport({
+        verdict: 'pass',
+        findings: [],
+        toolResults: cleanToolResults({ gitleaks: { exitCode: 2, findingCount: 0 } }),
+      }),
+      'test-signing-key',
+    );
+    const runContainer = vi.fn<RunContainer>(async () => ({ stdout: JSON.stringify(report) }));
+
+    await expect(runScanner(input, runContainer)).rejects.toThrow(
+      /Scanner verdict mismatch: expected block, received pass/,
+    );
+  });
+
+  it('rejects a report when toolResults findingCount disagrees with findings', async () => {
+    vi.stubEnv('SCANNER_IMAGE', 'asr-scanner:test');
+    vi.stubEnv('SCAN_SIGNING_KEY', 'test-signing-key');
+
+    const report = signedReport(
+      buildReport({
+        verdict: 'pass',
+        findings: [],
+        toolResults: cleanToolResults({ trivy: { exitCode: 0, findingCount: 1 } }),
+      }),
+      'test-signing-key',
+    );
+    const runContainer = vi.fn<RunContainer>(async () => ({ stdout: JSON.stringify(report) }));
+
+    await expect(runScanner(input, runContainer)).rejects.toThrow(
+      /Scanner verdict mismatch: expected block, received pass/,
     );
   });
 });
@@ -143,6 +181,19 @@ function buildReport(overrides: Partial<ScanReport> = {}): ScanReport {
       opengrep: { exitCode: 0, findingCount: 0 },
       veracode: { exitCode: 0, findingCount: 0, skipped: true },
     },
+    ...overrides,
+  };
+}
+
+function cleanToolResults(
+  overrides: Partial<ScanReport['toolResults']> = {},
+): ScanReport['toolResults'] {
+  return {
+    gitleaks: { exitCode: 0, findingCount: 0 },
+    trivy: { exitCode: 0, findingCount: 0 },
+    foxguard: { exitCode: 0, findingCount: 0 },
+    opengrep: { exitCode: 0, findingCount: 0 },
+    veracode: { exitCode: 0, findingCount: 0, skipped: true },
     ...overrides,
   };
 }
