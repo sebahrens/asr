@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { resolveMcpPrincipal } from './auth.js';
 import { MCP_ERROR, McpToolError } from './errors.js';
 
-async function signedToken(roles: string[] = ['Submitter']) {
+async function signedToken(
+  roles: string[] = ['Submitter'],
+  options: { claims?: Record<string, unknown>; includeScp?: boolean } = {},
+) {
   const tenantId = 'tenant-1';
   const clientId = 'client-1';
   const issuer = `https://login.microsoftonline.com/${tenantId}/v2.0`;
@@ -14,7 +17,12 @@ async function signedToken(roles: string[] = ['Submitter']) {
     keys: [{ ...publicJwk, kid, alg: 'RS256', use: 'sig' }],
   });
 
-  const token = await new SignJWT({ roles })
+  const claims: Record<string, unknown> = { roles, ...options.claims };
+  if (options.includeScp !== false) {
+    claims.scp = 'access_as_user';
+  }
+
+  const token = await new SignJWT(claims)
     .setProtectedHeader({ alg: 'RS256', kid })
     .setSubject('user-1')
     .setAudience(clientId)
@@ -109,6 +117,27 @@ describe('resolveMcpPrincipal (AUTH_MODE=entra)', () => {
       required: 'Submitter or Compliance',
       actual: ['Observer'],
     });
+  });
+
+  it('rejects with authentication_required when token has an MCP role but lacks access_as_user', async () => {
+    const { tenantId, clientId, jwks, token } = await signedToken(['Submitter'], {
+      claims: { idtyp: 'app' },
+      includeScp: false,
+    });
+    const req = new Request('https://example.test/mcp', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const err = await resolveMcpPrincipal(req, {
+      authMode: 'entra',
+      tenantId,
+      clientId,
+      jwks,
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(McpToolError);
+    expect((err as McpToolError).code).toBe(MCP_ERROR.authentication_required);
   });
 });
 

@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
+import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey, type JWTPayload } from 'jose';
 import { apiError } from '../http/errors.js';
 import type { AuthVariables, Identity } from './types.js';
 
@@ -36,6 +36,16 @@ function rolesFromPayload(roles: unknown): string[] {
   return Array.isArray(roles) ? roles.filter((role): role is string => typeof role === 'string') : [];
 }
 
+function hasAccessAsUserScope(payload: JWTPayload): boolean {
+  const scopeClaim =
+    typeof payload.scp === 'string'
+      ? payload.scp
+      : typeof payload.scope === 'string'
+        ? payload.scope
+        : '';
+  return scopeClaim.split(/\s+/).includes('access_as_user');
+}
+
 interface ResolvedEntraConfig {
   tenantId: string;
   clientId: string;
@@ -58,9 +68,13 @@ export async function verifyBearer(token: string, options: VerifyBearerOptions =
     throw new Error('entra_not_configured');
   }
   const { payload } = await jwtVerify(token, config.jwks, {
+    algorithms: ['RS256'],
     audience: config.clientId,
     issuer: `https://login.microsoftonline.com/${config.tenantId}/v2.0`,
   });
+  if (!hasAccessAsUserScope(payload)) {
+    throw new Error('missing_access_as_user_scope');
+  }
   const sub = typeof payload.sub === 'string' ? payload.sub : '';
   return {
     sub,
