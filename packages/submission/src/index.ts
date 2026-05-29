@@ -50,12 +50,16 @@ export function createApp(options: CreateAppOptions = {}) {
   const submissionOptions = regenerateIndex
     ? {
         ...options.submissions,
+        fallthroughNotFound: true,
         triggerMarketplaceSync: async (skillName: string) => {
           await options.submissions?.triggerMarketplaceSync?.(skillName);
           await regenerateIndex();
         },
       }
-    : options.submissions;
+    : {
+        ...options.submissions,
+        fallthroughNotFound: true,
+      };
   const workflowOptions =
     (options.workflow ?? options.submissions?.db)
       ? {

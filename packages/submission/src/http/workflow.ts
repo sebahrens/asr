@@ -104,6 +104,19 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
     return c.json({ submissions });
   });
 
+  routes.get('/:id', requireRole('Submitter', 'Compliance', 'Admin'), async (c) => {
+    const identity = c.get('identity');
+    const record = await store.get(c.req.param('id'));
+    if (!record) {
+      return apiError(c, 404, 'submission_not_found');
+    }
+    if (!canView(record, identity)) {
+      return apiError(c, 403, 'insufficient_permissions');
+    }
+
+    return c.json(record.context.submission);
+  });
+
   routes.post('/:id/questionnaire', requireRole('Submitter'), async (c) => {
     const identity = c.get('identity');
     const record = await store.get(c.req.param('id'));

@@ -162,6 +162,23 @@ describe('app', () => {
     });
   });
 
+  it('serves mock-development review submission detail for dashboard links', async () => {
+    vi.stubEnv('MOCK_USER_SUB', 'reviewer-1');
+    vi.stubEnv('MOCK_USER_ROLES', 'Compliance');
+
+    const res = await app.request('/api/v1/submissions/sub-1042');
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      id: 'sub-1042',
+      manifest: {
+        name: 'secure-code-review',
+        version: '1.4.0',
+      },
+      status: { phase: 'compliance-review' },
+    });
+  });
+
   it('creates a zip submission on the canonical route and returns the same row by id', async () => {
     const store = new Map<string, Submission>();
     const persist = (row: SubmissionInsertRow) => {

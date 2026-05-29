@@ -67,6 +67,7 @@ export interface SubmissionRouteOptions {
   db?: Database.Database;
   persist?: SubmissionPersist;
   lookup?: SubmissionLookup;
+  fallthroughNotFound?: boolean;
   now?: () => Date;
   generateId?: () => string;
   forgejo?: ForgejoClient;
@@ -108,10 +109,16 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
         }
       : undefined);
 
-  routes.get('/:id', async (c) => {
+  routes.get('/:id', async (c, next) => {
     const id = c.req.param('id');
     const submission = lookup ? await lookup(id) : undefined;
     if (!submission) {
+      if (options.fallthroughNotFound === true) {
+        await next();
+        if (c.res.status !== 404) {
+          return c.res;
+        }
+      }
       return apiError(c, 404, 'submission_not_found');
     }
     return c.json(submission);
