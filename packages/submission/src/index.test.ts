@@ -58,6 +58,31 @@ describe('app', () => {
     expect(res.headers.get('Access-Control-Allow-Methods')).toContain('GET');
   });
 
+  it('does not reflect dev CORS origins when real auth is enabled', async () => {
+    vi.resetModules();
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('AUTH_MODE', 'entra');
+    vi.stubEnv('AZURE_TENANT_ID', 'tenant-id');
+    vi.stubEnv('AZURE_CLIENT_ID', 'client-id');
+
+    const { createApp: createRealAuthApp } = await import('./index.js');
+    const realAuthApp = createRealAuthApp();
+    const res = await realAuthApp.request('/api/v1/skills', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://localhost:5173',
+        'Access-Control-Request-Method': 'GET',
+      },
+    });
+
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    expect(res.headers.get('Access-Control-Allow-Methods')).toBeNull();
+
+    vi.stubEnv('AUTH_MODE', 'mock');
+    vi.stubEnv('MOCK_USER_SUB', 'mock-user');
+    vi.stubEnv('MOCK_USER_ROLES', 'Submitter,Compliance');
+  });
+
   it('serves public registry skills on the route used by the web browse page', async () => {
     const res = await app.request('/api/v1/skills?q=security');
 

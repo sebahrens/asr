@@ -110,7 +110,7 @@ const devCorsMiddleware: MiddlewareHandler = async (c, next) => {
 };
 
 function isDevCorsOrigin(origin: string): boolean {
-  if (env.AUTH_MODE !== 'mock' && process.env.NODE_ENV === 'production') {
+  if (env.AUTH_MODE !== 'mock') {
     return false;
   }
 
