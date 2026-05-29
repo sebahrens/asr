@@ -180,6 +180,23 @@ describe('POST /api/v1/skills/:owner/:name/versions/:version/yank', () => {
     expect(forgejo!.commits).toHaveLength(0);
   });
 
+  it('returns 422 when owner, name, or version path params are unsafe', async () => {
+    const app = makeApp(db!, forgejo!, { sub: 'carol', roles: ['Compliance'] });
+
+    const res = await app.request(
+      `/api/v1/skills/a%2Fb/${SKILL}/versions/${VERSION}/yank`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'leak', severity: 'high' }),
+      },
+    );
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ error: 'invalid_manifest' });
+    expect(forgejo!.commits).toHaveLength(0);
+  });
+
   it('invokes triggerMarketplaceSync exactly once with the yanked skill name', async () => {
     const triggerMarketplaceSync = vi.fn().mockResolvedValue(undefined);
     const app = makeApp(db!, forgejo!, { sub: 'carol', roles: ['Compliance'] }, {

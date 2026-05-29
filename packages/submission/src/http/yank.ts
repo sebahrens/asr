@@ -1,4 +1,4 @@
-import type { ForgejoClient } from '@asr/core';
+import { isValidSkillIdentifier, isValidSkillVersion, type ForgejoClient } from '@asr/core';
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { requireRole } from '../auth/requireRole.js';
@@ -49,6 +49,15 @@ export function createYankRoutes(options: YankRouteOptions = {}) {
     const owner = c.req.param('owner');
     const name = c.req.param('name');
     const version = c.req.param('version');
+    if (
+      !isValidSkillIdentifier(owner) ||
+      !isValidSkillIdentifier(name) ||
+      !isValidSkillVersion(version)
+    ) {
+      return apiError(c, 422, 'invalid_manifest', {
+        message: 'owner, name, and version path parameters must be valid skill identifiers',
+      });
+    }
 
     const row = getSkillVersion(db, name, version, owner);
     if (!row) {

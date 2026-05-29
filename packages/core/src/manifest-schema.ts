@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isValidSkillIdentifier, isValidSkillVersion } from './identifiers.js';
 import type { SkillManifest } from './types.js';
 
 const permissionsManifestSchema = z
@@ -23,11 +24,18 @@ const noAngleBrackets = (field: string) =>
     message: `${field} must not contain angle brackets`,
   });
 
+const skillIdentifier = (field: string) =>
+  z.string().refine(isValidSkillIdentifier, {
+    message: `${field} must match /^[a-z0-9][a-z0-9._-]{0,63}$/`,
+  });
+
 const baseSkillManifestSchema = z
   .object({
-    name: noAngleBrackets('name'),
-    version: z.string(),
-    author: z.string(),
+    name: skillIdentifier('name'),
+    version: z.string().refine(isValidSkillVersion, {
+      message: 'version must be a valid semver version',
+    }),
+    author: skillIdentifier('author'),
     description: noAngleBrackets('description'),
     tags: z.array(z.string()),
     kind: z.enum(['skill', 'persona']).default('skill'),

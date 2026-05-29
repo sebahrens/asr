@@ -1,5 +1,6 @@
 import { Octokit } from '@octokit/rest';
 import type { Buffer } from 'node:buffer';
+import { isValidSkillIdentifier } from './identifiers.js';
 import type { SkillManifest } from './types.js';
 
 export interface ForgejoConfig {
@@ -125,6 +126,12 @@ export class ForgejoClient {
     const { owner, repo } = this.cfg;
     const branch = input.branch ?? `submit/${input.submissionId}`;
     const pathPrefix = input.pathPrefix ?? `skills/${input.manifest.author}/${input.manifest.name}`;
+    validateManifestPathFields(input.manifest);
+    validateRepositoryPath(pathPrefix, { allowEmpty: true });
+    for (const file of input.files) {
+      validateRepositoryPath(file.path);
+      validateRepositoryPath(joinPath(pathPrefix, file.path));
+    }
     if (input.idempotent) {
       const existing = await this.findPullRequestByHead(branch);
       if (existing) {
@@ -259,6 +266,8 @@ export class ForgejoClient {
   }): Promise<{ sha: string }> {
     const { owner, repo } = this.cfg;
     const branch = `marker/${input.idempotencyKey}`;
+    validateManifestPathFields(input);
+    validateRepositoryPath(input.path);
 
     await this.createOrGetBranch(branch);
     await this.putFile(branch, input.path, input.content, input.idempotencyKey);
@@ -373,7 +382,36 @@ const forgejoFileCommitSha = (data: unknown): string => {
 
 const forgejoPull = (data: unknown): ForgejoPullResponse => data as ForgejoPullResponse;
 
-const joinPath = (prefix: string, path: string): string => (prefix ? `${prefix}/${path}` : path);
+const joinPath = (prefix: string, path: string): string => {
+  validateRepositoryPath(path);
+  const joined = prefix ? `${prefix}/${path}` : path;
+  validateRepositoryPath(joined);
+  return joined;
+};
+
+const validateManifestPathFields = (input: { author?: string; owner?: string; name: string }): void => {
+  const owner = input.author ?? input.owner;
+  if (owner !== undefined && !isValidSkillIdentifier(owner)) {
+    throw new Error(`invalid skill owner: ${owner}`);
+  }
+  if (!isValidSkillIdentifier(input.name)) {
+    throw new Error(`invalid skill name: ${input.name}`);
+  }
+};
+
+const validateRepositoryPath = (path: string, options: { allowEmpty?: boolean } = {}): void => {
+  if (options.allowEmpty && path === '') {
+    return;
+  }
+  const segments = path.split('/');
+  if (
+    path.startsWith('/') ||
+    path.includes('\\') ||
+    segments.some((segment) => segment === '' || segment === '.' || segment === '..' || /[\u0000-\u001f\u007f]/.test(segment))
+  ) {
+    throw new Error(`unsafe repository path: ${path}`);
+  }
+};
 
 const prBody = (manifest: SkillManifest, submissionId: string, autoApprove: boolean): string =>
   [

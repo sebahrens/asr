@@ -50,7 +50,7 @@ function skillMd(name: string): string {
   return `---
 name: ${name}
 version: 1.0.0
-author: ASR Team
+author: asr-team
 description: Reviews submissions for security risks.
 tags:
   - security

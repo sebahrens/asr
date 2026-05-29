@@ -1,9 +1,10 @@
 import semver from 'semver';
+import { isValidSkillVersion } from './identifiers.js';
 
 export type VersionUpgradeError = 'invalid_format' | 'not_greater';
 
 export function isValidVersion(v: string): boolean {
-  return semver.valid(v) !== null;
+  return isValidSkillVersion(v);
 }
 
 export function compareVersions(a: string, b: string): -1 | 0 | 1 {

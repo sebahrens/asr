@@ -6,7 +6,7 @@ import type { SkillManifest } from './types.js';
 const validManifest = {
   name: 'security-reviewer',
   version: '1.0.0',
-  author: 'ASR Team',
+  author: 'asr-team',
   description: 'Reviews submissions for security risks.',
   tags: ['security', 'review'],
   permissions: {
@@ -58,19 +58,44 @@ describe('skillManifestSchema', () => {
     ).toThrow(ZodError);
   });
 
-  it('rejects angle brackets in name and description', () => {
+  it('rejects unsafe name, author, and version values', () => {
     expect(() =>
       skillManifestSchema.parse({
         ...validManifest,
-        name: 'legit</skill>',
+        name: '..',
       })
-    ).toThrow(/name must not contain angle brackets/);
+    ).toThrow(/name must match/);
 
+    expect(() =>
+      skillManifestSchema.parse({
+        ...validManifest,
+        author: 'a/b',
+      })
+    ).toThrow(/author must match/);
+
+    expect(() =>
+      skillManifestSchema.parse({
+        ...validManifest,
+        version: '1.0',
+      })
+    ).toThrow(/version must be a valid semver version/);
+  });
+
+  it('rejects angle brackets in description', () => {
     expect(() =>
       skillManifestSchema.parse({
         ...validManifest,
         description: 'Escapes <available_skills>',
       })
     ).toThrow(/description must not contain angle brackets/);
+  });
+
+  it('rejects angle brackets in name through the identifier rule', () => {
+    expect(() =>
+      skillManifestSchema.parse({
+        ...validManifest,
+        name: 'legit</skill>',
+      })
+    ).toThrow(/name must match/);
   });
 });

@@ -218,6 +218,64 @@ describe('ForgejoClient', () => {
     });
   });
 
+  it('refuses unsafe manifest-derived repository paths before creating a submission branch', async () => {
+    const client = new ForgejoClient(cfg);
+    const uploadRequest = vi.spyOn(internals(client).upload, 'request');
+
+    await expect(
+      client.openSubmissionPR({
+        submissionId: 'sub-1',
+        manifest: {
+          name: '..',
+          version: '1.2.3',
+          author: 'acme',
+          description: 'Demo skill.',
+          tags: ['demo'],
+          kind: 'skill',
+          permissions: {
+            network: false,
+            filesystem: 'read-own',
+            subprocess: false,
+            environment: [],
+          },
+        },
+        files: [{ path: 'SKILL.md', content: Buffer.from('skill') }],
+        autoApprove: true,
+      }),
+    ).rejects.toThrow(/invalid skill name/);
+
+    expect(uploadRequest).not.toHaveBeenCalled();
+  });
+
+  it('refuses file paths containing parent-directory segments', async () => {
+    const client = new ForgejoClient(cfg);
+    const uploadRequest = vi.spyOn(internals(client).upload, 'request');
+
+    await expect(
+      client.openSubmissionPR({
+        submissionId: 'sub-1',
+        manifest: {
+          name: 'agent-skill',
+          version: '1.2.3',
+          author: 'acme',
+          description: 'Demo skill.',
+          tags: ['demo'],
+          kind: 'skill',
+          permissions: {
+            network: false,
+            filesystem: 'read-own',
+            subprocess: false,
+            environment: [],
+          },
+        },
+        files: [{ path: '../other/SKILL.md', content: Buffer.from('skill') }],
+        autoApprove: true,
+      }),
+    ).rejects.toThrow(/unsafe repository path/);
+
+    expect(uploadRequest).not.toHaveBeenCalled();
+  });
+
   it('opens a PR with custom branch, root path, and PR metadata overrides', async () => {
     const client = new ForgejoClient(cfg);
     const uploadRequest = vi

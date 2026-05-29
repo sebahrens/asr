@@ -7,7 +7,7 @@ import type { AuthVariables } from '../../src/auth/types.js';
 import { runMigrations } from '../../src/db/migrations/index.js';
 import { createSubmissionRoutes, type GetPriorFiles } from '../../src/http/submissions.js';
 
-const SKILL_NAME = 'acme/x';
+const SKILL_NAME = 'x';
 const PRIOR_VERSION = '1.0.0';
 
 describe('POST /api/v1/submissions update flow', () => {
@@ -26,7 +26,7 @@ describe('POST /api/v1/submissions update flow', () => {
       name: SKILL_NAME,
       version: PRIOR_VERSION,
       author: 'alice',
-      description: 'Initial release of acme/x',
+      description: 'Initial release of x',
     });
     seedPriorVersion(db, {
       skillName: SKILL_NAME,
@@ -43,7 +43,7 @@ describe('POST /api/v1/submissions update flow', () => {
       name: SKILL_NAME,
       version: '1.1.0',
       author: 'alice',
-      description: 'Edited description for acme/x',
+      description: 'Edited description for x',
     });
 
     const app = makeApp(db, getPriorFiles);
@@ -87,7 +87,7 @@ describe('POST /api/v1/submissions update flow', () => {
       name: SKILL_NAME,
       version: PRIOR_VERSION,
       author: 'alice',
-      description: 'Initial release of acme/x',
+      description: 'Initial release of x',
     });
     seedPriorVersion(db, {
       skillName: SKILL_NAME,
@@ -150,7 +150,7 @@ describe('POST /api/v1/submissions update flow', () => {
       name: SKILL_NAME,
       version: PRIOR_VERSION,
       author: 'alice',
-      description: 'Initial release of acme/x',
+      description: 'Initial release of x',
     });
     seedPriorVersion(db, {
       skillName: SKILL_NAME,

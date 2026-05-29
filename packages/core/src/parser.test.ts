@@ -7,7 +7,7 @@ describe('parseSkillManifest', () => {
     const skillMd = `---
 name: security-reviewer
 version: 1.0.0
-author: ASR Team
+author: asr-team
 description: Reviews submissions for security risks.
 tags:
   - security
@@ -33,6 +33,24 @@ Review submissions before approval.
 
   it('rejects content without YAML frontmatter', () => {
     expect(() => parseSkillManifest('# Security Reviewer')).toThrow(/missing YAML frontmatter/);
+  });
+
+  it('rejects path traversal manifest identifiers', () => {
+    const skillMd = `---
+name: ..
+version: 1.0.0
+author: a/b
+description: Bad path.
+tags: []
+permissions:
+  network: false
+  filesystem: read-own
+  subprocess: false
+  environment: []
+---
+`;
+
+    expect(() => parseSkillManifest(skillMd)).toThrow(/name must match.*author must match/);
   });
 });
 
