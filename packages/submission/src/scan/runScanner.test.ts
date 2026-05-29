@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ScanReport } from '@asr/core';
 import { runScanner, type RunContainer } from './runScanner.js';
 
@@ -8,6 +8,11 @@ const input = {
   contentHash: 'sha256:abc123',
   extractedDir: '/tmp/extracted-skill',
 };
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
 
 describe('runScanner', () => {
   it('returns a signed block ScanReport from the scanner container', async () => {
@@ -65,6 +70,57 @@ describe('runScanner', () => {
     const runContainer = vi.fn<RunContainer>(async () => ({ stdout: JSON.stringify(tampered) }));
 
     await expect(runScanner(input, runContainer)).rejects.toThrow(/signature is invalid/);
+  });
+
+  it('rejects an unsigned report when the signing key is set', async () => {
+    vi.stubEnv('SCANNER_IMAGE', 'asr-scanner:test');
+    vi.stubEnv('SCAN_SIGNING_KEY', 'test-signing-key');
+
+    const runContainer = vi.fn<RunContainer>(async () => ({
+      stdout: JSON.stringify(
+        buildReport({ verdict: 'pass', findings: [], toolResults: cleanToolResults() }),
+      ),
+    }));
+
+    await expect(runScanner(input, runContainer)).rejects.toThrow(/signature is missing/);
+  });
+
+  it('fails closed when the signing key is missing without an explicit dev opt-out', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('SCANNER_IMAGE', 'asr-scanner:test');
+    vi.stubEnv('SCAN_SIGNING_KEY', '');
+
+    const runContainer = vi.fn<RunContainer>(async () => ({
+      stdout: JSON.stringify(
+        buildReport({ verdict: 'pass', findings: [], toolResults: cleanToolResults() }),
+      ),
+    }));
+
+    await expect(runScanner(input, runContainer)).rejects.toThrow(
+      /SCAN_SIGNING_KEY is required to verify scanner reports/,
+    );
+    expect(runContainer).not.toHaveBeenCalled();
+  });
+
+  it('warns and skips verification only with an explicit non-production opt-out', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('SCANNER_IMAGE', 'asr-scanner:test');
+    vi.stubEnv('SCAN_SIGNING_KEY', '');
+    vi.stubEnv('SCAN_SIGNING_DISABLED', 'true');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const runContainer = vi.fn<RunContainer>(async () => ({
+      stdout: JSON.stringify(
+        buildReport({ verdict: 'pass', findings: [], toolResults: cleanToolResults() }),
+      ),
+    }));
+
+    await expect(runScanner(input, runContainer)).resolves.toMatchObject({
+      verdict: 'pass',
+    });
+    expect(warn).toHaveBeenCalledWith(
+      'WARNING: scanner report signature verification is disabled',
+    );
   });
 
   it('veracode env pass-through', async () => {

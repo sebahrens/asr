@@ -66,6 +66,7 @@ export async function runScanner(
   runContainer: RunContainer = defaultRunContainer,
 ): Promise<ScanReport> {
   const scannerImage = requiredEnv('SCANNER_IMAGE');
+  const signingKey = resolveSigningKey();
   const timeoutSeconds = parseTimeoutSeconds(
     process.env.SCANNER_TIMEOUT_SECONDS ?? process.env.SCAN_TIMEOUT_SECONDS,
   );
@@ -82,7 +83,7 @@ export async function runScanner(
 
     const report = parseReport(result.stdout);
     assertExpectedVerdict(report, severityThreshold);
-    assertSignature(report, process.env.SCAN_SIGNING_KEY);
+    assertSignature(report, signingKey);
     return report;
   } finally {
     await rm(outputDir, { recursive: true, force: true });
@@ -206,6 +207,20 @@ function requiredEnv(name: string): string {
     throw new Error(`${name} is required to run scanner`);
   }
   return value;
+}
+
+function resolveSigningKey(): string | undefined {
+  const signingKey = process.env.SCAN_SIGNING_KEY;
+  if (signingKey) {
+    return signingKey;
+  }
+
+  if (process.env.NODE_ENV !== 'production' && process.env.SCAN_SIGNING_DISABLED === 'true') {
+    console.warn('WARNING: scanner report signature verification is disabled');
+    return undefined;
+  }
+
+  throw new Error('SCAN_SIGNING_KEY is required to verify scanner reports');
 }
 
 function parseTimeoutSeconds(raw: string | undefined): number {

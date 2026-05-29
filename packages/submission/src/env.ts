@@ -5,6 +5,9 @@ const envSchema = z
     PORT: z.coerce.number().default(3001),
     NODE_ENV: z.enum(['development', 'production']),
     AUTH_MODE: z.enum(['mock', 'entra']),
+    SCANNER_IMAGE: z.string().optional(),
+    SCAN_SIGNING_KEY: z.string().optional(),
+    SCAN_SIGNING_DISABLED: z.enum(['true', 'false']).optional(),
     FORGEJO_URL: z.string().optional(),
     FORGEJO_UPLOAD_TOKEN: z.string().optional(),
     FORGEJO_MERGE_TOKEN: z.string().optional(),
@@ -24,12 +27,56 @@ const envSchema = z
         message: 'FATAL: AUTH_MODE=mock is forbidden in production',
       });
     }
+
+    if (env.NODE_ENV === 'production' && env.SCAN_SIGNING_DISABLED === 'true') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SCAN_SIGNING_DISABLED'],
+        message: 'FATAL: SCAN_SIGNING_DISABLED=true is forbidden in production',
+      });
+    }
+
+    if (env.NODE_ENV === 'production' && !env.SCAN_SIGNING_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SCAN_SIGNING_KEY'],
+        message: 'FATAL: SCAN_SIGNING_KEY is required in production',
+      });
+    }
+
+    if (env.NODE_ENV === 'production' && !env.SCANNER_IMAGE) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SCANNER_IMAGE'],
+        message: 'FATAL: SCANNER_IMAGE is required in production',
+      });
+    }
+
+    if (
+      env.NODE_ENV === 'production' &&
+      env.SCANNER_IMAGE &&
+      !/[@:]sha256:[0-9a-f]{64}$/i.test(env.SCANNER_IMAGE)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SCANNER_IMAGE'],
+        message: 'FATAL: SCANNER_IMAGE must be pinned by sha256 digest in production',
+      });
+    }
   });
 
 export type Env = z.infer<typeof envSchema>;
 
 export function parseEnv(raw: NodeJS.ProcessEnv): Env {
-  return envSchema.parse(raw);
+  const env = envSchema.parse(raw);
+  if (
+    env.NODE_ENV !== 'production' &&
+    !env.SCAN_SIGNING_KEY &&
+    env.SCAN_SIGNING_DISABLED === 'true'
+  ) {
+    console.warn('WARNING: scanner report signature verification is disabled');
+  }
+  return env;
 }
 
 export function getEnv(raw: NodeJS.ProcessEnv = process.env): Env {

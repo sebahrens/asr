@@ -32,6 +32,47 @@ describe('parseEnv', () => {
     });
   });
 
+  it('rejects a missing scan signing key in production', () => {
+    expect(() =>
+      parseEnv({
+        NODE_ENV: 'production',
+        AUTH_MODE: 'entra',
+        SCANNER_IMAGE:
+          'registry.example/asr-scanner@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      }),
+    ).toThrow(/SCAN_SIGNING_KEY is required in production/);
+  });
+
+  it('rejects tag-pinned scanner images in production', () => {
+    expect(() =>
+      parseEnv({
+        NODE_ENV: 'production',
+        AUTH_MODE: 'entra',
+        SCANNER_IMAGE: 'registry.example/asr-scanner:latest',
+        SCAN_SIGNING_KEY: 'test-signing-key',
+      }),
+    ).toThrow(/SCANNER_IMAGE must be pinned by sha256 digest/);
+  });
+
+  it('warns when scan signing is explicitly disabled outside production', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    expect(
+      parseEnv({
+        NODE_ENV: 'development',
+        AUTH_MODE: 'mock',
+        SCAN_SIGNING_DISABLED: 'true',
+      }),
+    ).toMatchObject({
+      SCAN_SIGNING_DISABLED: 'true',
+    });
+
+    expect(warn).toHaveBeenCalledWith(
+      'WARNING: scanner report signature verification is disabled',
+    );
+    warn.mockRestore();
+  });
+
   it('defaults the marketplace repo when the marketplace owner is set', () => {
     expect(
       parseEnv({
