@@ -83,6 +83,21 @@ Foxguard SARIF commonly reports numeric `security-severity` metadata such as
 standard SARIF convention: `>=9` critical, `>=7` high, `>=4` medium, and `>0`
 low, falling back to SARIF `level` when metadata is absent.
 
+## Exit code policy
+
+The scanner report preserves raw tool exit codes in `toolResults`, but verdicts
+are based on validated findings plus a small allowlist of scanner-specific
+nonzero exits. `@asr/core` and the container orchestrator must stay aligned:
+
+- `0` is success for every tool.
+- Gitleaks `1` is expected only when SARIF findings were parsed; those findings
+  still hard-block because secrets always block.
+- Foxguard `2` is expected for skipped files when finding counts remain
+  consistent.
+- Optional tools marked `skipped: true` do not fail the verdict.
+- Missing tool results, mismatched finding counts, and all other nonzero exits
+  are treated as scanner failures and force a `block` verdict.
+
 ## Veracode policy
 
 Veracode is Tier 3 and remains a clean skip unless both

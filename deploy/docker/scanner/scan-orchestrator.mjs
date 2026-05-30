@@ -382,7 +382,9 @@ function mapSarifSeverity(level) {
   }
 }
 
-function computeVerdict(findings) {
+function computeVerdict(findings, toolResults) {
+  if (hasFailedToolResult(findings, toolResults)) return 'block';
+
   if (findings.some((finding) => finding.severity === 'critical')) return 'block';
   if (findings.some((finding) => finding.tool === 'gitleaks')) return 'block';
 
@@ -396,6 +398,32 @@ function computeVerdict(findings) {
   if (hasLow && SEVERITY_THRESHOLD === 'low') return 'review_required';
 
   return 'pass';
+}
+
+function hasFailedToolResult(findings, toolResults) {
+  if (!toolResults) return false;
+
+  const findingCounts = new Map();
+  for (const finding of findings) {
+    findingCounts.set(finding.tool, (findingCounts.get(finding.tool) ?? 0) + 1);
+  }
+
+  return TOOLS.some((tool) => {
+    const result = toolResults[tool];
+    if (!result) return true;
+    if (result.findingCount !== (findingCounts.get(tool) ?? 0)) return true;
+    if (result.skipped === true) return false;
+
+    return !isExpectedToolExit(tool, result.exitCode, result.findingCount);
+  });
+}
+
+function isExpectedToolExit(tool, exitCode, findingCount) {
+  if (exitCode === 0) return true;
+  if (tool === 'gitleaks') return exitCode === 1 && findingCount > 0;
+  if (tool === 'foxguard') return exitCode === 2;
+
+  return false;
 }
 
 function createUlid(date = new Date()) {
@@ -472,6 +500,7 @@ async function main() {
   ]);
   const completed = Date.now();
   const findings = results.flatMap((result) => result.findings);
+  const toolResults = buildToolResults(results);
 
   const report = signReport({
     submissionId: process.env.SUBMISSION_ID || 'unknown',
@@ -481,9 +510,9 @@ async function main() {
     startedAt,
     completedAt: new Date(completed).toISOString(),
     durationMs: completed - start,
-    verdict: computeVerdict(findings),
+    verdict: computeVerdict(findings, toolResults),
     findings,
-    toolResults: buildToolResults(results),
+    toolResults,
   });
 
   const json = JSON.stringify(report, null, 2);

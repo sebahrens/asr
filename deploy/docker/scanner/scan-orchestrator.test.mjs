@@ -48,6 +48,28 @@ test('allows placeholder and SOPS encrypted secrets through gitleaks config', as
   }
 });
 
+test('blocks when gitleaks errors without producing findings', async () => {
+  const fixture = await createFixture();
+  try {
+    await writeExecutable(
+      join(fixture.binDir, 'gitleaks'),
+      `#!/usr/bin/env node
+
+process.exit(2);
+`,
+    );
+
+    const result = await runOrchestrator(fixture);
+
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.report.verdict, 'block');
+    assert.equal(result.report.toolResults.gitleaks.exitCode, 2);
+    assert.equal(result.report.toolResults.gitleaks.findingCount, 0);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test('passes against an empty clean directory', async () => {
   const fixture = await createFixture();
   try {
@@ -183,6 +205,29 @@ process.exit(2);
     assert.equal(result.exitCode, 0);
     assert.equal(result.report.verdict, 'pass');
     assert.equal(result.report.toolResults.foxguard.exitCode, 0);
+    assert.equal(result.report.toolResults.foxguard.findingCount, 0);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test('allows raw foxguard skipped-files exit when SARIF parsing is unavailable', async () => {
+  const fixture = await createFixture();
+  try {
+    await writeExecutable(
+      join(fixture.binDir, 'foxguard'),
+      `#!/usr/bin/env node
+
+console.log('foxguard skipped generated files');
+process.exit(2);
+`,
+    );
+
+    const result = await runOrchestrator(fixture);
+
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.report.verdict, 'pass');
+    assert.equal(result.report.toolResults.foxguard.exitCode, 2);
     assert.equal(result.report.toolResults.foxguard.findingCount, 0);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });

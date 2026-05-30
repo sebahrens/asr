@@ -57,6 +57,26 @@ function hasFailedToolResult(
       return true;
     }
 
-    return result.exitCode !== 0 && result.skipped !== true;
+    if (result.skipped === true) {
+      return false;
+    }
+
+    return !isExpectedToolExit(tool, result.exitCode, result.findingCount);
   });
+}
+
+function isExpectedToolExit(tool: ScanTool, exitCode: number, findingCount: number): boolean {
+  if (exitCode === 0) {
+    return true;
+  }
+
+  if (tool === 'gitleaks') {
+    return exitCode === 1 && findingCount > 0;
+  }
+
+  if (tool === 'foxguard') {
+    return exitCode === 2;
+  }
+
+  return false;
 }

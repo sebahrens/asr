@@ -182,6 +182,28 @@ describe('runScanner', () => {
     );
   });
 
+  it('accepts a pass report when foxguard exits 2 for skipped files', async () => {
+    vi.stubEnv('SCANNER_IMAGE', 'asr-scanner:test');
+    vi.stubEnv('SCAN_SIGNING_KEY', 'test-signing-key');
+
+    const report = signedReport(
+      buildReport({
+        verdict: 'pass',
+        findings: [],
+        toolResults: cleanToolResults({ foxguard: { exitCode: 2, findingCount: 0 } }),
+      }),
+      'test-signing-key',
+    );
+    const runContainer = vi.fn<RunContainer>(async () => ({ stdout: JSON.stringify(report) }));
+
+    await expect(runScanner(input, runContainer)).resolves.toMatchObject({
+      verdict: 'pass',
+      toolResults: expect.objectContaining({
+        foxguard: { exitCode: 2, findingCount: 0 },
+      }),
+    });
+  });
+
   it('rejects a report when toolResults findingCount disagrees with findings', async () => {
     vi.stubEnv('SCANNER_IMAGE', 'asr-scanner:test');
     vi.stubEnv('SCAN_SIGNING_KEY', 'test-signing-key');

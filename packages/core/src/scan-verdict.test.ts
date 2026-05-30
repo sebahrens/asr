@@ -9,6 +9,33 @@ describe('computeVerdict', () => {
     ).toBe('block');
   });
 
+  it('allows gitleaks exit 1 when it corresponds to secret findings', () => {
+    const findings: ScanFinding[] = [
+      {
+        tool: 'gitleaks',
+        ruleId: 'generic-api-key',
+        severity: 'high',
+        file: 'SKILL.md',
+        line: 12,
+        message: 'Potential secret detected',
+      },
+    ];
+
+    expect(
+      computeVerdict(
+        findings,
+        'high',
+        toolResults({ gitleaks: { exitCode: 1, findingCount: 1 } }),
+      ),
+    ).toBe('block');
+  });
+
+  it('allows foxguard exit 2 as a skipped-files result when counts are consistent', () => {
+    expect(
+      computeVerdict([], 'high', toolResults({ foxguard: { exitCode: 2, findingCount: 0 } })),
+    ).toBe('pass');
+  });
+
   it('does not block optional skipped scanners with non-zero exits', () => {
     expect(
       computeVerdict(
