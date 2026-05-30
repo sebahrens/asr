@@ -406,16 +406,18 @@ describe('router', () => {
     expect(screen.queryByText(/submitter role required/i)).not.toBeInTheDocument();
   });
 
-  it('announces missing upload fields when publish wizard advancement is attempted', () => {
-    renderPublishRoute();
+  it('keeps upload advancement disabled while required fields are missing', () => {
+    const { container } = renderPublishRoute();
 
     const continueButton = screen.getByRole('button', { name: /^continue$/i });
-    expect(continueButton).toBeEnabled();
+    expect(continueButton).toBeDisabled();
     expect(screen.getByRole('button', { name: /manifest/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /questionnaire/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
 
-    fireEvent.click(continueButton);
+    const form = container.querySelector('form');
+    expect(form).not.toBeNull();
+    fireEvent.submit(form as HTMLFormElement);
 
     const summary = screen.getByRole('alert');
     expect(summary).toHaveTextContent(/complete these fields before continuing/i);
@@ -462,7 +464,7 @@ Use this skill when testing upload validation.`,
     });
 
     expect(await screen.findAllByText(/upload a \.zip archive/i)).toHaveLength(2);
-    expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /manifest/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /questionnaire/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
@@ -521,7 +523,7 @@ Use this skill when testing upload validation.`,
 
     expect(screen.getByText(/skill.md must start with yaml frontmatter/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/skill.md/i)).toHaveAttribute('aria-describedby', 'publish-skill-md-error');
-    expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeDisabled();
   });
 
   it('keeps later publish steps locked until each previous step is completed', async () => {

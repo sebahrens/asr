@@ -1551,13 +1551,15 @@ main {
   padding: 10px 15px;
 }
 
-.submit-btn:hover {
+.submit-btn:hover:not(:disabled) {
   opacity: 0.9;
 }
 
 .submit-btn:disabled {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
   cursor: not-allowed;
-  opacity: 0.72;
 }
 
 /* Review Dashboard */

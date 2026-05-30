@@ -496,7 +496,12 @@ function PublishSkill() {
   const [status, setStatus] = useState<PublishStatus>('idle');
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
 
-  const uploadIsValid = Boolean(owner.trim() && skillArchive && getParsedSkillMd(skillMd));
+  const uploadIsValid = Boolean(
+    owner.trim()
+      && skillArchive
+      && !validateArchive(skillArchive)
+      && getParsedSkillMd(skillMd),
+  );
   const manifestIsValid = Boolean(
     manifestDraft.name.trim()
       && manifestDraft.version.trim()
@@ -1078,7 +1083,12 @@ function PublishSkill() {
                 </button>
               ) : null}
               {currentStep === 'upload' ? (
-                <button className="submit-btn" type="button" onClick={continueFromUpload}>
+                <button
+                  className="submit-btn"
+                  type="button"
+                  onClick={continueFromUpload}
+                  disabled={!uploadIsValid}
+                >
                   Continue
                 </button>
               ) : null}
@@ -1087,6 +1097,7 @@ function PublishSkill() {
                   className="submit-btn"
                   type="button"
                   onClick={continueFromManifest}
+                  disabled={!manifestIsValid}
                 >
                   Continue
                 </button>
@@ -1096,6 +1107,7 @@ function PublishSkill() {
                   className="submit-btn"
                   type="button"
                   onClick={continueFromQuestionnaire}
+                  disabled={!questionnaireIsValid}
                 >
                   Continue
                 </button>
