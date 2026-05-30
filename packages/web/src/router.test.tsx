@@ -426,9 +426,16 @@ describe('router', () => {
 
     const continueButton = screen.getByRole('button', { name: /^continue$/i });
     expect(continueButton).toBeDisabled();
+    expect(continueButton).toHaveAttribute('aria-disabled', 'true');
+    expect(continueButton).toHaveAttribute('data-invalid', 'true');
     expect(screen.getByRole('button', { name: /manifest/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /questionnaire/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
+
+    fireEvent.click(continueButton);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /upload archive/i })).toBeInTheDocument();
 
     const form = container.querySelector('form');
     expect(form).not.toBeNull();

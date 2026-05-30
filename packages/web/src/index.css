@@ -1453,7 +1453,8 @@ main {
   opacity: 0.9;
 }
 
-.submit-btn:disabled {
+.submit-btn:disabled,
+.submit-btn[data-invalid='true'] {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   color: var(--text-muted);

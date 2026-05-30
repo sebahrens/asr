@@ -1087,6 +1087,8 @@ function PublishSkill() {
                   type="button"
                   onClick={continueFromUpload}
                   disabled={!uploadIsValid}
+                  aria-disabled={!uploadIsValid}
+                  data-invalid={!uploadIsValid}
                 >
                   Continue
                 </button>
