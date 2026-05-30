@@ -81,6 +81,16 @@ export function createYankRoutes(options: YankRouteOptions = {}) {
 
     const yankedAt = now().toISOString();
 
+    const forgejo = options.forgejo ?? forgejoFromEnv();
+    const markerCommit = await forgejo.commitFileToMain({
+      owner,
+      name,
+      path: `skills/${owner}/${name}/YANKED.md`,
+      content: Buffer.from(`# Yanked ${version}\n${body.reason}\n`),
+      message: `yank ${name}@${version}`,
+      idempotencyKey: `yank-${name}-${version}`,
+    });
+
     db.transaction(() => {
       markVersionYanked(
         db,
@@ -109,19 +119,13 @@ export function createYankRoutes(options: YankRouteOptions = {}) {
         version,
         actor: identity.sub,
         actorType: 'compliance',
-        detail: { reason: body.reason, severity: body.severity },
+        detail: {
+          reason: body.reason,
+          severity: body.severity,
+          markerCommitSha: markerCommit.sha,
+        },
       });
     })();
-
-    const forgejo = options.forgejo ?? forgejoFromEnv();
-    await forgejo.commitFileToMain({
-      owner,
-      name,
-      path: `skills/${owner}/${name}/YANKED.md`,
-      content: Buffer.from(`# Yanked ${version}\n${body.reason}\n`),
-      message: `yank ${name}@${version}`,
-      idempotencyKey: `yank-${name}-${version}`,
-    });
 
     if (options.triggerMarketplaceSync) {
       try {

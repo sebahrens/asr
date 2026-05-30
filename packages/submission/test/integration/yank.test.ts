@@ -97,7 +97,11 @@ describe('POST /api/v1/skills/:owner/:name/versions/:version/yank', () => {
     expect(auditRow!.actor_type).toBe('compliance');
     expect(auditRow!.skill_name).toBe(SKILL);
     expect(auditRow!.version).toBe(VERSION);
-    expect(JSON.parse(auditRow!.detail)).toEqual({ reason: 'leak', severity: 'high' });
+    expect(JSON.parse(auditRow!.detail)).toEqual({
+      reason: 'leak',
+      severity: 'high',
+      markerCommitSha: 'sha-1',
+    });
 
     expect(forgejo!.commits).toHaveLength(1);
     expect(forgejo!.commits[0]).toMatchObject({
@@ -108,6 +112,46 @@ describe('POST /api/v1/skills/:owner/:name/versions/:version/yank', () => {
       idempotencyKey: `yank-${SKILL}-${VERSION}`,
     });
     expect(forgejo!.commits[0].content.toString('utf8')).toBe(`# Yanked ${VERSION}\nleak\n`);
+  });
+
+  it('does not mark the version yanked when the Forgejo marker write fails, allowing retry', async () => {
+    forgejo!.failNextCommit = new Error('forgejo unavailable');
+    const app = makeApp(db!, forgejo!, { sub: 'carol', roles: ['Compliance'] });
+
+    const failed = await app.request(
+      `/api/v1/skills/${OWNER}/${SKILL}/versions/${VERSION}/yank`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'leak', severity: 'high' }),
+      },
+    );
+
+    expect(failed.status).toBe(500);
+    let version = getSkillVersion(db!, SKILL, VERSION);
+    expect(version?.yanked_at).toBeNull();
+    expect(getBlockedHash(db!, CONTENT_HASH)).toBeUndefined();
+    expect(
+      db!
+        .prepare("SELECT COUNT(*) FROM audit_events WHERE action = 'version.yanked'")
+        .pluck()
+        .get(),
+    ).toBe(0);
+
+    const retried = await app.request(
+      `/api/v1/skills/${OWNER}/${SKILL}/versions/${VERSION}/yank`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'leak', severity: 'high' }),
+      },
+    );
+
+    expect(retried.status).toBe(201);
+    version = getSkillVersion(db!, SKILL, VERSION);
+    expect(version?.yanked_at).not.toBeNull();
+    expect(getBlockedHash(db!, CONTENT_HASH)?.source).toBe('yanked');
+    expect(forgejo!.commits).toHaveLength(2);
   });
 
   it('returns 403 separation_of_duties_violation when Compliance principal equals published_by', async () => {
@@ -253,6 +297,7 @@ function makeApp(
     c.set('identity', identity);
     await next();
   });
+  app.onError((_err, c) => c.json({ error: 'internal_error' }, 500));
   app.route(
     '/api/v1/skills',
     createYankRoutes({
@@ -315,6 +360,7 @@ function seedPublishedVersion(
 }
 
 class FakeForgejoClient {
+  failNextCommit: Error | undefined;
   commits: Array<{
     owner: string;
     name: string;
@@ -333,6 +379,11 @@ class FakeForgejoClient {
     idempotencyKey: string;
   }): Promise<{ sha: string }> {
     this.commits.push(input);
+    if (this.failNextCommit) {
+      const err = this.failNextCommit;
+      this.failNextCommit = undefined;
+      throw err;
+    }
     return { sha: `sha-${this.commits.length}` };
   }
 }
