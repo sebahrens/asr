@@ -10,6 +10,7 @@
     "test:integration": "RUN_FORGEJO_INTEGRATION=1 vitest run test/integration/publish-download.test.ts test/integration/mcp-devmode.test.ts test/integration/marketplace-sync.test.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
     "@asr/core": "workspace:*",
     "@hono/node-server": "^1.13.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -17,6 +18,7 @@
     "flowcraft": "^2.10.1",
     "hono": "^4.6.0",
     "jose": "^5.9.0",
+    "openai": "^4.70.0",
     "openpgp": "^5.11.0",
     "pino": "^10.3.1",
     "ulid": "^3.0.2",
