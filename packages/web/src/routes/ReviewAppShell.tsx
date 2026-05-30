@@ -13,6 +13,7 @@ export function ReviewAppShell({ current, children }: ReviewAppShellProps) {
   const session = useSession();
   const canReview = session.roles.some((role) => role === 'Compliance' || role === 'Admin');
   const roleLabel = session.roles.length > 0 ? session.roles.join(', ') : 'Viewer';
+  const showSessionBanner = import.meta.env.DEV || session.authMode === 'mock';
 
   return (
     <>
@@ -31,7 +32,7 @@ export function ReviewAppShell({ current, children }: ReviewAppShellProps) {
           </nav>
           <div className="app-topbar-right">
             <BrandToggle />
-            {import.meta.env.DEV ? (
+            {showSessionBanner ? (
               <div
                 className="mock-auth-banner"
                 role="status"

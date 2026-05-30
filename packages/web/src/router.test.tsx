@@ -236,6 +236,19 @@ describe('router', () => {
     expect(screen.getByRole('status', { name: /development mock auth session/i })).toBeInTheDocument();
   });
 
+  it('renders the review shell mock auth banner for production bundles when mock auth is explicitly enabled', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('PROD', true);
+    vi.stubEnv('VITE_AUTH_MODE', 'mock');
+    vi.stubEnv('VITE_ENABLE_MOCK_AUTH', 'true');
+
+    renderRoute('/review');
+
+    expect(await screen.findByRole('heading', { name: /^review queue$/i })).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: /development mock auth session/i })).toBeInTheDocument();
+    expect(screen.getByText(/dev mock auth/i)).toBeInTheDocument();
+  });
+
   it('keeps the existing browse page on the index route', async () => {
     renderRoute('/');
 
