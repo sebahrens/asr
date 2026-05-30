@@ -66,6 +66,7 @@ services:
         - VITE_API_URL=http://localhost:3001
         - VITE_AUTH_MODE=mock
         - VITE_ENABLE_MOCK_AUTH=true
+        - VITE_BRAND=${VITE_BRAND:-pwc}
     container_name: asr-web
     ports:
       - "5173:5173"

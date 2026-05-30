@@ -18,6 +18,11 @@
   --sticky-header-offset: 96px;
 }
 
+[data-brand='neutral'] {
+  --accent: #2563eb;
+  --accent-light: rgba(37, 99, 235, 0.08);
+}
+
 .brand-logo {
   display: block;
   height: auto;
