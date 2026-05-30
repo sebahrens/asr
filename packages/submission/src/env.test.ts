@@ -1,7 +1,11 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import type { parseEnv as ParseEnv } from './env.js';
+import type {
+  parseEnv as ParseEnv,
+  screeningConfigured as ScreeningConfigured,
+} from './env.js';
 
 let parseEnv: typeof ParseEnv;
+let screeningConfigured: typeof ScreeningConfigured;
 
 const productionEnv = {
   NODE_ENV: 'production',
@@ -28,7 +32,7 @@ beforeAll(async () => {
   vi.stubEnv('NODE_ENV', 'development');
   vi.stubEnv('AUTH_MODE', 'mock');
 
-  ({ parseEnv } = await import('./env.js'));
+  ({ parseEnv, screeningConfigured } = await import('./env.js'));
 });
 
 describe('parseEnv', () => {
@@ -120,5 +124,82 @@ describe('parseEnv', () => {
       FORGEJO_MARKETPLACE_OWNER: 'asr-marketplace',
       FORGEJO_MARKETPLACE_REPO: 'skill-marketplace',
     });
+  });
+
+  it('leaves LLM screening disabled when no provider is configured', () => {
+    const env = parseEnv({
+      NODE_ENV: 'development',
+      AUTH_MODE: 'mock',
+      MOCK_USER_SUB: 'dev-user',
+      MOCK_USER_ROLES: 'Submitter',
+    });
+
+    expect(env).toMatchObject({
+      LLM_SCREEN_CONTEXT_TOKENS: 200000,
+      LLM_SCREEN_RESERVE_OUTPUT_TOKENS: 8000,
+      LLM_SCREEN_CHARS_PER_TOKEN: 3.5,
+    });
+    expect(screeningConfigured(env)).toBe(false);
+  });
+
+  it('recognizes configured OpenAI screening env', () => {
+    const env = parseEnv({
+      NODE_ENV: 'development',
+      AUTH_MODE: 'mock',
+      MOCK_USER_SUB: 'dev-user',
+      MOCK_USER_ROLES: 'Submitter',
+      LLM_SCREEN_PROVIDER: 'openai',
+      OPENAI_API_KEY: 'openai-key',
+      OPENAI_BASE_URL: 'https://openai-compatible.example.test/v1',
+      OPENAI_MODEL: 'gpt-4.1',
+      LLM_SCREEN_CONTEXT_TOKENS: '1000000',
+      LLM_SCREEN_RESERVE_OUTPUT_TOKENS: '12000',
+      LLM_SCREEN_CHARS_PER_TOKEN: '4',
+    });
+
+    expect(env).toMatchObject({
+      LLM_SCREEN_PROVIDER: 'openai',
+      OPENAI_API_KEY: 'openai-key',
+      OPENAI_BASE_URL: 'https://openai-compatible.example.test/v1',
+      OPENAI_MODEL: 'gpt-4.1',
+      LLM_SCREEN_CONTEXT_TOKENS: 1000000,
+      LLM_SCREEN_RESERVE_OUTPUT_TOKENS: 12000,
+      LLM_SCREEN_CHARS_PER_TOKEN: 4,
+    });
+    expect(screeningConfigured(env)).toBe(true);
+  });
+
+  it('recognizes configured Anthropic screening env', () => {
+    const env = parseEnv({
+      NODE_ENV: 'development',
+      AUTH_MODE: 'mock',
+      MOCK_USER_SUB: 'dev-user',
+      MOCK_USER_ROLES: 'Submitter',
+      LLM_SCREEN_PROVIDER: 'anthropic',
+      ANTHROPIC_API_KEY: 'anthropic-key',
+      ANTHROPIC_BASE_URL: 'https://anthropic-compatible.example.test',
+      ANTHROPIC_MODEL: 'claude-sonnet-4-5',
+    });
+
+    expect(env).toMatchObject({
+      LLM_SCREEN_PROVIDER: 'anthropic',
+      ANTHROPIC_API_KEY: 'anthropic-key',
+      ANTHROPIC_BASE_URL: 'https://anthropic-compatible.example.test',
+      ANTHROPIC_MODEL: 'claude-sonnet-4-5',
+    });
+    expect(screeningConfigured(env)).toBe(true);
+  });
+
+  it('rejects missing provider model when LLM screening is enabled', () => {
+    expect(() =>
+      parseEnv({
+        NODE_ENV: 'development',
+        AUTH_MODE: 'mock',
+        MOCK_USER_SUB: 'dev-user',
+        MOCK_USER_ROLES: 'Submitter',
+        LLM_SCREEN_PROVIDER: 'openai',
+        OPENAI_API_KEY: 'openai-key',
+      }),
+    ).toThrow(/OPENAI_MODEL is required when LLM_SCREEN_PROVIDER=openai/);
   });
 });

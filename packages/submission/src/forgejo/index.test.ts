@@ -27,6 +27,9 @@ const stubEnv: Env = {
   FORGEJO_MARKETPLACE_OWNER: 'asr-marketplace',
   FORGEJO_MARKETPLACE_REPO: 'skill-marketplace',
   NOTIFY_TRANSPORT: 'memory',
+  LLM_SCREEN_CONTEXT_TOKENS: 200000,
+  LLM_SCREEN_RESERVE_OUTPUT_TOKENS: 8000,
+  LLM_SCREEN_CHARS_PER_TOKEN: 3.5,
 };
 
 describe('forgejoFromEnv', () => {

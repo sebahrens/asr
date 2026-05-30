@@ -35,6 +35,16 @@ const envSchema = z
     VERACODE_API_KEY_ID: z.string().optional(),
     VERACODE_API_KEY_SECRET: z.string().optional(),
     VERACODE_POLICY: z.string().optional(),
+    LLM_SCREEN_PROVIDER: z.enum(['openai', 'anthropic']).optional(),
+    OPENAI_API_KEY: z.string().optional(),
+    OPENAI_BASE_URL: z.string().optional(),
+    OPENAI_MODEL: z.string().optional(),
+    ANTHROPIC_API_KEY: z.string().optional(),
+    ANTHROPIC_BASE_URL: z.string().optional(),
+    ANTHROPIC_MODEL: z.string().optional(),
+    LLM_SCREEN_CONTEXT_TOKENS: z.coerce.number().int().positive().default(200000),
+    LLM_SCREEN_RESERVE_OUTPUT_TOKENS: z.coerce.number().int().positive().default(8000),
+    LLM_SCREEN_CHARS_PER_TOKEN: z.coerce.number().positive().default(3.5),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && env.AUTH_MODE === 'mock') {
@@ -95,6 +105,16 @@ const envSchema = z
         message: 'FATAL: SCANNER_IMAGE must be pinned by sha256 digest in production',
       });
     }
+
+    if (env.LLM_SCREEN_PROVIDER === 'openai') {
+      requireEnv(env, ctx, 'OPENAI_API_KEY', 'when LLM_SCREEN_PROVIDER=openai');
+      requireEnv(env, ctx, 'OPENAI_MODEL', 'when LLM_SCREEN_PROVIDER=openai');
+    }
+
+    if (env.LLM_SCREEN_PROVIDER === 'anthropic') {
+      requireEnv(env, ctx, 'ANTHROPIC_API_KEY', 'when LLM_SCREEN_PROVIDER=anthropic');
+      requireEnv(env, ctx, 'ANTHROPIC_MODEL', 'when LLM_SCREEN_PROVIDER=anthropic');
+    }
   });
 
 export type Env = z.infer<typeof envSchema>;
@@ -125,6 +145,18 @@ export function parseEnv(raw: NodeJS.ProcessEnv): Env {
     console.warn('WARNING: scanner report signature verification is disabled');
   }
   return env;
+}
+
+export function screeningConfigured(env: Env): boolean {
+  if (env.LLM_SCREEN_PROVIDER === 'openai') {
+    return Boolean(env.OPENAI_API_KEY);
+  }
+
+  if (env.LLM_SCREEN_PROVIDER === 'anthropic') {
+    return Boolean(env.ANTHROPIC_API_KEY);
+  }
+
+  return false;
 }
 
 export function getEnv(raw: NodeJS.ProcessEnv = process.env): Env {
