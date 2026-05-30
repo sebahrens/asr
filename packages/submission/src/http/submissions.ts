@@ -41,6 +41,7 @@ import { saveWorkflowRun } from '../db/repositories/workflowRuns.js';
 import { forgejoFromEnv } from '../forgejo/index.js';
 import { ownerFromPrincipal } from '../identity/owners.js';
 import { requireRole } from '../auth/requireRole.js';
+import { emitAudit } from '../audit/emit.js';
 import {
   acquirePendingVersion,
   releasePendingVersion,
@@ -108,6 +109,62 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
           return row ? rowToSubmission(row) : undefined;
         }
       : undefined);
+
+  routes.delete('/:id', requireRole('Submitter'), async (c) => {
+    const identity = c.get('identity');
+    if (!identity) {
+      return apiError(c, 401, 'authentication_required');
+    }
+
+    const id = c.req.param('id');
+    const row = options.db ? getSubmissionById(options.db, id) : undefined;
+    const submission = row ? rowToSubmission(row) : lookup ? await lookup(id) : undefined;
+    if (!submission) {
+      return apiError(c, 404, 'submission_not_found');
+    }
+    if (submission.submittedBy !== identity.sub) {
+      return apiError(c, 403, 'insufficient_permissions');
+    }
+    if (isTerminalSubmissionStatus(submission.status)) {
+      return apiError(c, 409, 'submission_not_in_expected_state');
+    }
+    if (!options.db || !row) {
+      return apiError(c, 503, 'internal_error', {
+        message: 'submission withdrawal requires a database-backed route',
+      });
+    }
+
+    const withdrawnAt = now().toISOString();
+    const nextStatus: SubmissionStatus = { phase: 'withdrawn', withdrawnAt };
+    const manifest = submission.manifest;
+
+    const updated = options.db.transaction(() => {
+      const ok = updateSubmissionStatus(options.db!, id, row.lock_version, {
+        statusPhase: nextStatus.phase,
+        statusJson: JSON.stringify(nextStatus),
+      });
+      if (!ok) {
+        return false;
+      }
+      releasePendingVersion(options.db!, manifest.name, manifest.version);
+      emitAudit(options.db!, {
+        action: 'submission.withdrawn',
+        submissionId: id,
+        skillName: manifest.name,
+        version: manifest.version,
+        actor: identity.sub,
+        actorType: 'user',
+        detail: { reason: 'submitter_withdrawal' },
+      });
+      return true;
+    })();
+
+    if (!updated) {
+      return apiError(c, 409, 'submission_in_progress');
+    }
+
+    return c.json({ status: nextStatus });
+  });
 
   routes.get('/:id', async (c, next) => {
     const id = c.req.param('id');
@@ -388,6 +445,10 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
   });
 
   return routes;
+}
+
+function isTerminalSubmissionStatus(status: SubmissionStatus): boolean {
+  return status.phase === 'published' || status.phase === 'rejected' || status.phase === 'withdrawn';
 }
 
 function statusJsonWithApprovalPath(

@@ -1,9 +1,13 @@
 import type { SkillManifest, Submission, SubmissionStatus } from '@asr/core';
+import Database from 'better-sqlite3';
 import { Hono } from 'hono';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import yazl from 'yazl';
 import type { AuthVariables, Identity } from '../auth/types.js';
+import { loadKeyRing } from '../audit/keyring.js';
+import { getBySubmission } from '../db/repositories/auditEvents.js';
 import type { SubmissionInsertRow } from '../db/repositories/submissions.js';
+import { runMigrations } from '../db/migrations/index.js';
 import {
   createSubmissionRoutes,
   type SubmissionLookup,
@@ -215,6 +219,95 @@ describe('GET /api/v1/submissions/:id', () => {
   });
 });
 
+describe('DELETE /api/v1/submissions/:id', () => {
+  const originalKeyId = process.env.AUDIT_HMAC_KEY_ID;
+  const originalKeyBytes = process.env.AUDIT_HMAC_KEY_BYTES;
+  let db: Database.Database | undefined;
+
+  beforeEach(() => {
+    process.env.AUDIT_HMAC_KEY_ID = 'k-test';
+    process.env.AUDIT_HMAC_KEY_BYTES = Buffer.alloc(32, 0x42).toString('base64');
+    db = new Database(':memory:');
+    runMigrations(db);
+  });
+
+  afterEach(() => {
+    db?.close();
+    if (originalKeyId === undefined) {
+      delete process.env.AUDIT_HMAC_KEY_ID;
+    } else {
+      process.env.AUDIT_HMAC_KEY_ID = originalKeyId;
+    }
+    if (originalKeyBytes === undefined) {
+      delete process.env.AUDIT_HMAC_KEY_BYTES;
+    } else {
+      process.env.AUDIT_HMAC_KEY_BYTES = originalKeyBytes;
+    }
+  });
+
+  it('withdraws the submitter owned non-terminal submission and emits audit', async () => {
+    seedSubmission(db!, {
+      id: 'sub-1',
+      submittedBy: 'submitter-1',
+      status: { phase: 'uploaded' },
+    });
+
+    const app = makeDbBackedApp(db!, { sub: 'submitter-1', roles: ['Submitter'] });
+    const res = await app.request('/api/v1/submissions/sub-1', { method: 'DELETE' });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      status: { phase: 'withdrawn' },
+    });
+
+    const row = db!.prepare('SELECT status_phase, status_json FROM submissions WHERE id = ?').get('sub-1') as {
+      status_phase: string;
+      status_json: string;
+    };
+    expect(row.status_phase).toBe('withdrawn');
+    expect(JSON.parse(row.status_json)).toMatchObject({ phase: 'withdrawn' });
+    expect(getBySubmission(db!, 'sub-1')).toMatchObject([
+      {
+        action: 'submission.withdrawn',
+        actor: 'submitter-1',
+        detail: { reason: 'submitter_withdrawal' },
+      },
+    ]);
+  });
+
+  it('rejects a different submitter', async () => {
+    seedSubmission(db!, {
+      id: 'sub-1',
+      submittedBy: 'submitter-1',
+      status: { phase: 'uploaded' },
+    });
+
+    const app = makeDbBackedApp(db!, { sub: 'submitter-2', roles: ['Submitter'] });
+    const res = await app.request('/api/v1/submissions/sub-1', { method: 'DELETE' });
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({ error: 'insufficient_permissions' });
+  });
+
+  it('rejects terminal submissions', async () => {
+    seedSubmission(db!, {
+      id: 'sub-1',
+      submittedBy: 'submitter-1',
+      status: {
+        phase: 'published',
+        publishedAt: '2026-05-30T00:00:00.000Z',
+        mergeCommit: 'abc123',
+      },
+    });
+
+    const app = makeDbBackedApp(db!, { sub: 'submitter-1', roles: ['Submitter'] });
+    const res = await app.request('/api/v1/submissions/sub-1', { method: 'DELETE' });
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({ error: 'submission_not_in_expected_state' });
+  });
+});
+
 function insertRowToSubmission(row: SubmissionInsertRow): Submission {
   const manifest = JSON.parse(row.manifestJson) as SkillManifest;
   const status = JSON.parse(row.statusJson) as SubmissionStatus;
@@ -268,4 +361,58 @@ async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as unknown as Uint8Array));
   }
   return Buffer.concat(chunks);
+}
+
+function makeDbBackedApp(db: Database.Database, identity: Identity) {
+  const app = new Hono<{ Variables: AuthVariables }>();
+  app.use('*', async (c, next) => {
+    c.set('identity', identity);
+    await next();
+  });
+  loadKeyRing();
+  app.route('/api/v1/submissions', createSubmissionRoutes({ db }));
+  return app;
+}
+
+function seedSubmission(
+  db: Database.Database,
+  input: { id: string; submittedBy: string; status: SubmissionStatus },
+): void {
+  const manifest: SkillManifest = {
+    name: 'demo-skill',
+    version: '1.0.0',
+    author: 'alice',
+    description: 'A demo skill for integration testing',
+    tags: ['demo'],
+    kind: 'skill',
+    permissions: {
+      network: false,
+      filesystem: 'none',
+      subprocess: false,
+      environment: [],
+    },
+  };
+  db.prepare(
+    `
+      INSERT INTO submissions (
+        id,
+        manifest_json,
+        classification,
+        content_hash,
+        submitted_at,
+        submitted_by,
+        status_phase,
+        status_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+  ).run(
+    input.id,
+    JSON.stringify(manifest),
+    'md-only',
+    `${input.id}-hash`,
+    '2026-05-30T00:00:00.000Z',
+    input.submittedBy,
+    input.status.phase,
+    JSON.stringify(input.status),
+  );
 }

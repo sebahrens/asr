@@ -11,6 +11,8 @@ import { healthRoutes } from './http/health.js';
 import { registryIndexHandler, type RegistryIndexRouteOptions } from './http/registryIndex.js';
 import { createRegistryRoutes, getDefaultRegistryDb, type RegistryRouteOptions } from './http/registry.js';
 import { createSubmissionRoutes, type SubmissionRouteOptions } from './http/submissions.js';
+import { createVersionRoutes, type VersionRouteOptions } from './http/version.js';
+import { createWebhookRoutes, type WebhookRouteOptions } from './http/webhooks.js';
 import { createWorkflowRoutes, type WorkflowRouteOptions } from './http/workflow.js';
 import { createYankRoutes, type YankRouteOptions } from './http/yank.js';
 import { regenerateRegistryIndex } from './jobs/registryIndex.js';
@@ -28,6 +30,8 @@ export interface CreateAppOptions {
   audit?: AuditRouteOptions;
   yank?: YankRouteOptions;
   registryIndex?: RegistryIndexRouteOptions;
+  version?: VersionRouteOptions;
+  webhooks?: WebhookRouteOptions;
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -81,6 +85,12 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use('*', devCorsMiddleware);
   app.route('/health', healthRoutes);
   app.route('/api/health', healthRoutes);
+  app.route('/version', createVersionRoutes(options.version));
+  app.route('/api/v1/version', createVersionRoutes(options.version));
+  app.route('/webhooks', createWebhookRoutes({
+    ...options.webhooks,
+    db: options.webhooks?.db ?? options.submissions?.db ?? options.workflow?.db,
+  }));
   app.get('/registry.json', (c) => registryIndexHandler(c, registryIndexOptions));
   app.get('/api/v1/registry.json', (c) => registryIndexHandler(c, registryIndexOptions));
   app.route('/api/v1/skills', createRegistryRoutes(options.registry));
