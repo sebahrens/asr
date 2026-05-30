@@ -229,6 +229,16 @@ describe('installSkill', () => {
     expect(result.version).toBe('1.2.3');
   });
 
+  it('throws a clear error when no latest non-yanked version is available', async () => {
+    getSkillDetail.mockResolvedValueOnce(detail({ latestVersion: undefined }));
+
+    await expect(installSkill('acme/demo')).rejects.toThrow(
+      /No non-yanked version available for acme\/demo/,
+    );
+    expect(resolveDownload).not.toHaveBeenCalled();
+    expect(downloadAndVerify).not.toHaveBeenCalled();
+  });
+
   it('throws when requested version is missing from detail.versions', async () => {
     getSkillDetail.mockResolvedValueOnce(detail());
 
@@ -498,6 +508,7 @@ describe('updateSkill', () => {
   let tempDir: string;
   let cwdSpy: ReturnType<typeof vi.spyOn>;
   let logSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
 
   async function seedLockfile(skills: Record<string, { source: string; version?: string }>) {
     const agentDir = join(tempDir, '.agent');
@@ -526,6 +537,7 @@ describe('updateSkill', () => {
     await mkdir(join(tempDir, '.claude'), { recursive: true });
     cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     getSkillDetail.mockReset();
     resolveDownload.mockReset();
     downloadAndVerify.mockReset();
@@ -538,6 +550,7 @@ describe('updateSkill', () => {
   afterEach(async () => {
     cwdSpy.mockRestore();
     logSpy.mockRestore();
+    errorSpy.mockRestore();
     await rm(tempDir, { recursive: true, force: true });
   });
 
@@ -586,6 +599,26 @@ describe('updateSkill', () => {
     expect(extractZip).not.toHaveBeenCalled();
   });
 
+  it('treats missing latestVersion as no non-yanked update available', async () => {
+    await seedLockfile({ demo: { source: 'registry:acme/demo', version: '1.2.3' } });
+
+    getSkillDetail.mockResolvedValueOnce(detail({ latestVersion: undefined }));
+
+    const results = await updateSkill('acme/demo');
+
+    expect(results[0]).toMatchObject({
+      owner: 'acme',
+      name: 'demo',
+      oldVersion: '1.2.3',
+      newVersion: '1.2.3',
+      upToDate: true,
+    });
+    expect(logSpy).toHaveBeenCalledWith('acme/demo: no non-yanked update available');
+    expect(resolveDownload).not.toHaveBeenCalled();
+    expect(downloadAndVerify).not.toHaveBeenCalled();
+    expect(extractZip).not.toHaveBeenCalled();
+  });
+
   it('iterates every registry-sourced lockfile entry when no slug is given', async () => {
     await seedLockfile({
       demo: { source: 'registry:acme/demo', version: '1.0.0' },
@@ -625,6 +658,60 @@ describe('updateSkill', () => {
     expect(results[0].upToDate).toBe(false);
     expect(results[1].upToDate).toBe(true);
     expect(logSpy).toHaveBeenCalledWith('acme/demo: 1.0.0 -> 1.2.3');
+    expect(logSpy).toHaveBeenCalledWith('acme/other: up to date');
+  });
+
+  it('continues updating later skills when one registry skill fails', async () => {
+    await seedLockfile({
+      demo: { source: 'registry:acme/demo', version: '1.0.0' },
+      other: { source: 'registry:acme/other', version: '2.0.0' },
+    });
+
+    getSkillDetail.mockImplementation(async (_owner: string, name: string) => {
+      if (name === 'demo') throw new Error('registry unavailable');
+      return detail({
+        owner: 'acme',
+        name: 'other',
+        latestVersion: '2.0.0',
+        versions: [
+          {
+            owner: 'acme',
+            name: 'other',
+            version: '2.0.0',
+            contentHash: 'sha256:other',
+            publishedAt: '2026-05-01T00:00:00Z',
+            publishedBy: 'u',
+            approvedBy: null,
+            prNumber: 2,
+            mergeCommit: 'm',
+            yanked: false,
+            riskAssessment: 'low',
+          },
+        ],
+      });
+    });
+
+    const results = await updateSkill();
+
+    expect(results).toHaveLength(2);
+    expect(results[0]).toMatchObject({
+      owner: 'acme',
+      name: 'demo',
+      oldVersion: '1.0.0',
+      newVersion: '1.0.0',
+      upToDate: false,
+      error: 'registry unavailable',
+    });
+    expect(results[1]).toMatchObject({
+      owner: 'acme',
+      name: 'other',
+      oldVersion: '2.0.0',
+      newVersion: '2.0.0',
+      upToDate: true,
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      'acme/demo: update failed: registry unavailable',
+    );
     expect(logSpy).toHaveBeenCalledWith('acme/other: up to date');
   });
 

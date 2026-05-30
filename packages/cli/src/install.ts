@@ -156,6 +156,9 @@ export async function installSkill(
 
   const detail = await getSkillDetail(owner, name, fetchOpts);
   const targetVersion = requestedVersion ?? detail.latestVersion;
+  if (!targetVersion) {
+    throw new Error(`No non-yanked version available for ${owner}/${name}`);
+  }
   const versionEntry = detail.versions?.find((v) => v.version === targetVersion);
   if (!versionEntry) {
     throw new Error(`Version ${targetVersion} not found for ${owner}/${name}`);
@@ -220,6 +223,7 @@ export interface UpdateSkillResult {
   oldVersion: string;
   newVersion: string;
   upToDate: boolean;
+  error?: string;
   installResult?: InstallSkillResult;
 }
 
@@ -258,31 +262,56 @@ export async function updateSkill(
   const results: UpdateSkillResult[] = [];
 
   for (const t of targets) {
-    const detail = await getSkillDetail(t.owner, t.name, fetchOpts);
-    const latest = detail.latestVersion;
+    try {
+      const detail = await getSkillDetail(t.owner, t.name, fetchOpts);
+      const latest = detail.latestVersion;
 
-    if (latest === t.currentVersion) {
-      console.log(`${t.owner}/${t.name}: up to date`);
+      if (!latest) {
+        console.log(`${t.owner}/${t.name}: no non-yanked update available`);
+        results.push({
+          owner: t.owner,
+          name: t.name,
+          oldVersion: t.currentVersion,
+          newVersion: t.currentVersion,
+          upToDate: true,
+        });
+        continue;
+      }
+
+      if (latest === t.currentVersion) {
+        console.log(`${t.owner}/${t.name}: up to date`);
+        results.push({
+          owner: t.owner,
+          name: t.name,
+          oldVersion: t.currentVersion,
+          newVersion: latest,
+          upToDate: true,
+        });
+        continue;
+      }
+
+      const installResult = await installSkill(`${t.owner}/${t.name}`, opts);
+      console.log(`${t.owner}/${t.name}: ${t.currentVersion} -> ${installResult.version}`);
       results.push({
         owner: t.owner,
         name: t.name,
         oldVersion: t.currentVersion,
-        newVersion: latest,
-        upToDate: true,
+        newVersion: installResult.version,
+        upToDate: false,
+        installResult,
       });
-      continue;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`${t.owner}/${t.name}: update failed: ${message}`);
+      results.push({
+        owner: t.owner,
+        name: t.name,
+        oldVersion: t.currentVersion,
+        newVersion: t.currentVersion,
+        upToDate: false,
+        error: message,
+      });
     }
-
-    const installResult = await installSkill(`${t.owner}/${t.name}`, opts);
-    console.log(`${t.owner}/${t.name}: ${t.currentVersion} -> ${installResult.version}`);
-    results.push({
-      owner: t.owner,
-      name: t.name,
-      oldVersion: t.currentVersion,
-      newVersion: installResult.version,
-      upToDate: false,
-      installResult,
-    });
   }
 
   return results;
