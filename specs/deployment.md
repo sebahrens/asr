@@ -77,6 +77,13 @@ volumes:
   api-data:
 ```
 
+The web image defaults to the PwC brand. To build the neutral brand locally,
+set `VITE_BRAND=neutral` when building or starting the compose stack:
+
+```bash
+VITE_BRAND=neutral docker compose -f deploy/docker/docker-compose.yml up -d --build web
+```
+
 ### First-time setup (dev)
 
 ```bash
