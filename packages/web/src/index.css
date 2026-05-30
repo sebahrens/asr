@@ -3485,6 +3485,64 @@ main {
     grid-template-columns: 1fr;
   }
 
+  .review-queue {
+    padding: 24px 12px 56px;
+  }
+
+  .review-queue-header {
+    padding: 20px;
+  }
+
+  .review-queue-table {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    display: block;
+    overflow: visible;
+    width: 100%;
+  }
+
+  .review-queue-table thead {
+    display: none;
+  }
+
+  .review-queue-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .review-queue-table tbody tr {
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm);
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .review-queue-table tbody tr:hover {
+    background: var(--bg-card);
+  }
+
+  .review-queue-table tbody th,
+  .review-queue-table tbody td {
+    border-bottom: 0;
+    display: block;
+    min-width: 0;
+    padding: 0;
+  }
+
+  .review-queue-table tbody th a,
+  .review-queue-table tbody td {
+    overflow-wrap: anywhere;
+  }
+
+  .review-queue-actions {
+    justify-content: stretch;
+  }
+
   .publish-layout {
     grid-template-columns: 1fr;
   }
