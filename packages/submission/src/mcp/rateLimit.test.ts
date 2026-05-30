@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { MCP_ERROR } from './errors.js';
-import { createRateLimiter, rateLimitedError, toolClass } from './rateLimit.js';
+import {
+  createRateLimiter,
+  MAX_RATE_LIMIT_BUCKETS,
+  rateLimitedError,
+  toolClass,
+} from './rateLimit.js';
 
 describe('toolClass', () => {
   it('classifies review_decision as mutating', () => {
@@ -92,6 +97,31 @@ describe('createRateLimiter', () => {
     if (!result.ok) {
       expect(result.retryAfterSeconds).toBe(30);
     }
+  });
+
+  it('caps bucket growth when many distinct principals churn in one window', () => {
+    let now = 0;
+    const limiter = createRateLimiter(() => now);
+
+    for (let i = 0; i < 10_000; i++) {
+      expect(limiter.check(`principal-${i}`, 'registry_search')).toEqual({ ok: true });
+    }
+
+    expect(limiter.bucketCount()).toBeLessThanOrEqual(MAX_RATE_LIMIT_BUCKETS);
+  });
+
+  it('sweeps stale buckets after their window expires', () => {
+    let now = 0;
+    const limiter = createRateLimiter(() => now);
+
+    limiter.check('p1', 'registry_search');
+    limiter.check('p2', 'registry_search');
+    expect(limiter.bucketCount()).toBe(2);
+
+    now = 60_000;
+    limiter.check('p3', 'registry_search');
+
+    expect(limiter.bucketCount()).toBe(1);
   });
 });
 

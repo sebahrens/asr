@@ -8,6 +8,7 @@ const LIMITS: Record<ToolClass, number> = {
 };
 
 const WINDOW_MS = 60_000;
+export const MAX_RATE_LIMIT_BUCKETS = 4_096;
 
 export function toolClass(tool: string): ToolClass {
   return tool === 'review_decision' ? 'mutating' : 'read';
@@ -24,7 +25,24 @@ interface BucketState {
   count: number;
 }
 
-export function createRateLimiter(now: () => number = () => Date.now()): RateLimiter {
+function sweepStaleBuckets(buckets: Map<string, BucketState>, now: number): void {
+  for (const [key, bucket] of buckets) {
+    if (bucket.windowStart + WINDOW_MS <= now) {
+      buckets.delete(key);
+    }
+  }
+}
+
+function deleteOldestBucket(buckets: Map<string, BucketState>): void {
+  const oldestKey = buckets.keys().next().value as string | undefined;
+  if (oldestKey !== undefined) {
+    buckets.delete(oldestKey);
+  }
+}
+
+export function createRateLimiter(
+  now: () => number = () => Date.now(),
+): RateLimiter & { bucketCount(): number } {
   const buckets = new Map<string, BucketState>();
 
   return {
@@ -32,11 +50,18 @@ export function createRateLimiter(now: () => number = () => Date.now()): RateLim
       const klass = toolClass(tool);
       const limit = LIMITS[klass];
       const t = now();
+      sweepStaleBuckets(buckets, t);
       const windowStart = Math.floor(t / WINDOW_MS) * WINDOW_MS;
       const key = `${principalSub}|${klass}`;
       let bucket = buckets.get(key);
       if (!bucket || bucket.windowStart !== windowStart) {
         bucket = { windowStart, count: 0 };
+        if (!buckets.has(key) && buckets.size >= MAX_RATE_LIMIT_BUCKETS) {
+          deleteOldestBucket(buckets);
+        }
+        buckets.set(key, bucket);
+      } else {
+        buckets.delete(key);
         buckets.set(key, bucket);
       }
       if (bucket.count >= limit) {
@@ -48,6 +73,9 @@ export function createRateLimiter(now: () => number = () => Date.now()): RateLim
       }
       bucket.count += 1;
       return { ok: true };
+    },
+    bucketCount() {
+      return buckets.size;
     },
   };
 }
