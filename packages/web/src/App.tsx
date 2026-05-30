@@ -9,6 +9,7 @@ import { parseSkillMd, type SkillDetail, type SkillSummary, type VersionDiff } f
 import { SessionProvider, type Session } from './auth/SessionProvider';
 import { useSession } from './auth/useSession';
 import { BrandLogo } from './branding/BrandLogo';
+import { PRODUCT_NAME } from './product';
 
 export { SessionProvider } from './auth/SessionProvider';
 
@@ -779,7 +780,7 @@ function PublishSkill() {
       <div className="brand-stripe" />
       <header>
         <div className="container app-topbar">
-          <a className="logo" href="/" aria-label="asr home">
+          <a className="logo" href="/" aria-label={`${PRODUCT_NAME} home`}>
             <BrandLogo />
           </a>
           <PrimaryNav current="publish" />
@@ -1257,7 +1258,7 @@ export function BrowseRegistry() {
       <main>
         <div className="container">
           <div className="hero">
-            <h1>asr</h1>
+            <h1>{PRODUCT_NAME}</h1>
             <p>
               Browse, search and install skills for AI coding agents.
               Works with Claude Code, Copilot, and other AI agents.
@@ -1466,7 +1467,7 @@ function SkillNotFoundState({
       <div className="brand-stripe" />
       <header>
         <div className="container app-topbar">
-          <a className="logo" href="/" aria-label="asr home">
+          <a className="logo" href="/" aria-label={`${PRODUCT_NAME} home`}>
             <BrandLogo />
           </a>
           <PrimaryNav current="browse" />
@@ -1505,7 +1506,7 @@ function AccessDeniedState({
       <div className="brand-stripe" />
       <header>
         <div className="container app-topbar">
-          <a className="logo" href="/" aria-label="asr home">
+          <a className="logo" href="/" aria-label={`${PRODUCT_NAME} home`}>
             <BrandLogo />
           </a>
           <PrimaryNav current={current} />
@@ -1565,7 +1566,7 @@ function SkillVersionDiffPage({ owner, name, version }: { owner: string; name: s
         <div className="brand-stripe" />
         <header>
           <div className="container app-topbar">
-            <a className="logo" href="/" aria-label="asr home">
+            <a className="logo" href="/" aria-label={`${PRODUCT_NAME} home`}>
               <BrandLogo />
             </a>
             <PrimaryNav current="browse" />
@@ -1617,7 +1618,7 @@ function SkillVersionDiffPage({ owner, name, version }: { owner: string; name: s
       <div className="brand-stripe" />
       <header>
         <div className="container app-topbar">
-          <a className="logo" href="/" aria-label="asr home">
+          <a className="logo" href="/" aria-label={`${PRODUCT_NAME} home`}>
             <BrandLogo />
           </a>
           <PrimaryNav current="browse" />
@@ -1695,7 +1696,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
         <div className="brand-stripe" />
         <header>
           <div className="container app-topbar">
-            <a className="logo" href="/" aria-label="asr home">
+            <a className="logo" href="/" aria-label={`${PRODUCT_NAME} home`}>
               <BrandLogo />
             </a>
             <PrimaryNav current="browse" />
@@ -1765,7 +1766,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
       <div className="brand-stripe" />
       <header>
         <div className="container app-topbar">
-          <a className="logo" href="/" aria-label="asr home">
+          <a className="logo" href="/" aria-label={`${PRODUCT_NAME} home`}>
             <BrandLogo />
           </a>
           <PrimaryNav current="browse" />

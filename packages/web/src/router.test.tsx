@@ -247,7 +247,7 @@ describe('router', () => {
 
     renderRoute('/');
 
-    expect(await screen.findByRole('heading', { level: 1, name: /^asr$/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: /^Agent Skill Repository$/i })).toBeInTheDocument();
     expect(screen.getByRole('status', { name: /development mock auth session/i })).toBeInTheDocument();
   });
 
@@ -267,7 +267,7 @@ describe('router', () => {
   it('keeps the existing browse page on the index route', async () => {
     renderRoute('/');
 
-    expect(await screen.findByRole('heading', { level: 1, name: /^asr$/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: /^Agent Skill Repository$/i })).toBeInTheDocument();
   });
 
   it('shows kind and risk badges on browse skill cards', async () => {
@@ -319,7 +319,7 @@ describe('router', () => {
   it('opens primary navigation from the mobile drawer control', async () => {
     renderRoute('/');
 
-    expect(await screen.findByRole('heading', { level: 1, name: /^asr$/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: /^Agent Skill Repository$/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /open primary navigation/i }));
 
     const mobileNav = screen.getByRole('complementary', { name: /mobile primary navigation/i });

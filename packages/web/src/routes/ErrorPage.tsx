@@ -1,4 +1,6 @@
 import { Link, useSearchParams } from 'react-router-dom';
+import { BrandLogo } from '../branding/BrandLogo';
+import { PRODUCT_NAME } from '../product';
 
 interface ErrorMessage {
   eyebrow: string;
@@ -67,8 +69,8 @@ export function ErrorPage() {
       <div className="brand-stripe" />
       <header>
         <div className="container app-topbar">
-          <Link className="logo" to="/" aria-label="asr home">
-            <img src="/logo.svg" alt="asr" />
+          <Link className="logo" to="/" aria-label={`${PRODUCT_NAME} home`}>
+            <BrandLogo />
           </Link>
         </div>
       </header>
