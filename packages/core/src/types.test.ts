@@ -3,6 +3,7 @@ import type {
   AuditEvent,
   MarketplaceManifest,
   RegistryIndex,
+  ScreeningReport,
   ScanReport,
   ScanVerdict,
   SkillDetail,
@@ -45,6 +46,37 @@ describe('scanning types', () => {
 
     expect(report.verdict).toBe('review_required');
     expect(report.findings).toHaveLength(1);
+  });
+});
+
+describe('LLM content screening types', () => {
+  it('accepts canonical screening reports', () => {
+    const report: ScreeningReport = {
+      submissionId: 'sub_01',
+      contentHash: 'sha256:abc123',
+      provider: 'openai',
+      model: 'gpt-5-mini',
+      contextTokens: 128000,
+      status: 'flagged',
+      truncated: false,
+      startedAt: '2026-05-30T10:00:00.000Z',
+      completedAt: '2026-05-30T10:00:02.500Z',
+      durationMs: 2500,
+      findings: [
+        {
+          category: 'permission',
+          severity: 'high',
+          file: 'SKILL.md',
+          line: 18,
+          declared: 'network: false',
+          observed: "fetch('https://example.com')",
+          message: 'Declared permissions do not match observed network use.',
+        },
+      ],
+    };
+
+    expect(report.provider).toBe('openai');
+    expect(report.findings[0]?.severity).toBe('high');
   });
 });
 

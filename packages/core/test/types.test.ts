@@ -5,6 +5,8 @@ import type {
   MarketplaceManifest,
   Questionnaire,
   RegistryIndex,
+  ScreeningFinding,
+  ScreeningReport,
   ScanFinding,
   ScanReport,
   SkillDetail,
@@ -58,6 +60,30 @@ const report: ScanReport = {
     opengrep: { exitCode: 0, findingCount: 0 },
     veracode: { exitCode: 0, findingCount: 0, skipped: true },
   },
+};
+
+const screeningFinding: ScreeningFinding = {
+  category: 'questionnaire',
+  severity: 'medium',
+  file: 'SKILL.md',
+  line: 24,
+  declared: 'Does not call external services',
+  observed: 'Documents an external API call',
+  message: 'Questionnaire answer does not match the skill description.',
+};
+
+const screeningReport: ScreeningReport = {
+  submissionId: 'sub_01',
+  contentHash: report.contentHash,
+  provider: 'anthropic',
+  model: 'claude-sonnet-4',
+  contextTokens: 200000,
+  status: 'flagged',
+  truncated: false,
+  startedAt: '2026-05-24T10:01:00.000Z',
+  completedAt: '2026-05-24T10:01:02.000Z',
+  durationMs: 2000,
+  findings: [screeningFinding],
 };
 
 const questionnaire: Questionnaire = {
@@ -228,6 +254,7 @@ describe('canonical public types', () => {
     expect(describeStatus(submission.status)).toBe('review_required');
     expect(statuses.map(describeStatus)).toHaveLength(13);
     expect(auditEvent.action).toBe('submission.created');
+    expect(screeningReport.findings[0]?.category).toBe('questionnaire');
     expect(skillDetail.versions[0]?.contentHash).toBe(report.contentHash);
     expect(marketplaceManifest.plugins[0]?.path).toBe('skills/asr/security-reviewer');
   });

@@ -120,6 +120,34 @@ export interface ScanReport {
   signature?: string;
 }
 
+export type ScreeningProviderKind = 'openai' | 'anthropic';
+export type ScreeningCategory = 'permission' | 'questionnaire' | 'description' | 'malicious';
+export type ScreeningStatus = 'clean' | 'flagged' | 'skipped' | 'error';
+
+export interface ScreeningFinding {
+  category: ScreeningCategory;
+  severity: ScanSeverity;
+  file?: string;
+  line?: number;
+  declared?: string;
+  observed?: string;
+  message: string;
+}
+
+export interface ScreeningReport {
+  submissionId: string;
+  contentHash: string;
+  provider: ScreeningProviderKind;
+  model: string;
+  contextTokens: number;
+  status: ScreeningStatus;
+  truncated: boolean;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  findings: ScreeningFinding[];
+}
+
 export type SkillClassification = 'md-only' | 'code-containing';
 
 export interface Submission {
