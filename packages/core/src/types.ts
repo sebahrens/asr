@@ -121,6 +121,7 @@ export interface ScanReport {
 }
 
 export type ScreeningProviderKind = 'openai' | 'anthropic';
+export type ScreeningReportProvider = ScreeningProviderKind | 'none';
 export type ScreeningCategory = 'permission' | 'questionnaire' | 'description' | 'malicious';
 export type ScreeningStatus = 'clean' | 'flagged' | 'skipped' | 'error';
 
@@ -137,7 +138,7 @@ export interface ScreeningFinding {
 export interface ScreeningReport {
   submissionId: string;
   contentHash: string;
-  provider: ScreeningProviderKind;
+  provider: ScreeningReportProvider;
   model: string;
   contextTokens: number;
   status: ScreeningStatus;

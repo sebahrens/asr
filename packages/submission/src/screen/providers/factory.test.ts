@@ -10,6 +10,7 @@ const baseEnv = {
 function fakeProvider(name: ScreeningProvider['name'], contextTokens: number): ScreeningProvider {
   return {
     name,
+    model: `${name}-model`,
     contextTokens,
     complete: vi.fn(async () => []),
   };

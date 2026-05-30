@@ -2,6 +2,7 @@ import type { ScreeningFinding, ScreeningProviderKind } from '@asr/core';
 
 export interface ScreeningProvider {
   name: ScreeningProviderKind;
+  model: string;
   contextTokens: number;
   complete(system: string, userContent: string): Promise<ScreeningFinding[]>;
 }
