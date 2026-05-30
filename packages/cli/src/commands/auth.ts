@@ -111,7 +111,8 @@ export function registerWhoami(program: Command): void {
     .command('whoami')
     .description('Show signed-in identity and roles')
     .action(async () => {
-      if (process.env.ASR_URL && isAuthDisabled(process.env.ASR_URL)) {
+      const baseUrl = getApiBaseUrl();
+      if (isAuthDisabled(baseUrl)) {
         console.log(pc.yellow('Not signed in'));
         return;
       }

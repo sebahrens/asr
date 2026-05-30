@@ -12,6 +12,17 @@ import {
 } from '../auth/token-store.js';
 import { registerLogin, registerLogout, registerWhoami } from '../commands/auth.js';
 
+const state = vi.hoisted(() => ({
+  config: { defaultTarget: 'project' as const } as {
+    defaultTarget: 'project';
+    registry?: string;
+  },
+}));
+
+vi.mock('../config.js', () => ({
+  getConfig: vi.fn(() => state.config),
+}));
+
 function testProgram(options: { fetch?: FetchLike } = {}): Command {
   const program = new Command();
   program.name('asr');
@@ -44,6 +55,7 @@ describe('auth commands', () => {
     configHome = await mkdtemp(join(tmpdir(), 'asr-auth-commands-'));
     process.env.XDG_CONFIG_HOME = configHome;
     delete process.env.ASR_URL;
+    state.config = { defaultTarget: 'project' };
     __setKeytarImporterForTest(async () => {
       throw new Error('keytar unavailable');
     });
@@ -120,6 +132,7 @@ describe('auth commands', () => {
   });
 
   it('prints cached identity and roles for whoami', async () => {
+    process.env.ASR_URL = 'https://registry.example.com';
     const tokens: StoredTokens = {
       accessToken: accessToken({
         preferred_username: 'user@company.com',
@@ -139,6 +152,7 @@ describe('auth commands', () => {
   });
 
   it('clears cached tokens on logout so whoami reports not signed in', async () => {
+    process.env.ASR_URL = 'https://registry.example.com';
     await storeTokens({
       accessToken: accessToken({ preferred_username: 'user@company.com', roles: ['Submitter'] }),
       expiresAt: 1_800_000_000,
@@ -154,6 +168,19 @@ describe('auth commands', () => {
 
   it('reports not signed in when auth is disabled for a non-HTTPS ASR_URL', async () => {
     process.env.ASR_URL = 'http://localhost:9999';
+    await storeTokens({
+      accessToken: accessToken({ preferred_username: 'user@company.com', roles: ['Submitter'] }),
+      expiresAt: 1_800_000_000,
+      account: 'user@company.com',
+    });
+
+    await testProgram().parseAsync(['node', 'asr', 'whoami']);
+
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('Not signed in'));
+  });
+
+  it('reports not signed in when auth is disabled for the configured registry', async () => {
+    state.config = { defaultTarget: 'project', registry: 'http://localhost:9999' };
     await storeTokens({
       accessToken: accessToken({ preferred_username: 'user@company.com', roles: ['Submitter'] }),
       expiresAt: 1_800_000_000,
