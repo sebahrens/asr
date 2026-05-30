@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const files = execFileSync('git', ['ls-files', 'packages/web/e2e/*.spec.ts'], {
   encoding: 'utf8',
@@ -10,8 +10,14 @@ const files = execFileSync('git', ['ls-files', 'packages/web/e2e/*.spec.ts'], {
   .filter(Boolean);
 
 const failures = [];
+let checked = 0;
 
 for (const file of files) {
+  if (!existsSync(file)) {
+    continue;
+  }
+
+  checked += 1;
   const source = readFileSync(file, 'utf8');
 
   if (!source.includes('expect(')) {
@@ -31,4 +37,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`E2E spec lint passed (${files.length} specs checked).`);
+console.log(`E2E spec lint passed (${checked} specs checked).`);
