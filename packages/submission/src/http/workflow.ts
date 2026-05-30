@@ -26,6 +26,8 @@ import { releasePendingVersion } from '../workflow/pendingVersionLock.js';
 type WorkflowNodeId = 'questionnaire' | 'confirmation' | 'review';
 
 const terminalWorkflowPhases = new Set<string>(['published', 'rejected', 'error']);
+const DEFAULT_SUBMISSIONS_PAGE_SIZE = 50;
+const MAX_SUBMISSIONS_PAGE_SIZE = 100;
 
 export interface WorkflowSubmissionRecord {
   id: string;
@@ -96,12 +98,16 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
     const identity = c.get('identity');
     const records = store.list ? await store.list() : [];
     const requestedStatus = c.req.query('status');
-    const submissions = records
+    const page = parseSubmissionsPage(c.req.query('limit'), c.req.query('cursor'));
+    const matchingSubmissions = records
       .filter((record) => canView(record, identity))
       .map(toReviewSubmission)
       .filter((submission) => requestedStatus !== 'pending' || submission.status === 'pending review');
+    const submissions = matchingSubmissions.slice(page.offset, page.offset + page.limit);
+    const nextOffset = page.offset + submissions.length;
+    const nextCursor = nextOffset < matchingSubmissions.length ? String(nextOffset) : null;
 
-    return c.json({ submissions });
+    return c.json({ submissions, nextCursor });
   });
 
   routes.get('/:id', requireRole('Submitter', 'Compliance', 'Admin'), async (c) => {
@@ -641,6 +647,21 @@ function currentWorkflowPhase(record: WorkflowSubmissionRecord): string | undefi
 function isTerminalWorkflowRecord(record: WorkflowSubmissionRecord): boolean {
   const phase = currentWorkflowPhase(record);
   return phase !== undefined && terminalWorkflowPhases.has(phase);
+}
+
+function parseSubmissionsPage(
+  limitValue: string | undefined,
+  cursorValue: string | undefined,
+): { limit: number; offset: number } {
+  const limit = Number(limitValue);
+  const offset = Number(cursorValue);
+
+  return {
+    limit: Number.isInteger(limit) && limit > 0
+      ? Math.min(limit, MAX_SUBMISSIONS_PAGE_SIZE)
+      : DEFAULT_SUBMISSIONS_PAGE_SIZE,
+    offset: Number.isInteger(offset) && offset > 0 ? offset : 0,
+  };
 }
 
 function terminalStateError(c: Parameters<typeof apiError>[0], record: WorkflowSubmissionRecord): Response {

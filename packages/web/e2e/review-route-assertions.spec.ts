@@ -24,7 +24,7 @@ function jsonResponse(route: Route, body: unknown, status = 200) {
 
 test.describe('/review queue is styled and renders rows for Compliance', () => {
   test('table.review-queue-table has non-default border-collapse + padding and at least one row', async ({ page }) => {
-    await page.route('**/api/v1/submissions?status=pending', (route) =>
+    await page.route('**/api/v1/submissions?*', (route) =>
       jsonResponse(route, {
         submissions: [
           { id: 'sub-asr-tpwa-1', skillName: 'asr-tpwa-fixture', version: '1.0.0' },

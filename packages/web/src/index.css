@@ -1700,6 +1700,18 @@ main {
   margin: 0;
 }
 
+.review-queue-results {
+  display: grid;
+  gap: 14px;
+}
+
+.review-queue-viewport {
+  border-radius: 8px;
+  max-height: 560px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
 .review-queue-table {
   width: 100%;
   background: var(--bg-card);
@@ -1740,6 +1752,16 @@ main {
 
 .review-queue-table tbody tr:hover {
   background: var(--bg-hover);
+}
+
+.review-queue-spacer-row,
+.review-queue-spacer-row:hover {
+  background: transparent;
+}
+
+.review-queue-spacer-row td {
+  border-bottom: 0;
+  padding: 0;
 }
 
 .review-queue-table tbody th a {
@@ -1815,6 +1837,11 @@ main {
   font-weight: 600;
   margin: 0;
   padding: 16px 24px;
+}
+
+.review-queue-load-more {
+  justify-self: center;
+  min-width: 148px;
 }
 
 .submission-row {
@@ -3493,6 +3520,10 @@ main {
     padding: 20px;
   }
 
+  .review-queue-viewport {
+    max-height: 70vh;
+  }
+
   .review-queue-table {
     background: transparent;
     border: 0;
@@ -3524,6 +3555,14 @@ main {
 
   .review-queue-table tbody tr:hover {
     background: var(--bg-card);
+  }
+
+  .review-queue-table tbody .review-queue-spacer-row,
+  .review-queue-table tbody .review-queue-spacer-row:hover {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
   }
 
   .review-queue-table tbody th,

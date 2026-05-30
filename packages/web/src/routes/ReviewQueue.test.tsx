@@ -67,7 +67,54 @@ describe('ReviewQueue', () => {
     renderQueue();
 
     await screen.findByText('No submissions awaiting review');
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/submissions?status=pending');
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/submissions?status=pending&limit=50');
+  });
+
+  it('keeps a large queue to a bounded rendered row window', async () => {
+    const submissions: PendingSubmissionRow[] = Array.from({ length: 1000 }, (_, index) =>
+      makeSubmission({
+        id: `sub-${index}`,
+        skillName: `skill-${index}`,
+        version: '1.0.0',
+      }),
+    );
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ submissions }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )));
+
+    renderQueue();
+
+    expect(await screen.findByRole('link', { name: 'skill-0' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'skill-999' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('row').length).toBeLessThan(30);
+  });
+
+  it('loads the next pending submissions page when one is available', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const submissions = url.includes('cursor=50')
+        ? [makeSubmission({ id: 'sub-B', skillName: 'release-notes', version: '0.8.2' })]
+        : [makeSubmission({ id: 'sub-A', skillName: 'secure-code-review', version: '1.4.0' })];
+
+      return new Response(
+        JSON.stringify({
+          submissions,
+          nextCursor: url.includes('cursor=50') ? null : '50',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderQueue();
+
+    expect(await screen.findByRole('link', { name: 'secure-code-review' })).toBeInTheDocument();
+    screen.getByRole('button', { name: /load more/i }).click();
+
+    expect(await screen.findByRole('link', { name: 'release-notes' })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/submissions?status=pending&limit=50&cursor=50');
   });
 
   it('renders status, risk, and finding metadata when the API includes it', async () => {

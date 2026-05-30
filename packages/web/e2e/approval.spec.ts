@@ -94,7 +94,7 @@ test.describe('Approval decision SoD and queue removal', () => {
       ],
     };
 
-    await page.route('**/api/v1/submissions?status=pending', (route) => jsonResponse(route, pending));
+    await page.route('**/api/v1/submissions?*', (route) => jsonResponse(route, pending));
     await page.route('**/api/v1/submissions/sub-e2e-1', (route) => jsonResponse(route, submission));
     await page.route('**/api/v1/submissions/sub-e2e-1/diff', (route) => jsonResponse(route, versionDiff));
     await page.route('**/api/v1/submissions/sub-e2e-1/scan', (route) => jsonResponse(route, scanReport));
@@ -112,7 +112,7 @@ test.describe('Approval decision SoD and queue removal', () => {
     const submission = buildSubmission(OTHER_SUBMITTER_SUB);
     let approveCalled = false;
 
-    await page.route('**/api/v1/submissions?status=pending', (route) => {
+    await page.route('**/api/v1/submissions?*', (route) => {
       const submissions: PendingRow[] = approveCalled
         ? []
         : [{ id: submission.id, skillName: submission.manifest.name, version: submission.manifest.version }];

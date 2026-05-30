@@ -131,6 +131,52 @@ describe('app', () => {
     });
   });
 
+  it('paginates pending submissions for the review dashboard', async () => {
+    const store = new TestWorkflowStore();
+    const dependencies = makeDependencies(new FakeForgejoClient(), makeScanReport('pass'));
+    const submissionApp = createApp({ workflow: { store, dependencies, now: fixedNow } });
+
+    for (const id of ['sub-1', 'sub-2', 'sub-3']) {
+      const context = makeContext();
+      const manifest = {
+        ...context.manifest,
+        name: `demo-skill-${id}`,
+      };
+      await store.save({
+        id,
+        submittedBy: 'submitter-1',
+        serializedContext: '{}',
+        context: {
+          ...context,
+          submissionId: id,
+          manifest,
+          status: 'compliance-review',
+          scanReport: makeScanReport('review_required'),
+          submission: {
+            ...context.submission,
+            id,
+            manifest,
+          },
+        },
+      });
+    }
+
+    vi.stubEnv('MOCK_USER_SUB', 'reviewer-1');
+    vi.stubEnv('MOCK_USER_ROLES', 'Compliance');
+    const first = await submissionApp.request('/api/v1/submissions?status=pending&limit=2');
+    const firstBody = await first.json() as { submissions: Array<{ id: string }>; nextCursor: string | null };
+
+    expect(first.status).toBe(200);
+    expect(firstBody.submissions.map((submission) => submission.id)).toEqual(['sub-1', 'sub-2']);
+    expect(firstBody.nextCursor).toBe('2');
+
+    const second = await submissionApp.request('/api/v1/submissions?status=pending&limit=2&cursor=2');
+    const secondBody = await second.json() as { submissions: Array<{ id: string }>; nextCursor: string | null };
+
+    expect(secondBody.submissions.map((submission) => submission.id)).toEqual(['sub-3']);
+    expect(secondBody.nextCursor).toBeNull();
+  });
+
   it('seeds the mock-development API with pending review submissions for the dashboard', async () => {
     vi.stubEnv('MOCK_USER_SUB', 'reviewer-1');
     vi.stubEnv('MOCK_USER_ROLES', 'Compliance');

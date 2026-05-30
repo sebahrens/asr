@@ -1,6 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState, type UIEvent } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiUrl } from '../api';
+
+const REVIEW_QUEUE_PAGE_SIZE = 50;
+const REVIEW_QUEUE_ROW_HEIGHT = 82;
+const REVIEW_QUEUE_VIEWPORT_HEIGHT = 560;
+const REVIEW_QUEUE_OVERSCAN = 6;
 
 export interface PendingSubmissionRow {
   id: string;
@@ -14,23 +20,62 @@ export interface PendingSubmissionRow {
 
 interface PendingSubmissionsResponse {
   submissions?: PendingSubmissionRow[];
+  nextCursor?: string | null;
+  nextOffset?: number | null;
 }
 
-async function fetchPendingSubmissions(): Promise<PendingSubmissionRow[]> {
-  const res = await fetch(apiUrl('/api/v1/submissions?status=pending'));
+interface PendingSubmissionsPage {
+  submissions: PendingSubmissionRow[];
+  nextCursor: string | null;
+}
+
+async function fetchPendingSubmissionsPage({
+  pageParam,
+}: {
+  pageParam: string | null;
+}): Promise<PendingSubmissionsPage> {
+  const params = new URLSearchParams({
+    status: 'pending',
+    limit: String(REVIEW_QUEUE_PAGE_SIZE),
+  });
+  if (pageParam) {
+    params.set('cursor', pageParam);
+  }
+
+  const res = await fetch(apiUrl(`/api/v1/submissions?${params.toString()}`));
   if (!res.ok) {
     throw new Error(`Pending submissions request failed with ${res.status}`);
   }
 
   const body = (await res.json()) as PendingSubmissionsResponse;
-  return Array.isArray(body.submissions) ? body.submissions : [];
+  const submissions = Array.isArray(body.submissions) ? body.submissions : [];
+  const nextCursor = body.nextCursor ?? (
+    typeof body.nextOffset === 'number' ? String(body.nextOffset) : null
+  );
+
+  return { submissions, nextCursor };
 }
 
 export function ReviewQueue() {
-  const { data, isLoading, isError } = useQuery({
+  const [scrollTop, setScrollTop] = useState(0);
+  const { data, isLoading, isError, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['submissions', 'pending'],
-    queryFn: fetchPendingSubmissions,
+    queryFn: ({ pageParam }) => fetchPendingSubmissionsPage({ pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
+  const submissions = useMemo(
+    () => data?.pages.flatMap((page) => page.submissions) ?? [],
+    [data],
+  );
+  const virtualRows = useMemo(
+    () => getVirtualReviewRows(submissions, scrollTop),
+    [scrollTop, submissions],
+  );
+
+  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
+    setScrollTop(event.currentTarget.scrollTop);
+  };
 
   return (
     <main className="review-queue">
@@ -53,71 +98,119 @@ export function ReviewQueue() {
         <p className="review-queue-error" role="alert">
           Unable to load pending submissions.
         </p>
-      ) : (data ?? []).length === 0 ? (
+      ) : submissions.length === 0 ? (
         <p className="empty-review-queue" role="status">
           No submissions awaiting review
         </p>
       ) : (
-        <table className="review-queue-table">
-          <thead>
-            <tr>
-              <th scope="col">Skill</th>
-              <th scope="col">Version</th>
-              <th scope="col">Status</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(data ?? []).map((submission) => {
-              const status = formatSubmissionStatus(submission.status);
-              const risk = submission.riskAssessment ?? submission.risk;
-
-              return (
-                <tr key={submission.id}>
-                  <th scope="row">
-                    <div className="review-queue-skill-cell">
-                      <Link to={`/review/${submission.id}`}>
-                        {submission.skillName}
-                      </Link>
-                      {risk ? (
-                        <span className={`risk-pill risk-${risk}`}>
-                          {risk} risk
-                        </span>
-                      ) : null}
-                    </div>
-                  </th>
-                  <td>{submission.version}</td>
-                  <td>
-                    <span className={`status-pill status-${status.className}`}>
-                      {status.label}
-                    </span>
-                    {typeof submission.findings === 'number' ? (
-                      <span className="review-queue-findings">
-                        {submission.findings} findings
-                      </span>
-                    ) : null}
-                  </td>
-                  <td>
-                    <div className="review-queue-actions" aria-label={`Review actions for ${submission.skillName}`}>
-                      <Link className="review-detail-link" to={`/review/${submission.id}`}>
-                        Review
-                      </Link>
-                      <Link className="approve-btn" to={`/review/${submission.id}`}>
-                        Approve
-                      </Link>
-                      <Link className="reject-btn" to={`/review/${submission.id}`}>
-                        Reject
-                      </Link>
-                    </div>
-                  </td>
+        <section className="review-queue-results" aria-label="Pending submissions">
+          <div
+            className="review-queue-viewport"
+            onScroll={handleScroll}
+          >
+            <table className="review-queue-table">
+              <thead>
+                <tr>
+                  <th scope="col">Skill</th>
+                  <th scope="col">Version</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Actions</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {virtualRows.topPadding > 0 ? (
+                  <tr aria-hidden="true" className="review-queue-spacer-row">
+                    <td colSpan={4} style={{ height: virtualRows.topPadding }} />
+                  </tr>
+                ) : null}
+                {virtualRows.rows.map((submission) => (
+                  <ReviewQueueRow key={submission.id} submission={submission} />
+                ))}
+                {virtualRows.bottomPadding > 0 ? (
+                  <tr aria-hidden="true" className="review-queue-spacer-row">
+                    <td colSpan={4} style={{ height: virtualRows.bottomPadding }} />
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+          {hasNextPage ? (
+            <button
+              className="review-queue-load-more"
+              type="button"
+              onClick={() => void fetchNextPage()}
+              disabled={isFetchingNextPage}
+            >
+              {isFetchingNextPage ? 'Loading...' : 'Load more'}
+            </button>
+          ) : null}
+        </section>
       )}
     </main>
   );
+}
+
+function ReviewQueueRow({ submission }: { submission: PendingSubmissionRow }) {
+  const status = formatSubmissionStatus(submission.status);
+  const risk = submission.riskAssessment ?? submission.risk;
+
+  return (
+    <tr>
+      <th scope="row">
+        <div className="review-queue-skill-cell">
+          <Link to={`/review/${submission.id}`}>
+            {submission.skillName}
+          </Link>
+          {risk ? (
+            <span className={`risk-pill risk-${risk}`}>
+              {risk} risk
+            </span>
+          ) : null}
+        </div>
+      </th>
+      <td>{submission.version}</td>
+      <td>
+        <span className={`status-pill status-${status.className}`}>
+          {status.label}
+        </span>
+        {typeof submission.findings === 'number' ? (
+          <span className="review-queue-findings">
+            {submission.findings} findings
+          </span>
+        ) : null}
+      </td>
+      <td>
+        <div className="review-queue-actions" aria-label={`Review actions for ${submission.skillName}`}>
+          <Link className="review-detail-link" to={`/review/${submission.id}`}>
+            Review
+          </Link>
+          <Link className="approve-btn" to={`/review/${submission.id}`}>
+            Approve
+          </Link>
+          <Link className="reject-btn" to={`/review/${submission.id}`}>
+            Reject
+          </Link>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function getVirtualReviewRows(submissions: PendingSubmissionRow[], scrollTop: number) {
+  const startIndex = Math.max(
+    0,
+    Math.floor(scrollTop / REVIEW_QUEUE_ROW_HEIGHT) - REVIEW_QUEUE_OVERSCAN,
+  );
+  const visibleCount =
+    Math.ceil(REVIEW_QUEUE_VIEWPORT_HEIGHT / REVIEW_QUEUE_ROW_HEIGHT) +
+    REVIEW_QUEUE_OVERSCAN * 2;
+  const endIndex = Math.min(submissions.length, startIndex + visibleCount);
+
+  return {
+    rows: submissions.slice(startIndex, endIndex),
+    topPadding: startIndex * REVIEW_QUEUE_ROW_HEIGHT,
+    bottomPadding: Math.max(0, (submissions.length - endIndex) * REVIEW_QUEUE_ROW_HEIGHT),
+  };
 }
 
 function formatSubmissionStatus(
