@@ -180,7 +180,11 @@ function parseLimit(value: string | undefined): number | undefined {
   }
 
   const limit = Number(value);
-  return Number.isFinite(limit) ? Math.min(Math.trunc(limit), 100) : undefined;
+  if (!Number.isInteger(limit) || limit <= 0) {
+    return undefined;
+  }
+
+  return Math.min(limit, 100);
 }
 
 function parseKind(value: string | undefined): SkillKind | undefined {
@@ -194,10 +198,16 @@ function decodeCursor(value: string | undefined): number | undefined {
 
   try {
     const decoded = JSON.parse(Buffer.from(value, 'base64').toString('utf8')) as { offset?: unknown };
-    return typeof decoded.offset === 'number' ? decoded.offset : undefined;
+    return isValidCursorOffset(decoded.offset) ? decoded.offset : undefined;
   } catch {
     return undefined;
   }
+}
+
+const MAX_CURSOR_OFFSET = 100_000;
+
+function isValidCursorOffset(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < MAX_CURSOR_OFFSET;
 }
 
 function encodeCursor(offset: number): string {

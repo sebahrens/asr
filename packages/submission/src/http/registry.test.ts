@@ -63,6 +63,55 @@ describe('registryRoutes', () => {
     });
   });
 
+  it('falls back to the default page size for invalid limits', async () => {
+    const app = makeApp();
+    for (let index = 0; index < 25; index += 1) {
+      insertPublishedSubmission(db!, {
+        id: `submission-${index}`,
+        name: `skill-${index}`,
+        version: '1.0.0',
+        publishedAt: `2026-05-${String(index + 1).padStart(2, '0')}T10:05:00.000Z`,
+      });
+    }
+
+    for (const limit of ['-1', '0', '1.5']) {
+      const res = await app.request(`/api/v1/skills?limit=${limit}`);
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: unknown[]; nextCursor: string | null };
+      expect(body.items).toHaveLength(20);
+      expect(body.nextCursor).toBe(cursorFor(20));
+    }
+  });
+
+  it.each([
+    ['negative', -1],
+    ['non-integer', 1.5],
+    ['too-large', 100_000],
+  ])('ignores %s cursor offsets', async (_label, offset) => {
+    const app = makeApp();
+    insertPublishedSubmission(db!, {
+      id: 'submission-x',
+      name: 'x',
+      version: '1.0.0',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+    });
+    insertPublishedSubmission(db!, {
+      id: 'submission-y',
+      name: 'y',
+      version: '1.0.0',
+      publishedAt: '2026-05-25T10:05:00.000Z',
+    });
+
+    const res = await app.request(`/api/v1/skills?limit=1&cursor=${cursorFor(offset)}`);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      items: [expect.objectContaining({ name: 'y' })],
+      nextCursor: cursorFor(1),
+    });
+  });
+
   it('opens a fresh production DATABASE_PATH without seeding demo registry skills', async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), 'asr-production-registry-'));
     tempRoots.push(tempRoot);
@@ -556,4 +605,8 @@ function manifest(overrides: Partial<SkillManifest>): SkillManifest {
   };
 
   return { ...base, ...overrides };
+}
+
+function cursorFor(offset: number): string {
+  return Buffer.from(JSON.stringify({ offset }), 'utf8').toString('base64');
 }
