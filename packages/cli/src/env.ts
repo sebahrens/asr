@@ -12,7 +12,20 @@ export function getApiBaseUrl(): string {
 
 export function isAuthDisabled(url: string): boolean {
   try {
-    return new URL(url).protocol !== 'https:';
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === 'http:' &&
+      ['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isPlaintextRemoteUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' && !isAuthDisabled(url);
   } catch {
     return false;
   }

@@ -3,7 +3,7 @@ import type { SkillManifest } from '@asr/core';
 import { isApiError, type ApiErrorBody } from '@asr/core/api-errors';
 import type { FetchLike } from './auth/device-code.js';
 import { getValidAccessToken } from './auth/session.js';
-import { getApiBaseUrl, isAuthDisabled } from './env.js';
+import { getApiBaseUrl, isAuthDisabled, isPlaintextRemoteUrl } from './env.js';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -56,6 +56,9 @@ export async function apiFetch<T = unknown>(
   }
 
   if (!isAuthDisabled(baseUrl)) {
+    if (isPlaintextRemoteUrl(baseUrl)) {
+      console.warn('Warning: ASR_URL uses plaintext HTTP for a non-localhost registry.');
+    }
     const token = await getValidAccessToken(baseUrl, { fetch: opts.fetch });
     headers.Authorization = `Bearer ${token}`;
   }

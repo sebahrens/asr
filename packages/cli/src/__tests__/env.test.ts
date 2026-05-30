@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getApiBaseUrl, isAuthDisabled } from '../env.js';
+import { getApiBaseUrl, isAuthDisabled, isPlaintextRemoteUrl } from '../env.js';
 
 const state = vi.hoisted(() => ({
   config: {} as { registry?: string },
@@ -22,14 +22,22 @@ describe('environment helpers', () => {
     }
   });
 
-  it('disables auth for non-HTTPS URLs', () => {
+  it('disables auth only for local HTTP URLs', () => {
     expect(isAuthDisabled('http://localhost:3001')).toBe(true);
     expect(isAuthDisabled('http://127.0.0.1:3001')).toBe(true);
-    expect(isAuthDisabled('ftp://asr.example.com')).toBe(true);
+    expect(isAuthDisabled('http://[::1]:3001')).toBe(true);
+    expect(isAuthDisabled('http://prod-asr.example.com')).toBe(false);
+    expect(isAuthDisabled('ftp://asr.example.com')).toBe(false);
   });
 
   it('keeps auth enabled for HTTPS URLs', () => {
     expect(isAuthDisabled('https://asr.example.com')).toBe(false);
+  });
+
+  it('identifies plaintext remote HTTP URLs for warnings', () => {
+    expect(isPlaintextRemoteUrl('http://prod-asr.example.com')).toBe(true);
+    expect(isPlaintextRemoteUrl('http://localhost:3001')).toBe(false);
+    expect(isPlaintextRemoteUrl('https://prod-asr.example.com')).toBe(false);
   });
 
   it('returns ASR_URL before config registry', () => {

@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import pc from 'picocolors';
 import { pollForToken, requestDeviceCode, type FetchLike } from '../auth/device-code.js';
 import { clearTokens, getStoredTokens, storeTokens, type StoredTokens } from '../auth/token-store.js';
-import { getApiBaseUrl, isAuthDisabled } from '../env.js';
+import { getApiBaseUrl, isAuthDisabled, isPlaintextRemoteUrl } from '../env.js';
 
 interface AccessTokenClaims {
   email?: string;
@@ -79,6 +79,9 @@ export function registerLogin(program: Command, opts: RegisterLoginOptions = {})
       if (isAuthDisabled(baseUrl)) {
         console.log(pc.yellow('Authentication is skipped in dev mode'));
         return;
+      }
+      if (isPlaintextRemoteUrl(baseUrl)) {
+        console.warn(pc.yellow('Warning: ASR_URL uses plaintext HTTP for a non-localhost registry.'));
       }
 
       try {

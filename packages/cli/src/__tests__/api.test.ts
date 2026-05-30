@@ -87,6 +87,29 @@ describe('apiFetch', () => {
     expect(headers.Authorization).toBeUndefined();
   });
 
+  it('requires auth and warns for non-localhost HTTP ASR_URL', async () => {
+    process.env.ASR_URL = 'http://prod-asr.example.com';
+    const stored: StoredTokens = {
+      accessToken: accessTokenString({ preferred_username: 'u@example.com' }),
+      refreshToken: 'refresh-1',
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      account: 'u@example.com',
+    };
+    await storeTokens(stored);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const fetchMock = vi.fn<FetchLike>(async () => jsonResponse({ ok: true }));
+
+    await apiFetch('/api/v1/ping', { fetch: fetchMock });
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe('http://prod-asr.example.com/api/v1/ping');
+    const headers = init?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Bearer ${stored.accessToken}`);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('plaintext HTTP'));
+
+    warn.mockRestore();
+  });
+
   it('throws ApiError with parsed body on non-2xx responses', async () => {
     process.env.ASR_URL = 'http://localhost:3001';
     const fetchMock = vi.fn<FetchLike>(async () =>
