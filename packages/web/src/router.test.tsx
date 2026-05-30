@@ -627,5 +627,6 @@ Use this skill when testing upload validation.`,
     expect(await screen.findByRole('heading', { name: /skill not found/i })).toBeInTheDocument();
     expect(screen.getByText(/no published skill exists for asr\/does-not-exist/i)).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /registry route error/i })).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

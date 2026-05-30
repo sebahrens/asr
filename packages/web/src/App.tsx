@@ -1684,6 +1684,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
   const detailQuery = useQuery({
     queryKey: ['skills', owner, name],
     queryFn: () => fetchSkillDetail(owner, name),
+    retry: (failureCount, error) => !isNotFoundError(error) && failureCount < 3,
     staleTime: 60_000,
   });
   const detail = detailQuery.data;
