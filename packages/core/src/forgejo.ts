@@ -1,5 +1,5 @@
 import { Octokit } from '@octokit/rest';
-import type { Buffer } from 'node:buffer';
+import type { Buffer as NodeBuffer } from 'node:buffer';
 import { isValidSkillIdentifier } from './identifiers.js';
 import type { SkillManifest } from './types.js';
 
@@ -21,6 +21,16 @@ interface ForgejoBranchResponse {
 interface ForgejoContentsPutResponse {
   commit: {
     sha: string;
+  };
+}
+
+interface ForgejoContentGetResponse {
+  content?: string;
+  encoding?: string;
+  last_commit_sha?: string;
+  commit?: {
+    id?: string;
+    sha?: string;
   };
 }
 
@@ -80,10 +90,45 @@ export class ForgejoClient {
     return this.getBranchHeadSha(branch);
   }
 
+  private async assertExistingFileContent(
+    branch: string,
+    path: string,
+    content: NodeBuffer,
+  ): Promise<string> {
+    const existing = await this.getFileContent(branch, path);
+    if (!existing.content.equals(content)) {
+      throw new ForgejoConflictError(
+        `repository file already exists with different content: ${path}`,
+        { branch, path },
+      );
+    }
+
+    return existing.commitSha;
+  }
+
+  private async getFileContent(
+    branch: string,
+    path: string,
+  ): Promise<{ content: NodeBuffer; commitSha: string }> {
+    const { owner, repo } = this.cfg;
+    const { data } = await this.upload.request('GET /repos/{owner}/{repo}/contents/{path}', {
+      owner,
+      repo,
+      path,
+      ref: branch,
+    });
+    const file = forgejoFileContent(data);
+
+    return {
+      content: decodeForgejoFileContent(file),
+      commitSha: forgejoFileLastCommitSha(file),
+    };
+  }
+
   private async putFile(
     branch: string,
     path: string,
-    content: Buffer,
+    content: NodeBuffer,
     submissionId: string,
   ): Promise<string> {
     const { owner, repo } = this.cfg;
@@ -105,7 +150,7 @@ export class ForgejoClient {
       }
     }
 
-    return this.getBranchHeadSha(branch);
+    return this.assertExistingFileContent(branch, path, content);
   }
 
   private async getBranchHeadSha(branch: string): Promise<string> {
@@ -126,7 +171,7 @@ export class ForgejoClient {
   async openSubmissionPR(input: {
     submissionId: string;
     manifest: SkillManifest;
-    files: Array<{ path: string; content: Buffer }>;
+    files: Array<{ path: string; content: NodeBuffer }>;
     autoApprove: boolean;
     branch?: string;
     pathPrefix?: string;
@@ -272,7 +317,7 @@ export class ForgejoClient {
     owner: string;
     name: string;
     path: string;
-    content: Buffer;
+    content: NodeBuffer;
     message: string;
     idempotencyKey: string;
   }): Promise<{ sha: string }> {
@@ -416,7 +461,7 @@ export class ForgejoClient {
     owner: string;
     name: string;
     version: string;
-    zipBuffer: Buffer;
+    zipBuffer: NodeBuffer;
   }): Promise<string> {
     const base = this.cfg.baseUrl.replace(/\/api\/v1\/?$/, '');
     const url = `${base}/api/packages/${input.owner}/generic/${input.name}/${input.version}/skill.zip`;
@@ -437,6 +482,18 @@ export class ForgejoClient {
   }
 }
 
+export class ForgejoConflictError extends Error {
+  readonly branch: string;
+  readonly path: string;
+
+  constructor(message: string, input: { branch: string; path: string }) {
+    super(message);
+    this.name = 'ForgejoConflictError';
+    this.branch = input.branch;
+    this.path = input.path;
+  }
+}
+
 const isOctokitStatus = (err: unknown, status: number): boolean =>
   typeof err === 'object' && err !== null && 'status' in err && err.status === status;
 
@@ -448,6 +505,28 @@ const forgejoBranchHeadSha = (data: unknown): string => {
 const forgejoFileCommitSha = (data: unknown): string => {
   const putResponse = data as ForgejoContentsPutResponse;
   return putResponse.commit.sha;
+};
+
+const forgejoFileContent = (data: unknown): ForgejoContentGetResponse => {
+  if (Array.isArray(data)) {
+    throw new Error('expected Forgejo file content, got directory listing');
+  }
+  return data as ForgejoContentGetResponse;
+};
+
+const decodeForgejoFileContent = (file: ForgejoContentGetResponse): NodeBuffer => {
+  if (file.encoding !== 'base64' || typeof file.content !== 'string') {
+    throw new Error('Forgejo file content response is not base64-encoded');
+  }
+  return Buffer.from(file.content.replace(/\s/g, ''), 'base64');
+};
+
+const forgejoFileLastCommitSha = (file: ForgejoContentGetResponse): string => {
+  const sha = file.last_commit_sha ?? file.commit?.sha ?? file.commit?.id;
+  if (!sha) {
+    throw new Error('Forgejo file content response did not include a commit sha');
+  }
+  return sha;
 };
 
 const forgejoPull = (data: unknown): ForgejoPullResponse => data as ForgejoPullResponse;

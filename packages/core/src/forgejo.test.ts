@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Octokit } from '@octokit/rest';
-import { ForgejoClient, type ForgejoConfig } from './forgejo.js';
+import { ForgejoClient, ForgejoConflictError, type ForgejoConfig } from './forgejo.js';
 import type { SkillManifest } from './types.js';
 
 interface ForgejoClientInternals {
@@ -104,34 +104,69 @@ describe('ForgejoClient', () => {
     });
   });
 
-  it('returns the current branch head sha when putting a file conflicts', async () => {
+  it('returns the existing file commit sha when putting identical content conflicts', async () => {
     const client = internals(new ForgejoClient(cfg));
+    const content = Buffer.from('skill');
     const uploadRequest = vi
       .spyOn(client.upload, 'request')
       .mockRejectedValueOnce({ status: 409 })
-      .mockResolvedValueOnce({ data: { commit: { id: 'current-head-sha' } } } as never);
+      .mockResolvedValueOnce({
+        data: {
+          content: content.toString('base64'),
+          encoding: 'base64',
+          last_commit_sha: 'existing-file-commit-sha',
+        },
+      } as never);
 
     await expect(
-      client.putFile('submit/sub-1', 'skills/acme/demo/SKILL.md', Buffer.from('skill'), 'sub-1'),
-    ).resolves.toBe('current-head-sha');
+      client.putFile('submit/sub-1', 'skills/acme/demo/SKILL.md', content, 'sub-1'),
+    ).resolves.toBe('existing-file-commit-sha');
 
     expect(uploadRequest).toHaveBeenNthCalledWith(1, 'PUT /repos/{owner}/{repo}/contents/{path}', {
       owner: 'asr',
       repo: 'skills',
       path: 'skills/acme/demo/SKILL.md',
       message: 'submit: skills/acme/demo/SKILL.md (sub-1)',
-      content: Buffer.from('skill').toString('base64'),
+      content: content.toString('base64'),
       branch: 'submit/sub-1',
     });
     expect(uploadRequest).toHaveBeenNthCalledWith(
       2,
-      'GET /repos/{owner}/{repo}/branches/{branch}',
+      'GET /repos/{owner}/{repo}/contents/{path}',
       {
         owner: 'asr',
         repo: 'skills',
-        branch: 'submit/sub-1',
+        path: 'skills/acme/demo/SKILL.md',
+        ref: 'submit/sub-1',
       },
     );
+  });
+
+  it('throws ForgejoConflictError when a put conflict finds different existing content', async () => {
+    const client = internals(new ForgejoClient(cfg));
+    vi.spyOn(client.upload, 'request')
+      .mockRejectedValueOnce({ status: 409 })
+      .mockResolvedValueOnce({
+        data: {
+          content: Buffer.from('other').toString('base64'),
+          encoding: 'base64',
+          last_commit_sha: 'existing-file-commit-sha',
+        },
+      } as never);
+
+    const result = client.putFile(
+      'submit/sub-1',
+      'skills/acme/demo/SKILL.md',
+      Buffer.from('skill'),
+      'sub-1',
+    );
+
+    await expect(result).rejects.toMatchObject({
+      name: 'ForgejoConflictError',
+      branch: 'submit/sub-1',
+      path: 'skills/acme/demo/SKILL.md',
+    });
+    await expect(result).rejects.toBeInstanceOf(ForgejoConflictError);
   });
 
   it('opens a submission PR after sequentially committing files and polling mergeability', async () => {
@@ -215,6 +250,57 @@ describe('ForgejoClient', () => {
       owner: 'asr',
       repo: 'skills',
       index: 37,
+    });
+  });
+
+  it('returns the existing file commit as headSha when openSubmissionPR hits an idempotent put conflict', async () => {
+    const client = new ForgejoClient(cfg);
+    const content = Buffer.from('skill');
+    const uploadRequest = vi
+      .spyOn(internals(client).upload, 'request')
+      .mockResolvedValueOnce({ data: { commit: { id: 'branch-head-sha' } } } as never)
+      .mockRejectedValueOnce({ status: 409 })
+      .mockResolvedValueOnce({
+        data: {
+          content: content.toString('base64'),
+          encoding: 'base64',
+          last_commit_sha: 'existing-file-commit-sha',
+        },
+      } as never)
+      .mockResolvedValueOnce({ data: { number: 37 } } as never)
+      .mockResolvedValueOnce({ data: { number: 37, mergeable: true } } as never);
+
+    await expect(
+      client.openSubmissionPR({
+        submissionId: 'sub-1',
+        manifest: {
+          name: 'agent-skill',
+          version: '1.2.3',
+          author: 'acme',
+          description: 'Demo skill.',
+          tags: ['demo'],
+          kind: 'persona',
+          permissions: {
+            network: false,
+            filesystem: 'read-own',
+            subprocess: false,
+            environment: [],
+          },
+        },
+        files: [{ path: 'SKILL.md', content }],
+        autoApprove: true,
+      }),
+    ).resolves.toEqual({
+      branch: 'submit/sub-1',
+      prNumber: 37,
+      headSha: 'existing-file-commit-sha',
+    });
+
+    expect(uploadRequest).toHaveBeenNthCalledWith(3, 'GET /repos/{owner}/{repo}/contents/{path}', {
+      owner: 'asr',
+      repo: 'skills',
+      path: 'skills/acme/agent-skill/SKILL.md',
+      ref: 'submit/sub-1',
     });
   });
 
@@ -546,7 +632,13 @@ describe('ForgejoClient', () => {
       .mockRejectedValueOnce({ status: 409 })
       .mockResolvedValueOnce({ data: { commit: { id: 'existing-branch-sha' } } } as never)
       .mockRejectedValueOnce({ status: 409 })
-      .mockResolvedValueOnce({ data: { commit: { id: 'existing-put-sha' } } } as never)
+      .mockResolvedValueOnce({
+        data: {
+          content: Buffer.from('yanked').toString('base64'),
+          encoding: 'base64',
+          last_commit_sha: 'existing-put-sha',
+        },
+      } as never)
       .mockResolvedValueOnce({ data: { number: 100 } } as never)
       .mockResolvedValueOnce({ data: { number: 100, mergeable: true } } as never);
     vi.spyOn(merge, 'request')
