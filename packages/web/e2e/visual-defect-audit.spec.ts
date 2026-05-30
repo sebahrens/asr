@@ -86,7 +86,7 @@ test.describe('Visual Defect Audit - Against Taxonomy', () => {
 
     if (await publishBtn.isVisible().catch(() => false)) {
       await publishBtn.click();
-      await page.waitForTimeout(300);
+      await expect(page.locator('button[type="submit"], button:has-text("Continue")').first()).toBeVisible({ timeout: 2000 });
 
       // Look for submit buttons in forms
       const submitBtns = page.locator('button[type="submit"], button:has-text("Continue")');

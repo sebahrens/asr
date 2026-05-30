@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "pnpm --workspace-root lint:e2e && playwright test --workers=4"
   },
   "dependencies": {
     "@asr/core": "workspace:*",

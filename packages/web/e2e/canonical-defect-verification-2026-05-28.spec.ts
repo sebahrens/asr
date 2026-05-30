@@ -103,10 +103,9 @@ test.describe('Canonical Defect Category Verification', () => {
     if (exists) {
       // Click it
       await hamburger.first().click();
-      await page.waitForTimeout(200);
 
       // Should show navigation menu
-      const navOpen = await page.locator('nav, [class*="mobile"], [class*="drawer"]').isVisible().catch(() => false);
+      const navOpen = await page.locator('nav, [class*="mobile"], [class*="drawer"]').isVisible({ timeout: 2000 }).catch(() => false);
       expect(navOpen).toBe(true);
       console.log('✅ defect:responsive-nav - PASS (hamburger menu works)');
     } else {
@@ -207,7 +206,7 @@ test.describe('Canonical Defect Category Verification', () => {
     expect(Number.parseInt(headerStyles.zIndex, 10)).toBeGreaterThanOrEqual(1);
 
     await page.evaluate(() => window.scrollBy(0, 300));
-    await page.waitForTimeout(200);
+    await expect(header).toBeVisible({ timeout: 2000 });
 
     const headerAfter = await header.boundingBox();
     if (headerAfter) {

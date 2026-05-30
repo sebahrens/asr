@@ -38,6 +38,7 @@ test.describe('ASR Web UI - Visual Review 2026-05-29', () => {
 
     // Verify landing page elements
     const heading = await page.locator('h1, h2').first().textContent();
+    expect(heading).toBeTruthy();
     console.log('Landing page heading:', heading);
   });
 
@@ -55,7 +56,7 @@ test.describe('ASR Web UI - Visual Review 2026-05-29', () => {
     const searchInput = await page.locator('input[placeholder*="search" i], [data-testid="search-input"]').first();
     if (await searchInput.isVisible()) {
       await searchInput.fill('test');
-      await page.waitForTimeout(500);
+      await expect(searchInput).toHaveValue('test');
       await page.screenshot({
         path: `${screenshotsDir}/02-search-results.png`,
         fullPage: true
@@ -113,7 +114,7 @@ test.describe('ASR Web UI - Visual Review 2026-05-29', () => {
 
   test('6. Error state - 404 skill', async ({ page }) => {
     await page.goto(`${baseURL}/skills/does-not-exist-skill-id-12345`);
-    await page.waitForTimeout(1000);
+    await expect(page.locator('body')).toContainText(/not found|does not exist|404|no published/i);
 
     // Take screenshot of error state
     await page.screenshot({
@@ -133,7 +134,7 @@ test.describe('ASR Web UI - Visual Review 2026-05-29', () => {
 
     if (await searchInput.isVisible()) {
       await searchInput.fill('xyzabc_very_unlikely_skill_name_12345');
-      await page.waitForTimeout(500);
+      await expect(searchInput).toHaveValue('xyzabc_very_unlikely_skill_name_12345');
 
       await page.screenshot({
         path: `${screenshotsDir}/07-empty-search.png`,

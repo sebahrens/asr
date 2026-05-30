@@ -41,6 +41,7 @@ test.describe('ASR Web - Comprehensive Visual Review 2026-05-28', () => {
     // Verify skill list renders
     const skillCards = page.locator('[class*="skill"], a[href*="/skills/"]').first();
     const skillsExist = await skillCards.isVisible({ timeout: 5000 }).catch(() => false);
+    expect(skillsExist).toBe(true);
     console.log(`✓ Skill cards visible: ${skillsExist}`);
 
     // Verify search bar
@@ -56,7 +57,7 @@ test.describe('ASR Web - Comprehensive Visual Review 2026-05-28', () => {
     // Test search functionality
     if (await searchInput.isVisible()) {
       await searchInput.fill('test');
-      await page.waitForTimeout(500);
+      await expect(searchInput).toHaveValue('test');
       await screenshot(page, '1-landing-search');
       console.log(`✓ Search interaction works`);
     }
@@ -246,7 +247,7 @@ test.describe('ASR Web - Comprehensive Visual Review 2026-05-28', () => {
     // Open mobile nav
     if (toggleVisible) {
       await mobileToggle.click();
-      await page.waitForTimeout(300);
+      await page.locator('[class*="mobile"], [class*="drawer"], nav').first().isVisible({ timeout: 300 }).catch(() => false);
       await screenshot(page, '6-mobile-nav-open');
 
       const navPanel = page.locator('[class*="mobile"], [class*="drawer"], nav').first();
@@ -345,7 +346,7 @@ test.describe('ASR Web - Comprehensive Visual Review 2026-05-28', () => {
     await page.goto(`${BASE_URL}/review`);
     await page.waitForLoadState('networkidle');
     await page.evaluate(() => window.scrollBy(0, 300));
-    await page.waitForTimeout(200);
+    await expect(header).toBeVisible({ timeout: 2000 });
 
     // Header should still be visible after scroll
     const headerStillVisible = await header.isVisible({ timeout: 2000 }).catch(() => false);
@@ -396,7 +397,7 @@ test.describe('ASR Web - Comprehensive Visual Review 2026-05-28', () => {
 
       // Fill owner field
       await ownerField.fill('test-owner');
-      await page.waitForTimeout(200);
+      await expect(ownerField).toHaveValue('test-owner');
       await screenshot(page, '11-form-filled-owner');
 
       // Check validation message appears for missing required fields

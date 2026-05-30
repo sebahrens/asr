@@ -10,7 +10,8 @@
     "dev": "turbo dev",
     "dev:api": "node deploy/docker/dev-api.mjs",
     "build": "turbo build",
-    "test": "pnpm --filter @asr/core test && pnpm --filter @asr/cli test",
+    "lint:e2e": "node ./scripts/check-e2e-specs.mjs",
+    "test": "pnpm lint:e2e && pnpm --filter @asr/core test && pnpm --filter @asr/cli test",
     "test:e2e": "node ./scripts/e2e-docker.mjs",
     "cli": "pnpm --filter @asr/cli",
     "web": "pnpm --filter @asr/web"
