@@ -3114,15 +3114,33 @@ main {
   cursor: pointer;
   display: grid;
   gap: 12px;
-  grid-template-columns: 88px minmax(0, 1fr) auto;
+  grid-template-columns: 88px minmax(0, 1fr) minmax(120px, auto);
   list-style-position: inside;
   padding: 10px 14px;
+}
+
+.review-detail-scan-findings summary::marker {
+  content: '';
+}
+
+.review-detail-scan-findings summary::-webkit-details-marker {
+  display: none;
 }
 
 .finding-message,
 .finding-location {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.severity-tag {
+  min-width: 0;
+}
+
+.finding-location {
+  justify-self: end;
+  max-width: 100%;
+  text-align: right;
 }
 
 .scan-finding-detail {
@@ -3643,12 +3661,18 @@ main {
   }
 
   .review-detail {
+    padding: 24px 12px 56px;
     grid-template-columns: 1fr;
     grid-template-areas:
       "header"
       "tabs"
       "panel"
       "decision";
+  }
+
+  .review-detail .review-detail-panel.review-detail-panel-diff,
+  .review-detail .review-detail-panel.review-detail-panel-scan {
+    padding: 16px 12px;
   }
 
   .review-detail-decision-slot .decision-panel {
@@ -3680,6 +3704,11 @@ main {
   .review-detail-scan-findings summary {
     align-items: start;
     grid-template-columns: 1fr;
+  }
+
+  .finding-location {
+    justify-self: start;
+    text-align: left;
   }
 
   .evidence-row {

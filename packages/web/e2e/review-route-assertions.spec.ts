@@ -102,4 +102,64 @@ test.describe('/review/:id renders the canonical mock submission in dev mode', (
       fullPage: true,
     });
   });
+
+  test('mobile evidence panels wrap diff and scan content without clipping', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/review/sub-1042');
+
+    await expect(page.getByRole('tabpanel', { name: /diff/i })).toBeVisible();
+
+    const diffMetrics = await page.locator(
+      '.review-diff-viewer, .review-diff-viewer table, .review-diff-viewer [class*="content-text"]',
+    ).evaluateAll((elements) =>
+      elements.map((element) => ({
+        className: String(element.className),
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        text: element.textContent?.slice(0, 120) ?? '',
+      })),
+    );
+
+    expect(diffMetrics.length).toBeGreaterThan(0);
+    for (const metric of diffMetrics) {
+      expect(
+        metric.scrollWidth,
+        `${metric.className} clips "${metric.text}"`,
+      ).toBeLessThanOrEqual(metric.clientWidth + 1);
+    }
+
+    await page.getByRole('tab', { name: /^scan$/i }).click();
+    await expect(page.getByRole('tabpanel', { name: /scan/i })).toBeVisible();
+
+    const scanMetrics = await page.locator('.review-detail-scan-findings summary').evaluateAll((summaries) =>
+      summaries.map((summary) => {
+        const children = Array.from(summary.children).map((child) => {
+          const rect = child.getBoundingClientRect();
+          return {
+            bottom: rect.bottom,
+            clientWidth: child.clientWidth,
+            scrollWidth: child.scrollWidth,
+            top: rect.top,
+            text: child.textContent ?? '',
+          };
+        });
+        return {
+          children,
+          summaryClientWidth: summary.clientWidth,
+          summaryScrollWidth: summary.scrollWidth,
+        };
+      }),
+    );
+
+    expect(scanMetrics.length).toBeGreaterThan(0);
+    for (const metric of scanMetrics) {
+      expect(metric.summaryScrollWidth).toBeLessThanOrEqual(metric.summaryClientWidth + 1);
+      for (const child of metric.children) {
+        expect(child.scrollWidth, `scan summary clips "${child.text}"`).toBeLessThanOrEqual(child.clientWidth + 1);
+      }
+      for (let index = 1; index < metric.children.length; index += 1) {
+        expect(metric.children[index].top).toBeGreaterThanOrEqual(metric.children[index - 1].bottom);
+      }
+    }
+  });
 });
