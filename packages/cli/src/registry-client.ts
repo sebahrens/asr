@@ -3,6 +3,8 @@ import { getConfig } from './config.js';
 
 export interface RegistryFetchOptions {
   token?: string;
+  method?: string;
+  body?: unknown;
 }
 
 export interface SearchSkillsOptions {
@@ -39,20 +41,39 @@ function resolveBaseUrl(): string {
   throw new Error('No ASR API URL configured. Set ASR_URL or run: asr config set registry <url>');
 }
 
-export async function registryFetch<T>(path: string, options: RegistryFetchOptions = {}): Promise<T> {
+export interface RegistryResponse<T> {
+  status: number;
+  body: T;
+}
+
+export async function registryRequest<T>(
+  path: string,
+  options: RegistryFetchOptions = {},
+): Promise<RegistryResponse<T>> {
   const base = resolveBaseUrl();
   const url = `${base}${path.startsWith('/') ? path : `/${path}`}`;
 
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (options.token) headers.Authorization = `Bearer ${options.token}`;
+  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
 
-  const res = await fetch(url, { headers });
+  const res = await fetch(url, {
+    method: options.method ?? 'GET',
+    headers,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  const text = await res.text();
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new RegistryError(res.status, body);
+    throw new RegistryError(res.status, text);
   }
 
-  return (await res.json()) as T;
+  const body = (text ? JSON.parse(text) : {}) as T;
+  return { status: res.status, body };
+}
+
+export async function registryFetch<T>(path: string, options: RegistryFetchOptions = {}): Promise<T> {
+  const { body } = await registryRequest<T>(path, options);
+  return body;
 }
 
 export async function searchSkills(

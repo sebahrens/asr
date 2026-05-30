@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import pc from 'picocolors';
 import { resolveRegistryToken } from './auth/registry-token.js';
 import { getConfigWithSecrets } from './config.js';
+import { RegistryError, registryRequest } from './registry-client.js';
 
 export interface YankPostResult {
   status: number;
@@ -81,31 +82,27 @@ export async function runYank(
 }
 
 async function postRegistryViaFetch(
-  registryUrl: string,
   path: string,
   body: unknown,
   token?: string,
 ): Promise<YankPostResult> {
-  const base = registryUrl.replace(/\/$/, '');
-  const url = `${base}/api/v1${path.startsWith('/') ? path : `/${path}`}`;
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  let parsedBody: unknown;
   try {
-    parsedBody = text ? JSON.parse(text) : {};
-  } catch {
-    parsedBody = text;
+    const result = await registryRequest<unknown>(
+      `/api/v1${path.startsWith('/') ? path : `/${path}`}`,
+      { method: 'POST', body, ...(token ? { token } : {}) },
+    );
+    return { status: result.status, body: result.body };
+  } catch (err) {
+    if (!(err instanceof RegistryError)) throw err;
+
+    let parsedBody: unknown;
+    try {
+      parsedBody = err.body ? JSON.parse(err.body) : {};
+    } catch {
+      parsedBody = err.body;
+    }
+    return { status: err.status, body: parsedBody };
   }
-  return { status: res.status, body: parsedBody };
 }
 
 export function registerYank(program: Command): void {
@@ -139,7 +136,7 @@ export function registerYank(program: Command): void {
           body: unknown,
           token?: string,
         ): Promise<YankPostResult> =>
-          postRegistryViaFetch(registryUrl, path, body, token);
+          postRegistryViaFetch(path, body, token);
         const token = await resolveRegistryToken({
           explicitToken: options.token,
           configToken: config.token,

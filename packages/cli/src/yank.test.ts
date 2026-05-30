@@ -199,7 +199,10 @@ describe('runYank', () => {
         baseUrl: 'https://registry.example.com',
       });
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      const [, init] = fetchMock.mock.calls[0];
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'https://registry.example.com/api/v1/skills/acme/x/versions/1.0.0/yank',
+      );
       expect((init?.headers as Record<string, string>).Authorization).toBe(
         'Bearer cached-yank-token',
       );

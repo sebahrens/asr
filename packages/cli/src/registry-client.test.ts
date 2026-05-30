@@ -4,6 +4,7 @@ import {
   getSkillDetail,
   listVersions,
   registryFetch,
+  registryRequest,
   resolveDownload,
   searchSkills,
 } from './registry-client.js';
@@ -238,6 +239,29 @@ describe('registry-client', () => {
   });
 
   describe('registryFetch', () => {
+    it('supports JSON POST requests and returns the response status', async () => {
+      fetchSpy.mockResolvedValueOnce(jsonResponse({ yanked: true }, 201));
+
+      const result = await registryRequest('/api/v1/skills/acme/demo/versions/1.0.0/yank', {
+        method: 'POST',
+        token: 't0k',
+        body: { reason: 'leak', severity: 'high' },
+      });
+
+      expect(result).toEqual({ status: 201, body: { yanked: true } });
+      const [url, init] = fetchSpy.mock.calls[0];
+      expect(url).toBe(`${BASE}/api/v1/skills/acme/demo/versions/1.0.0/yank`);
+      expect((init as RequestInit).method).toBe('POST');
+      expect((init as RequestInit).headers).toMatchObject({
+        Accept: 'application/json',
+        Authorization: 'Bearer t0k',
+        'Content-Type': 'application/json',
+      });
+      expect((init as RequestInit).body).toBe(
+        JSON.stringify({ reason: 'leak', severity: 'high' }),
+      );
+    });
+
     it('throws RegistryError with status and body on non-2xx', async () => {
       fetchSpy.mockResolvedValueOnce(new Response('boom', { status: 500 }));
 
