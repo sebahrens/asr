@@ -126,11 +126,12 @@ async function runFoxguard() {
   }
 
   const exitCode = await runCommandWritingStdout('foxguard', args, sarifPath);
+  const findings = await parseSarif(sarifPath, 'foxguard');
 
   return {
     tool: 'foxguard',
-    exitCode,
-    findings: await parseSarif(sarifPath, 'foxguard'),
+    exitCode: (await isValidSarif(sarifPath)) ? 0 : exitCode,
+    findings,
   };
 }
 
@@ -222,6 +223,15 @@ async function parseSarif(path, tool, overrideSeverity) {
     return findings;
   } catch {
     return [];
+  }
+}
+
+async function isValidSarif(path) {
+  try {
+    const raw = JSON.parse(await readFile(path, 'utf8'));
+    return raw?.version === '2.1.0' && Array.isArray(raw.runs);
+  } catch {
+    return false;
   }
 }
 

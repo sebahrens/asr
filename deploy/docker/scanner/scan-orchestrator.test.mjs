@@ -166,6 +166,29 @@ test('invokes foxguard with stdout SARIF, tuned thresholds, and maps numeric sec
   }
 });
 
+test('normalizes foxguard skipped-files exit when SARIF output is valid', async () => {
+  const fixture = await createFixture();
+  try {
+    await writeExecutable(
+      join(fixture.binDir, 'foxguard'),
+      `#!/usr/bin/env node
+
+console.log(JSON.stringify({ version: '2.1.0', runs: [{ tool: { driver: { name: 'foxguard' } }, results: [] }] }));
+process.exit(2);
+`,
+    );
+
+    const result = await runOrchestrator(fixture);
+
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.report.verdict, 'pass');
+    assert.equal(result.report.toolResults.foxguard.exitCode, 0);
+    assert.equal(result.report.toolResults.foxguard.findingCount, 0);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test('invokes veracode CLI with documented args when credentials are set', async () => {
   const fixture = await createFixture();
   try {
