@@ -1,13 +1,14 @@
-import type { SkillManifest, Submission, SubmissionStatus } from '@asr/core';
+import type { ScreeningReport, SkillManifest, Submission, SubmissionStatus } from '@asr/core';
 import Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import yazl from 'yazl';
 import type { AuthVariables, Identity } from '../auth/types.js';
-import { loadKeyRing } from '../audit/keyring.js';
 import { getBySubmission } from '../db/repositories/auditEvents.js';
 import type { SubmissionInsertRow } from '../db/repositories/submissions.js';
+import { saveWorkflowRun } from '../db/repositories/workflowRuns.js';
 import { runMigrations } from '../db/migrations/index.js';
+import type { ApprovalPipelineContext } from '../workflow/approvalPipeline.js';
 import {
   createSubmissionRoutes,
   type SubmissionLookup,
@@ -219,6 +220,82 @@ describe('GET /api/v1/submissions/:id', () => {
   });
 });
 
+describe('GET /api/v1/submissions/:id/screening', () => {
+  let db: Database.Database | undefined;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    runMigrations(db);
+  });
+
+  afterEach(() => {
+    db?.close();
+  });
+
+  it('returns the stored ScreeningReport to the submitter owner', async () => {
+    const submission = seedSubmission(db!, {
+      id: 'sub-1',
+      submittedBy: 'submitter-1',
+      status: { phase: 'compliance-review' },
+    });
+    const report = sampleScreeningReport(submission);
+    seedWorkflowRun(db!, submission, report);
+
+    const app = makeDbBackedApp(db!, { sub: 'submitter-1', roles: ['Submitter'] });
+    const res = await app.request('/api/v1/submissions/sub-1/screening');
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual(report);
+  });
+
+  it('returns the stored ScreeningReport to Compliance reviewers', async () => {
+    const submission = seedSubmission(db!, {
+      id: 'sub-1',
+      submittedBy: 'submitter-1',
+      status: { phase: 'compliance-review' },
+    });
+    const report = sampleScreeningReport(submission);
+    seedWorkflowRun(db!, submission, report);
+
+    const app = makeDbBackedApp(db!, { sub: 'reviewer-1', roles: ['Compliance'] });
+    const res = await app.request('/api/v1/submissions/sub-1/screening');
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual(report);
+  });
+
+  it('returns 404 when screening has not run for the submission', async () => {
+    seedSubmission(db!, {
+      id: 'sub-1',
+      submittedBy: 'submitter-1',
+      status: { phase: 'uploaded' },
+    });
+
+    const app = makeDbBackedApp(db!, { sub: 'submitter-1', roles: ['Submitter'] });
+    const res = await app.request('/api/v1/submissions/sub-1/screening');
+
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: string; message?: string };
+    expect(body.error).toBe('submission_not_found');
+    expect(body.message).toBe('screening report not found');
+  });
+
+  it('rejects a different submitter', async () => {
+    const submission = seedSubmission(db!, {
+      id: 'sub-1',
+      submittedBy: 'submitter-1',
+      status: { phase: 'compliance-review' },
+    });
+    seedWorkflowRun(db!, submission, sampleScreeningReport(submission));
+
+    const app = makeDbBackedApp(db!, { sub: 'submitter-2', roles: ['Submitter'] });
+    const res = await app.request('/api/v1/submissions/sub-1/screening');
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({ error: 'insufficient_permissions' });
+  });
+});
+
 describe('DELETE /api/v1/submissions/:id', () => {
   const originalKeyId = process.env.AUDIT_HMAC_KEY_ID;
   const originalKeyBytes = process.env.AUDIT_HMAC_KEY_BYTES;
@@ -369,7 +446,6 @@ function makeDbBackedApp(db: Database.Database, identity: Identity) {
     c.set('identity', identity);
     await next();
   });
-  loadKeyRing();
   app.route('/api/v1/submissions', createSubmissionRoutes({ db }));
   return app;
 }
@@ -377,7 +453,7 @@ function makeDbBackedApp(db: Database.Database, identity: Identity) {
 function seedSubmission(
   db: Database.Database,
   input: { id: string; submittedBy: string; status: SubmissionStatus },
-): void {
+): Submission {
   const manifest: SkillManifest = {
     name: 'demo-skill',
     version: '1.0.0',
@@ -392,6 +468,8 @@ function seedSubmission(
       environment: [],
     },
   };
+  const submittedAt = '2026-05-30T00:00:00.000Z';
+  const contentHash = `${input.id}-hash`;
   db.prepare(
     `
       INSERT INTO submissions (
@@ -409,10 +487,68 @@ function seedSubmission(
     input.id,
     JSON.stringify(manifest),
     'md-only',
-    `${input.id}-hash`,
-    '2026-05-30T00:00:00.000Z',
+    contentHash,
+    submittedAt,
     input.submittedBy,
     input.status.phase,
     JSON.stringify(input.status),
   );
+
+  return {
+    id: input.id,
+    manifest,
+    classification: 'md-only',
+    contentHash,
+    submittedAt,
+    submittedBy: input.submittedBy,
+    status: input.status,
+  };
+}
+
+function seedWorkflowRun(
+  db: Database.Database,
+  submission: Submission,
+  screeningReport?: ScreeningReport,
+): void {
+  const context: ApprovalPipelineContext = {
+    submissionId: submission.id,
+    submission,
+    manifest: submission.manifest,
+    files: [],
+    contentHash: submission.contentHash,
+    extractedDir: '/tmp/asr-test',
+    zipBufferBase64: '',
+    classification: submission.classification,
+    ...(screeningReport ? { screeningReport } : {}),
+  };
+
+  saveWorkflowRun(db, {
+    id: submission.id,
+    submittedBy: submission.submittedBy,
+    serializedContext: JSON.stringify(context),
+    context,
+  });
+}
+
+function sampleScreeningReport(submission: Submission): ScreeningReport {
+  return {
+    submissionId: submission.id,
+    contentHash: submission.contentHash,
+    provider: 'openai',
+    model: 'gpt-test',
+    contextTokens: 512,
+    status: 'flagged',
+    truncated: false,
+    startedAt: '2026-05-30T00:00:01.000Z',
+    completedAt: '2026-05-30T00:00:02.000Z',
+    durationMs: 1000,
+    findings: [
+      {
+        category: 'description',
+        severity: 'medium',
+        message: 'The description omits generated network behavior.',
+        file: 'scripts/network.ts',
+      },
+    ],
+  };
 }

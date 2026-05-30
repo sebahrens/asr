@@ -6,6 +6,7 @@ import {
   validateVersionUpgrade,
   ForgejoClient,
   type ApprovalPath,
+  type ScreeningReport,
   type SkillManifest,
   type Submission,
   type SubmissionStatus,
@@ -22,7 +23,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { ulid } from 'ulid';
-import type { AuthVariables } from '../auth/types.js';
+import type { AuthVariables, Identity } from '../auth/types.js';
 import {
   getSkillVersion,
   insertSkillVersion,
@@ -37,7 +38,7 @@ import {
 } from '../db/repositories/submissions.js';
 import { insertVersionDiff } from '../db/repositories/versionDiffs.js';
 import { findSubmissionIdByContentHash, getBlockedHash } from '../db/repositories/versions.js';
-import { saveWorkflowRun } from '../db/repositories/workflowRuns.js';
+import { getWorkflowRun, saveWorkflowRun } from '../db/repositories/workflowRuns.js';
 import { forgejoFromEnv } from '../forgejo/index.js';
 import { ownerFromPrincipal } from '../identity/owners.js';
 import { requireRole } from '../auth/requireRole.js';
@@ -165,6 +166,36 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
     }
 
     return c.json({ status: nextStatus });
+  });
+
+  routes.get('/:id/screening', requireRole('Submitter', 'Compliance', 'Admin'), async (c) => {
+    const identity = c.get('identity');
+    if (!identity) {
+      return apiError(c, 401, 'authentication_required');
+    }
+
+    const id = c.req.param('id');
+    const submission = lookup ? await lookup(id) : undefined;
+    if (!submission) {
+      return apiError(c, 404, 'submission_not_found');
+    }
+    if (!canViewSubmission(submission, identity)) {
+      return apiError(c, 403, 'insufficient_permissions');
+    }
+    if (!options.db) {
+      return apiError(c, 404, 'submission_not_found', {
+        message: 'screening report not found',
+      });
+    }
+
+    const report = getWorkflowRun(options.db, id)?.context.screeningReport;
+    if (!report) {
+      return apiError(c, 404, 'submission_not_found', {
+        message: 'screening report not found',
+      });
+    }
+
+    return c.json(report satisfies ScreeningReport);
   });
 
   routes.get('/:id', async (c, next) => {
@@ -614,6 +645,14 @@ function defaultWorkflowDependencies(options: SubmissionRouteOptions): ApprovalP
     },
     audit() {},
   };
+}
+
+function canViewSubmission(submission: Submission, identity: Identity): boolean {
+  return (
+    submission.submittedBy === identity.sub ||
+    identity.roles.includes('Compliance') ||
+    identity.roles.includes('Admin')
+  );
 }
 
 export const submissionRoutes = createSubmissionRoutes();
