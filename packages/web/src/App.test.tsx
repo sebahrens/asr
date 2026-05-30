@@ -110,14 +110,14 @@ describe('BrowseRegistry empty state (asr-4e0)', () => {
   });
 
   it('renders product branding even when an old brand preference exists', async () => {
-    window.localStorage.setItem('asr.brand', 'pwc');
+    window.localStorage.setItem('asr.brand', 'neutral');
 
     const { container } = renderBrowse();
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Agent Skill Repository' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Agent Skill Repository' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'PwC' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /switch brand/i })).not.toBeInTheDocument();
-    expect(container.textContent).not.toMatch(/PwC|Agent Skill Registry|Skill Registry/);
+    expect(container.textContent).not.toMatch(/Agent Skill Registry|Skill Registry/);
   });
 });
 

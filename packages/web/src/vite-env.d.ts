@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_URL?: string;
+  readonly VITE_BRAND?: 'pwc' | 'neutral';
   readonly VITE_AUTH_MODE?: 'mock' | 'msal';
   readonly VITE_ENABLE_MOCK_AUTH?: string;
   readonly VITE_MOCK_ROLES?: string;

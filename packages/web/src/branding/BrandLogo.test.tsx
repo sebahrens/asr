@@ -4,10 +4,10 @@ import { PRODUCT_NAME } from '../product';
 import { BrandLogo, getBrandLogoProps } from './BrandLogo';
 
 describe('BrandLogo', () => {
-  it('renders the neutral wordmark when no provider is mounted', () => {
+  it('renders the PwC logo when no provider is mounted', () => {
     render(<BrandLogo />);
 
-    expect(screen.getByRole('img', { name: PRODUCT_NAME })).toHaveAttribute('src', '/logo.svg');
+    expect(screen.getByRole('img', { name: 'PwC' })).toHaveAttribute('src', '/logo-pwc.svg');
   });
 
   it('uses the PwC SVG and accessible name in pwc mode', () => {
