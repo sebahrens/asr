@@ -3426,6 +3426,10 @@ main {
     width: 18px;
   }
 
+  .mobile-nav-toggle[aria-expanded='true'] {
+    visibility: hidden;
+  }
+
   .mobile-nav-backdrop {
     background: rgba(26, 26, 26, 0.32);
     display: block;
