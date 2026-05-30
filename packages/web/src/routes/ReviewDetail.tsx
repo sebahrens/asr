@@ -1,4 +1,15 @@
-import type { ScanFinding, ScanReport, ScanSeverity, ScanTool, Submission, VersionDiff } from '@asr/core';
+import type {
+  ScanFinding,
+  ScanReport,
+  ScanSeverity,
+  ScanTool,
+  ScreeningCategory,
+  ScreeningFinding,
+  ScreeningReport,
+  ScreeningStatus,
+  Submission,
+  VersionDiff,
+} from '@asr/core';
 import { useQuery } from '@tanstack/react-query';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
@@ -146,14 +157,33 @@ function groupFindingsByTool(findings: ScanFinding[]): Array<{ tool: ScanTool; f
     .filter((group) => group.findings.length > 0);
 }
 
-type TabId = 'diff' | 'scan';
+function sortScreeningFindings(findings: ScreeningFinding[]): ScreeningFinding[] {
+  return [...findings].sort((a, b) => {
+    const severityDelta = severityRank[a.severity] - severityRank[b.severity];
+    if (severityDelta !== 0) return severityDelta;
+    return a.category.localeCompare(b.category) || (a.file ?? '').localeCompare(b.file ?? '') || (a.line ?? 0) - (b.line ?? 0);
+  });
+}
+
+function groupFindingsByCategory(findings: ScreeningFinding[]): Array<{ category: ScreeningCategory; findings: ScreeningFinding[] }> {
+  return screeningCategories
+    .map((category) => ({
+      category,
+      findings: sortScreeningFindings(findings.filter((finding) => finding.category === category)),
+    }))
+    .filter((group) => group.findings.length > 0);
+}
+
+type TabId = 'diff' | 'scan' | 'screening';
 
 const evidenceTabs: { id: TabId; label: string }[] = [
   { id: 'diff', label: 'Diff' },
   { id: 'scan', label: 'Scan' },
+  { id: 'screening', label: 'Screening' },
 ];
 
 const scanTools: ScanTool[] = ['gitleaks', 'trivy', 'foxguard', 'opengrep', 'veracode'];
+const screeningCategories: ScreeningCategory[] = ['permission', 'questionnaire', 'description', 'malicious'];
 
 const severityRank: Record<ScanSeverity, number> = {
   critical: 0,
@@ -166,6 +196,13 @@ const verdictLabels: Record<ScanReport['verdict'], string> = {
   pass: 'Pass',
   review_required: 'Review required',
   block: 'Block',
+};
+
+const screeningStatusLabels: Record<ScreeningStatus, string> = {
+  clean: 'Clean',
+  flagged: 'Flagged',
+  skipped: 'Skipped',
+  error: 'Error',
 };
 
 function getEvidenceTabId(tab: TabId): string {
@@ -191,7 +228,7 @@ async function fetchJson<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-type SubmissionEvidenceKey = 'submission' | 'diff' | 'scan';
+type SubmissionEvidenceKey = 'submission' | 'diff' | 'scan' | 'screening';
 
 function isDevMockMode(): boolean {
   return (
@@ -263,6 +300,16 @@ export function ReviewDetail() {
     enabled: id !== '',
     retry: retryUnless4xx,
   });
+  const screeningQuery = useQuery({
+    queryKey: ['submission', id, 'screening'],
+    queryFn: () => fetchSubmissionEvidence<ScreeningReport>(
+      id,
+      'screening',
+      apiUrl(`/api/v1/submissions/${encodeURIComponent(id)}/screening`),
+    ),
+    enabled: id !== '',
+    retry: retryUnless4xx,
+  });
 
   const [activeTab, setActiveTab] = useState<TabId>('diff');
 
@@ -301,6 +348,7 @@ export function ReviewDetail() {
   const submission = submissionQuery.data;
   const diff = diffQuery.data;
   const scan = scanQuery.data;
+  const screening = screeningQuery.data;
   const activeTabConfig = evidenceTabs.find((tab) => tab.id === activeTab);
   const activeTabId = getEvidenceTabId(activeTab);
   const activePanelId = getEvidencePanelId(activeTab);
@@ -364,7 +412,7 @@ export function ReviewDetail() {
             {diff ? <DiffPanelContent diff={diff} /> : null}
           </EvidencePanelContent>
         </section>
-      ) : (
+      ) : activeTab === 'scan' ? (
         <section
           id={activePanelId}
           role="tabpanel"
@@ -379,6 +427,23 @@ export function ReviewDetail() {
             unavailableMessage="The submission record loaded, but security scan results are not ready yet or could not be fetched. You can review the other evidence and retry."
           >
             {scan ? <ScanPanelContent scan={scan} /> : null}
+          </EvidencePanelContent>
+        </section>
+      ) : (
+        <section
+          id={activePanelId}
+          role="tabpanel"
+          aria-label={activeTabConfig?.label}
+          aria-labelledby={activeTabId}
+          className="review-detail-panel review-detail-panel-screening"
+        >
+          <EvidencePanelContent
+            isLoading={screeningQuery.isLoading}
+            isError={screeningQuery.isError}
+            unavailableTitle="Screening not available"
+            unavailableMessage="The LLM content screen is not configured, has not run for this submission, or could not be fetched. This evidence is read-only and does not control the decision."
+          >
+            {screening ? <ScreeningPanelContent screening={screening} /> : null}
           </EvidencePanelContent>
         </section>
       )}
@@ -585,6 +650,96 @@ function ScanPanelContent({ scan }: { scan: ScanReport }) {
                         {finding.snippet ? <pre>{finding.snippet}</pre> : null}
                       </div>
                     </details>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScreeningPanelContent({ screening }: { screening: ScreeningReport }) {
+  const groupedFindings = groupFindingsByCategory(screening.findings);
+
+  return (
+    <div className="review-screening-report">
+      <section
+        className={`screening-status-banner screening-status-${screening.status}`}
+        aria-label={`Screening status: ${screeningStatusLabels[screening.status]}`}
+      >
+        <span>LLM screening</span>
+        <strong>{screeningStatusLabels[screening.status]}</strong>
+      </section>
+
+      {screening.truncated ? (
+        <p className="review-detail-permissions-warning">
+          Screening content was truncated before analysis completed.
+        </p>
+      ) : null}
+
+      <dl className="scan-report-meta" aria-label="Screening report metadata">
+        <div>
+          <dt>Provider</dt>
+          <dd>{screening.provider}</dd>
+        </div>
+        <div>
+          <dt>Model</dt>
+          <dd>{screening.model}</dd>
+        </div>
+        <div>
+          <dt>Context</dt>
+          <dd>{screening.contextTokens.toLocaleString()} tokens</dd>
+        </div>
+        <div>
+          <dt>Duration</dt>
+          <dd>{formatScanDuration(screening.durationMs)}</dd>
+        </div>
+        <div>
+          <dt>Completed</dt>
+          <dd>{formatScanTimestamp(screening.completedAt)}</dd>
+        </div>
+      </dl>
+
+      {screening.status === 'skipped' ? (
+        <p className="review-detail-empty">LLM screening was skipped because no provider is configured.</p>
+      ) : null}
+
+      {screening.status === 'error' ? (
+        <p className="review-detail-empty">LLM screening reported an error. Review the metadata and any partial findings below.</p>
+      ) : null}
+
+      {groupedFindings.length === 0 ? (
+        <p className="review-detail-empty">No screening findings reported.</p>
+      ) : (
+        <div className="review-detail-screening-groups">
+          {groupedFindings.map((group) => (
+            <section className="review-detail-screening-group" key={group.category} aria-labelledby={`screening-findings-${group.category}`}>
+              <h2 id={`screening-findings-${group.category}`}>{group.category}</h2>
+              <ul className="review-detail-screening-findings">
+                {group.findings.map((finding, idx) => (
+                  <li key={`${finding.category}-${finding.file ?? 'unknown'}-${finding.line ?? 0}-${idx}`}>
+                    <header>
+                      <span className={`severity-tag severity-${finding.severity}`}>{finding.severity}</span>
+                      <strong>{finding.message}</strong>
+                      {finding.file ? (
+                        <span className="finding-location">
+                          {finding.file}{typeof finding.line === 'number' ? `:${finding.line}` : ''}
+                        </span>
+                      ) : null}
+                    </header>
+                    <dl>
+                      <div>
+                        <dt>Declared</dt>
+                        <dd>{finding.declared ?? 'Not stated'}</dd>
+                      </div>
+                      <div>
+                        <dt>Observed</dt>
+                        <dd>{finding.observed ?? 'Not locatable'}</dd>
+                      </div>
+                    </dl>
                   </li>
                 ))}
               </ul>

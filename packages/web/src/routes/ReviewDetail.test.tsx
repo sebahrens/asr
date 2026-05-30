@@ -1,4 +1,4 @@
-import type { ScanReport, Submission, VersionDiff } from '@asr/core';
+import type { ScanReport, ScreeningReport, Submission, VersionDiff } from '@asr/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -90,6 +90,37 @@ const scanReport: ScanReport = {
   },
 };
 
+const screeningReport: ScreeningReport = {
+  submissionId: 'sub-test',
+  contentHash: 'sha256:abc',
+  provider: 'openai',
+  model: 'gpt-screen-test',
+  contextTokens: 8192,
+  status: 'flagged',
+  truncated: true,
+  startedAt: '2026-05-23T12:00:35.000Z',
+  completedAt: '2026-05-23T12:00:45.000Z',
+  durationMs: 10000,
+  findings: [
+    {
+      category: 'permission',
+      severity: 'high',
+      file: 'scripts/run.ts',
+      line: 12,
+      declared: 'network: false',
+      observed: "fetch('https://api.example.com') at scripts/run.ts:12",
+      message: 'Network access is used despite the declared permissions.',
+    },
+    {
+      category: 'description',
+      severity: 'medium',
+      declared: 'Generates release notes only.',
+      observed: 'Also sends summary data to a remote endpoint.',
+      message: 'Description omits remote reporting behavior.',
+    },
+  ],
+};
+
 function renderRoute(id: string, queryClient?: QueryClient) {
   const client = queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -158,9 +189,9 @@ describe('ReviewDetail', () => {
     });
     expect(heading).toBeInTheDocument();
 
-    // Each of the 3 queries (submission, diff, scan) should fire exactly once —
+    // Each evidence query should fire exactly once —
     // 404 must short-circuit react-query's default 3-retry policy.
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
   });
 
   it('renders the submission header version, Diff tab modified file path, and detailed Scan report', async () => {
@@ -173,6 +204,8 @@ describe('ReviewDetail', () => {
         body = versionDiff;
       } else if (url.endsWith('/api/v1/submissions/sub-test/scan')) {
         body = scanReport;
+      } else if (url.endsWith('/api/v1/submissions/sub-test/screening')) {
+        body = screeningReport;
       } else {
         throw new Error(`unexpected fetch url ${url}`);
       }
@@ -243,6 +276,8 @@ describe('ReviewDetail', () => {
         body = versionDiff;
       } else if (url.endsWith('/api/v1/submissions/sub-test/scan')) {
         body = cleanScanReport;
+      } else if (url.endsWith('/api/v1/submissions/sub-test/screening')) {
+        body = screeningReport;
       } else {
         throw new Error(`unexpected fetch url ${url}`);
       }
@@ -274,6 +309,8 @@ describe('ReviewDetail', () => {
         body = versionDiff;
       } else if (url.endsWith('/api/v1/submissions/sub-test/scan')) {
         body = scanReport;
+      } else if (url.endsWith('/api/v1/submissions/sub-test/screening')) {
+        body = screeningReport;
       } else {
         throw new Error(`unexpected fetch url ${url}`);
       }
@@ -289,6 +326,7 @@ describe('ReviewDetail', () => {
 
     const diffTab = screen.getByRole('tab', { name: /^diff$/i });
     const scanTab = screen.getByRole('tab', { name: /^scan$/i });
+    const screeningTab = screen.getByRole('tab', { name: /^screening$/i });
     let panel = screen.getByRole('tabpanel', { name: /^diff$/i });
 
     expect(diffTab).toHaveAttribute('id', 'review-detail-tab-diff');
@@ -297,6 +335,7 @@ describe('ReviewDetail', () => {
     expect(panel).toHaveAttribute('aria-labelledby', 'review-detail-tab-diff');
     expect(diffTab).toHaveAttribute('tabindex', '0');
     expect(scanTab).toHaveAttribute('tabindex', '-1');
+    expect(screeningTab).toHaveAttribute('tabindex', '-1');
 
     fireEvent.keyDown(diffTab, { key: 'ArrowRight' });
 
@@ -309,6 +348,14 @@ describe('ReviewDetail', () => {
     expect(diffTab).toHaveAttribute('tabindex', '-1');
 
     fireEvent.keyDown(scanTab, { key: 'ArrowRight' });
+
+    expect(screeningTab).toHaveAttribute('aria-selected', 'true');
+    expect(screeningTab).toHaveFocus();
+    panel = screen.getByRole('tabpanel', { name: /^screening$/i });
+    expect(panel).toHaveAttribute('id', 'review-detail-panel-screening');
+    expect(panel).toHaveAttribute('aria-labelledby', 'review-detail-tab-screening');
+
+    fireEvent.keyDown(screeningTab, { key: 'ArrowRight' });
 
     expect(diffTab).toHaveAttribute('aria-selected', 'true');
     expect(diffTab).toHaveFocus();
@@ -335,6 +382,12 @@ describe('ReviewDetail', () => {
           headers: { 'Content-Type': 'application/json' },
         });
       }
+      if (url.endsWith('/api/v1/submissions/sub-test/screening')) {
+        return new Response(JSON.stringify(screeningReport), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
       throw new Error(`unexpected fetch url ${url}`);
     }));
 
@@ -349,6 +402,126 @@ describe('ReviewDetail', () => {
     fireEvent.click(screen.getByRole('tab', { name: /^scan$/i }));
     expect(screen.getByRole('tabpanel', { name: /scan/i })).toHaveTextContent(/high-severity issue found/i);
 
+    const decisionSlot = screen.getByRole('complementary', { name: /decision panel/i });
+    expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^approve$/i }));
+    expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^reject$/i }));
+  });
+
+  it('renders screening findings grouped by category with declared and observed evidence', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      let body: unknown;
+      if (url.endsWith('/api/v1/submissions/sub-test')) {
+        body = submission;
+      } else if (url.endsWith('/api/v1/submissions/sub-test/diff')) {
+        body = versionDiff;
+      } else if (url.endsWith('/api/v1/submissions/sub-test/scan')) {
+        body = scanReport;
+      } else if (url.endsWith('/api/v1/submissions/sub-test/screening')) {
+        body = screeningReport;
+      } else {
+        throw new Error(`unexpected fetch url ${url}`);
+      }
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderRoute('sub-test');
+
+    expect(await screen.findByRole('heading', { name: /example-skill/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /^screening$/i }));
+
+    const screeningPanel = screen.getByRole('tabpanel', { name: /screening/i });
+    expect(screen.getByLabelText(/screening status: flagged/i)).toBeInTheDocument();
+    expect(screeningPanel).toHaveTextContent(/gpt-screen-test/i);
+    expect(screeningPanel).toHaveTextContent(/screening content was truncated/i);
+    expect(screen.getByRole('heading', { name: /^permission$/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^description$/i })).toBeInTheDocument();
+    expect(screeningPanel).toHaveTextContent(/network access is used/i);
+    expect(screeningPanel).toHaveTextContent(/network: false/i);
+    expect(screeningPanel).toHaveTextContent(/fetch\('https:\/\/api\.example\.com'\)/i);
+    expect(screeningPanel).toHaveTextContent(/description omits remote reporting behavior/i);
+  });
+
+  it('renders skipped screening as a configured read-only state', async () => {
+    const skippedScreeningReport: ScreeningReport = {
+      ...screeningReport,
+      provider: 'none',
+      model: 'none',
+      contextTokens: 0,
+      status: 'skipped',
+      truncated: false,
+      findings: [],
+    };
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      let body: unknown;
+      if (url.endsWith('/api/v1/submissions/sub-test')) {
+        body = submission;
+      } else if (url.endsWith('/api/v1/submissions/sub-test/diff')) {
+        body = versionDiff;
+      } else if (url.endsWith('/api/v1/submissions/sub-test/scan')) {
+        body = scanReport;
+      } else if (url.endsWith('/api/v1/submissions/sub-test/screening')) {
+        body = skippedScreeningReport;
+      } else {
+        throw new Error(`unexpected fetch url ${url}`);
+      }
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderRoute('sub-test');
+
+    expect(await screen.findByRole('heading', { name: /example-skill/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /^screening$/i }));
+
+    const screeningPanel = screen.getByRole('tabpanel', { name: /screening/i });
+    expect(screen.getByLabelText(/screening status: skipped/i)).toBeInTheDocument();
+    expect(screeningPanel).toHaveTextContent(/skipped because no provider is configured/i);
+    expect(screeningPanel).toHaveTextContent(/no screening findings reported/i);
+  });
+
+  it('renders screening fetch failures without blocking the decision panel', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/api/v1/submissions/sub-test')) {
+        return new Response(JSON.stringify(submission), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.endsWith('/api/v1/submissions/sub-test/diff')) {
+        return new Response(JSON.stringify(versionDiff), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.endsWith('/api/v1/submissions/sub-test/scan')) {
+        return new Response(JSON.stringify(scanReport), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.endsWith('/api/v1/submissions/sub-test/screening')) {
+        return new Response(JSON.stringify({ error: 'screening report not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected fetch url ${url}`);
+    }));
+
+    renderRoute('sub-test');
+
+    expect(await screen.findByRole('heading', { name: /example-skill/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /^screening$/i }));
+
+    expect(screen.getByRole('tabpanel', { name: /screening/i })).toHaveTextContent(/screening not available/i);
     const decisionSlot = screen.getByRole('complementary', { name: /decision panel/i });
     expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^approve$/i }));
     expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^reject$/i }));

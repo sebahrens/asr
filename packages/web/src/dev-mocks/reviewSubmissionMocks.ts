@@ -1,9 +1,10 @@
-import type { ScanReport, Submission, VersionDiff } from '@asr/core';
+import type { ScanReport, ScreeningReport, Submission, VersionDiff } from '@asr/core';
 
 export interface ReviewSubmissionMockEvidence {
   submission: Submission;
   diff: VersionDiff;
   scan: ScanReport;
+  screening: ScreeningReport;
 }
 
 const sub1042: ReviewSubmissionMockEvidence = {
@@ -95,6 +96,29 @@ const sub1042: ReviewSubmissionMockEvidence = {
       veracode: { exitCode: 0, findingCount: 0, skipped: true },
     },
   },
+  screening: {
+    submissionId: 'sub-1042',
+    contentHash: 'sha256:dev-platform-secure-code-review-1.4.0',
+    provider: 'openai',
+    model: 'gpt-dev-screen',
+    contextTokens: 8192,
+    status: 'flagged',
+    truncated: false,
+    startedAt: '2026-05-24T08:37:00.000Z',
+    completedAt: '2026-05-24T08:37:12.000Z',
+    durationMs: 12000,
+    findings: [
+      {
+        category: 'permission',
+        severity: 'high',
+        file: 'scripts/check-deps.ts',
+        line: 16,
+        declared: 'subprocess: true',
+        observed: 'Runs package manager commands from scripts/check-deps.ts:16',
+        message: 'Subprocess behavior needs reviewer confirmation.',
+      },
+    ],
+  },
 };
 
 const sub1039: ReviewSubmissionMockEvidence = {
@@ -176,6 +200,19 @@ const sub1039: ReviewSubmissionMockEvidence = {
       veracode: { exitCode: 0, findingCount: 0, skipped: true },
     },
   },
+  screening: {
+    submissionId: 'sub-1039',
+    contentHash: 'sha256:dev-docs-release-notes-0.8.2',
+    provider: 'none',
+    model: 'none',
+    contextTokens: 0,
+    status: 'skipped',
+    truncated: false,
+    startedAt: '2026-05-23T17:11:30.000Z',
+    completedAt: '2026-05-23T17:11:30.000Z',
+    durationMs: 0,
+    findings: [],
+  },
 };
 
 const sub1031: ReviewSubmissionMockEvidence = {
@@ -247,6 +284,19 @@ const sub1031: ReviewSubmissionMockEvidence = {
       opengrep: { exitCode: 0, findingCount: 0 },
       veracode: { exitCode: 0, findingCount: 0, skipped: true },
     },
+  },
+  screening: {
+    submissionId: 'sub-1031',
+    contentHash: 'sha256:dev-qa-test-plan-writer-2.1.1',
+    provider: 'openai',
+    model: 'gpt-dev-screen',
+    contextTokens: 8192,
+    status: 'clean',
+    truncated: false,
+    startedAt: '2026-05-23T11:42:35.000Z',
+    completedAt: '2026-05-23T11:42:43.000Z',
+    durationMs: 8000,
+    findings: [],
   },
 };
 
