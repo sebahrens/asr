@@ -9,3 +9,4 @@ export * from './audit.js';
 export * from './permissions.js';
 export * from './versionDiff.js';
 export * from './identifiers.js';
+export * from './api-errors.js';

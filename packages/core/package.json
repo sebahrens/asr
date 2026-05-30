@@ -11,11 +11,15 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./api-errors": {
+      "import": "./dist/api-errors.js",
+      "types": "./dist/api-errors.d.ts"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts",
-    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "build": "tsup src/index.ts src/api-errors.ts --format esm --dts",
+    "dev": "tsup src/index.ts src/api-errors.ts --format esm --dts --watch",
     "test": "vitest run && tsc -p tsconfig.test.json"
   },
   "dependencies": {

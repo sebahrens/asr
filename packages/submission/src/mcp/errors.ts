@@ -1,4 +1,4 @@
-import type { ApiError } from '../http/errors.js';
+import type { ApiError } from '@asr/core/api-errors';
 
 export const MCP_ERROR = {
   insufficient_permissions: -32001,

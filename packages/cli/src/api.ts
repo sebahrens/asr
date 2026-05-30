@@ -1,13 +1,9 @@
 import type { Buffer } from 'buffer';
 import type { SkillManifest } from '@asr/core';
+import { isApiError, type ApiErrorBody } from '@asr/core/api-errors';
 import type { FetchLike } from './auth/device-code.js';
 import { getValidAccessToken } from './auth/session.js';
 import { getApiBaseUrl, isAuthDisabled } from './env.js';
-
-export interface ApiErrorBody {
-  error?: string;
-  [key: string]: unknown;
-}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -76,7 +72,7 @@ export async function apiFetch<T = unknown>(
   try {
     body = text ? (JSON.parse(text) as ApiErrorBody) : {};
   } catch {
-    body = { error: text || undefined };
+    body = isApiError(text) ? { error: text } : text ? { message: text } : {};
   }
 
   if (!response.ok) {

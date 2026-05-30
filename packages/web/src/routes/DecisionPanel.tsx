@@ -1,4 +1,5 @@
 import type { RiskAssessment, Submission } from '@asr/core';
+import { isApiError, type ApiError } from '@asr/core/api-errors';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -21,10 +22,10 @@ interface RejectPayload {
 }
 
 class DecisionRequestError extends Error {
-  readonly code?: string;
+  readonly code?: ApiError;
   readonly status: number;
 
-  constructor(status: number, code?: string, message?: string) {
+  constructor(status: number, code?: ApiError, message?: string) {
     super(message ?? `Decision request failed with ${status}`);
     this.name = 'DecisionRequestError';
     this.code = code;
@@ -48,7 +49,7 @@ async function postDecision(
   }
 }
 
-async function parseErrorBody(res: Response): Promise<{ error?: string; message?: string }> {
+async function parseErrorBody(res: Response): Promise<{ error?: ApiError; message?: string }> {
   const text = await res.text().catch(() => '');
   if (text.length === 0) {
     return {};
@@ -60,7 +61,7 @@ async function parseErrorBody(res: Response): Promise<{ error?: string; message?
       return {};
     }
 
-    const error = 'error' in body && typeof body.error === 'string' ? body.error : undefined;
+    const error = 'error' in body && isApiError(body.error) ? body.error : undefined;
     const message = 'message' in body && typeof body.message === 'string' ? body.message : undefined;
     return { error, message };
   } catch {

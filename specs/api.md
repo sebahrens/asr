@@ -189,21 +189,28 @@ type ApiError =
   | 'authentication_required'
   | 'insufficient_permissions'
   | 'separation_of_duties_violation'
+  | 'skill_not_found'
   | 'submission_not_found'
+  | 'submission_not_in_expected_state'
+  | 'submission_not_ready'
+  | 'version_diff_not_found'
   | 'submission_in_progress'
   | 'version_already_exists'
   | 'version_in_progress'
   | 'version_yanked'
   | 'version_downgrade'
+  | 'version_not_greater'
+  | 'invalid_version'
   | 'invalid_zip'
   | 'invalid_manifest'
   | 'content_blocked'
   | 'too_many_requests'
+  | 'audit_scope_unavailable'
   | 'audit_chain_broken'
   | 'internal_error';
 
 // 4xx body:
-{ error: ApiError; message?: string; details?: Record<string, string>; required?: string; retryAfterSeconds?: number }
+{ error: ApiError; message?: string; details?: Record<string, string>; required?: string; retryAfterSeconds?: number; brokenAt?: string }
 ```
 
 Status codes follow standard semantics: 400 (validation), 401 (auth), 403 (authz), 404 (resource), 409 (conflict), 422 (semantic), 429 (rate-limited), 503 (`audit_chain_broken`).
