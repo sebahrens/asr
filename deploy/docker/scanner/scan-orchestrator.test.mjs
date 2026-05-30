@@ -26,6 +26,28 @@ test('blocks when gitleaks reports a secret finding', async () => {
   }
 });
 
+test('allows placeholder and SOPS encrypted secrets through gitleaks config', async () => {
+  const fixture = await createFixture();
+  try {
+    await mkdir(join(fixture.scanDir, 'docs'));
+    await writeFile(join(fixture.scanDir, '.env.example'), 'OPENAI_API_KEY=sk-proj-your-placeholder-key\n');
+    await writeFile(join(fixture.scanDir, 'README.md'), 'Use FIRECRAWL_API_KEY=fc-your-example-key-here\n');
+    await writeFile(join(fixture.scanDir, 'docs', 'setup.md'), 'ANTHROPIC_API_KEY=sk-ant-api03-your-test-key\n');
+    await writeFile(
+      join(fixture.scanDir, 'secrets.enc.yaml'),
+      'api_key: ENC[AES256_GCM,data:sk-proj-real-looking-encrypted-secret,iv:test,tag:test,type:str]\n',
+    );
+
+    const result = await runOrchestrator(fixture);
+
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.report.verdict, 'pass');
+    assert.equal(result.report.toolResults.gitleaks.findingCount, 0);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test('passes against an empty clean directory', async () => {
   const fixture = await createFixture();
   try {
@@ -142,6 +164,7 @@ async function runOrchestrator(fixture, extraEnv = {}) {
         CONTENT_HASH: 'sha256:test',
         SCANNER_IMAGE: 'asr-scanner:test',
         SCAN_SIGNING_KEY: 'test-key',
+        GITLEAKS_CONFIG: resolve('deploy/docker/scanner/gitleaks.toml'),
         ...extraEnv,
       },
     });
@@ -155,27 +178,76 @@ async function installMockTools(binDir) {
   await writeExecutable(
     join(binDir, 'gitleaks'),
     `#!/usr/bin/env node
-import { readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { join, relative } from 'node:path';
 
 const scanDir = process.argv[3];
+const configPath = process.argv[process.argv.indexOf('--config') + 1];
 const reportPath = process.argv[process.argv.indexOf('--report-path') + 1];
-const text = await readFile(join(scanDir, 'skill.md'), 'utf8').catch(() => '');
-const hasSecret = /AKIA[0-9A-Z]{16}/.test(text);
+if (!configPath) {
+  throw new Error('missing gitleaks --config');
+}
+
+async function scanFiles(dir) {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await scanFiles(path));
+    } else {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+function isAllowlisted(path, line) {
+  const normalized = path.replace(/\\\\/g, '/');
+  const placeholder = /(your|example|sample|placeholder|dummy|fake|test|changeme|replace[_-]?me|xxx|<[^>]+>)/i.test(line);
+  if (/(^|\\/)\\.env\\.example$/.test(normalized) && placeholder) return true;
+  if (/(^|\\/)README(\\.[^/]*)?$/.test(normalized) && placeholder) return true;
+  if (/(^|\\/)(docs|references)\\/.*\\.(md|mdx|txt)$/.test(normalized) && placeholder) return true;
+  if (/(^|\\/)secrets\\.enc\\.ya?ml$/.test(normalized) && /ENC\\[/.test(line)) return true;
+  return false;
+}
+
+const findings = [];
+for (const file of await scanFiles(scanDir)) {
+  const relativePath = relative(scanDir, file);
+  const text = await readFile(file, 'utf8').catch(() => '');
+  const lines = text.split(/\\r?\\n/);
+  lines.forEach((line, index) => {
+    const hasSecret =
+      /AKIA[0-9A-Z]{16}/.test(line) ||
+      /\\b(sk-proj-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{32,})\\b/.test(line) ||
+      /\\bsk-ant-api03-[A-Za-z0-9_-]{20,}\\b/.test(line) ||
+      /\\bfc-[A-Za-z0-9_-]{20,}\\b/.test(line);
+    if (hasSecret && !isAllowlisted(relativePath, line)) {
+      findings.push({
+        ruleId: 'mock-secret',
+        level: 'error',
+        message: { text: 'Secret found' },
+        locations: [{
+          physicalLocation: {
+            artifactLocation: { uri: relativePath },
+            region: { startLine: index + 1 },
+          },
+        }],
+      });
+    }
+  });
+}
+
 const sarif = {
   version: '2.1.0',
   runs: [{
-    tool: { driver: { name: 'gitleaks', rules: [{ id: 'aws-access-token' }] } },
-    results: hasSecret ? [{
-      ruleId: 'aws-access-token',
-      level: 'error',
-      message: { text: 'AWS access token found' },
-      locations: [{ physicalLocation: { artifactLocation: { uri: 'skill.md' }, region: { startLine: 1 } } }],
-    }] : [],
+    tool: { driver: { name: 'gitleaks', rules: [{ id: 'mock-secret' }] } },
+    results: findings,
   }],
 };
 await writeFile(reportPath, JSON.stringify(sarif));
-process.exit(hasSecret ? 1 : 0);
+process.exit(findings.length ? 1 : 0);
 `,
   );
 

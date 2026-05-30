@@ -47,6 +47,7 @@ RUN (curl -fsS https://tools.veracode.com/veracode-cli/install \
       && veracode --version) || true
 
 COPY rules/ /opt/scan/rules/
+COPY gitleaks.toml /opt/scan/gitleaks.toml
 
 WORKDIR /scan
 COPY scan-orchestrator.mjs /opt/scan/

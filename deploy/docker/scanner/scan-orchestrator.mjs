@@ -11,6 +11,7 @@ const SCAN_DIR = process.env.SCAN_DIR || '/scan/input';
 const OUTPUT_DIR = process.env.OUTPUT_DIR || '/scan/output';
 const TIMEOUT = Number.parseInt(process.env.SCAN_TIMEOUT_SECONDS || '300', 10) * 1000;
 const SEVERITY_THRESHOLD = process.env.SCAN_SEVERITY_THRESHOLD || 'high';
+const GITLEAKS_CONFIG = process.env.GITLEAKS_CONFIG || '/opt/scan/gitleaks.toml';
 
 const TOOLS = ['gitleaks', 'trivy', 'foxguard', 'opengrep', 'veracode'];
 
@@ -28,6 +29,8 @@ async function runGitleaks() {
   const exitCode = await runCommand('gitleaks', [
     'dir',
     SCAN_DIR,
+    '--config',
+    GITLEAKS_CONFIG,
     '--report-format',
     'sarif',
     '--report-path',

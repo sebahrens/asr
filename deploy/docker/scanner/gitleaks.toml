@@ -1,0 +1,49 @@
+title = "ASR Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "asr-openai-api-key"
+description = "OpenAI API key"
+regex = '''\b(sk-proj-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{32,})\b'''
+keywords = ["sk-", "sk-proj-"]
+
+[[rules]]
+id = "asr-anthropic-api-key"
+description = "Anthropic API key"
+regex = '''\bsk-ant-api03-[A-Za-z0-9_-]{20,}\b'''
+keywords = ["sk-ant-api03-"]
+
+[[rules]]
+id = "asr-firecrawl-api-key"
+description = "Firecrawl API key"
+regex = '''\bfc-[A-Za-z0-9_-]{20,}\b'''
+keywords = ["fc-"]
+
+[[rules]]
+id = "asr-slack-token"
+description = "Slack token"
+regex = '''\bxox[abprs]-[A-Za-z0-9-]{20,}\b'''
+keywords = ["xox"]
+
+[[allowlists]]
+description = "Placeholder secrets in .env.example files"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)\.env\.example$''']
+regexes = ['''(?i)(your|example|sample|placeholder|dummy|fake|test|changeme|replace[_-]?me|xxx|<[^>]+>)''']
+
+[[allowlists]]
+description = "Placeholder secrets in documentation"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)README(\.[^/]*)?$''', '''(^|/)(docs|references)/.*\.(md|mdx|txt)$''']
+regexes = ['''(?i)(your|example|sample|placeholder|dummy|fake|test|changeme|replace[_-]?me|xxx|<[^>]+>)''']
+
+[[allowlists]]
+description = "SOPS encrypted secret payloads"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)secrets\.enc\.ya?ml$''']
+regexes = ['''ENC\[''']
