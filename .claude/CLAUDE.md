@@ -12,6 +12,7 @@ Self-hosted Agent Skills Registry with submission pipeline, security scanning, a
 - **Database**: SQLite (workflow state, audit trail; better-sqlite3, WAL)
 - **Workflow engine**: Flowcraft (HITL nodes)
 - **Security scanning**: Dedicated Docker container (Gitleaks + Trivy + Foxguard + Opengrep; Veracode optional). The old in-process plugin scanner model has been deleted — there is no `specs/scanners.md`.
+- **LLM content screening**: Optional, provider-pluggable (OpenAI / Anthropic + compatible endpoints) in-process screen that checks declared permissions/questionnaire vs. actual code. Advisory for code-containing skills; fail-closed gate for md-only. Activated by `LLM_SCREEN_PROVIDER` env. See `specs/security-scanning.md#llm-content-screening`.
 - **Package distribution**: Forgejo generic package registry + MCP server + marketplace repo
 
 ## Key Documents
@@ -86,3 +87,6 @@ pnpm test:e2e                                               # Docker smoke E2E
 - `NODE_ENV=production` + `AUTH_MODE=mock` MUST fail to boot (Dockerfile entrypoint enforces this)
 - Canonical types live in `@asr/core` — never redefine `SkillManifest`, `SubmissionStatus`, `ScanReport`, etc. anywhere else
 - Auto-approve still goes through a Forgejo PR + merge — there is no "direct write to main" path
+- LLM screening keys (`OPENAI_API_KEY`/`ANTHROPIC_API_KEY` etc.) are **runtime, server-side env on the submission/api service only** — NEVER `VITE_*` build vars (that would bake the secret into the browser bundle)
+- The LLM screen is advisory for code-containing skills (never auto-blocks/rejects) and a fail-closed gate ONLY on the md-only path; it must never feed `ScanReport.verdict`
+- Web branding is build-time via `VITE_BRAND` (`pwc` default / `neutral`); there is no runtime brand toggle, and the visible product name is "Agent Skill Repository"

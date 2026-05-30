@@ -39,7 +39,7 @@ The Agent Skills Registry (ASR) is a submission and distribution platform for AI
 ### API / Submission Service
 - **Tech**: Node.js (Hono or Express)
 - **Auth**: Entra ID bearer token validation via JWKS
-- **Responsibilities**: Upload handling, workflow orchestration, scan coordination, registry CRUD
+- **Responsibilities**: Upload handling, workflow orchestration, scan coordination, optional LLM content screening, registry CRUD
 - **State**: SQLite on Azure Files (`nobrl` mount)
 - **Ingress**: External HTTPS
 - **Scaling**: 1–3 replicas (min 1 for SQLite single-writer)
@@ -207,8 +207,11 @@ All services start with `AUTH_MODE=mock` — no Entra ID dependency for local de
 | `FORGEJO_UPLOAD_TOKEN` | local PAT | Azure Key Vault | api |
 | `FORGEJO_MERGE_TOKEN` | local PAT | Azure Key Vault | api |
 | `DATABASE_PATH` | `./data/workflow.db` | `/app/data/workflow.db` | api |
+| `LLM_SCREEN_PROVIDER` | unset (off) | `openai`\|`anthropic` (optional) | api |
+| `OPENAI_*` / `ANTHROPIC_*` | from shell/`.env` (optional) | Key Vault (optional) | api |
 | `VITE_AUTH_MODE` | `mock` | `entra` | web |
 | `VITE_API_URL` | `http://localhost:3001` | `/api` | web |
+| `VITE_BRAND` | `pwc` | `pwc`\|`neutral` (build-time) | web |
 
 ## Networking
 

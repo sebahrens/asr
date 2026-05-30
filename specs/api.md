@@ -20,6 +20,7 @@ DELETE /submissions/:id               Cancel/withdraw a submission (submitter on
 ```
 POST   /submissions/:id/questionnaire   Submit questionnaire answers (submitter)
 GET    /submissions/:id/scan            Get scan report (ScanReport from specs/types.md)
+GET    /submissions/:id/screening       Get LLM ScreeningReport (404 when screen unconfigured/not yet run)
 POST   /submissions/:id/confirm         User acknowledges scan findings (submitter)
 POST   /submissions/:id/approve         Compliance approves (separation-of-duties enforced)
 POST   /submissions/:id/reject          Compliance rejects (body: {reason: string})
@@ -97,6 +98,10 @@ GET    /version                         Build sha + spec version
 ### GET /submissions/:id/scan
 
 Returns the `ScanReport` from [types.md](types.md#scanning) verbatim.
+
+### GET /submissions/:id/screening
+
+Returns the advisory `ScreeningReport` from [types.md](types.md#llm-content-screening) verbatim. `404` when the LLM screen is unconfigured or has not run for this submission. Visible to the submitter (own) and Compliance/Admin. This report is advisory only — decision endpoints never consume it programmatically.
 
 ### POST /submissions/:id/approve
 

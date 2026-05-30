@@ -41,6 +41,16 @@ services:
       - FORGEJO_MERGE_TOKEN=${FORGEJO_ADMIN_TOKEN}
       - DATABASE_PATH=/app/data/workflow.db
       - PORT=3001
+      # Optional LLM content screen — provider-neutral, all interpolated from the host
+      # shell (empty → screen disabled). Per-machine endpoint lives in shell/.env only.
+      - LLM_SCREEN_PROVIDER=${LLM_SCREEN_PROVIDER:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-}
+      - LLM_SCREEN_CONTEXT_TOKENS=${LLM_SCREEN_CONTEXT_TOKENS:-200000}
     volumes:
       - ./data/api:/app/data
     depends_on:
@@ -55,6 +65,7 @@ services:
         - VITE_API_URL=http://localhost:3001
         - VITE_AUTH_MODE=mock
         - VITE_ENABLE_MOCK_AUTH=true
+        - VITE_BRAND=${VITE_BRAND:-pwc}   # build-time brand: pwc (default) | neutral
     ports:
       - "5173:5173"
     depends_on:
@@ -263,11 +274,25 @@ Sensitive values stored in Azure Key Vault, referenced by Container Apps:
 | `veracode-api-key-id` | api |
 | `veracode-api-key-secret` | api |
 | `veracode-policy` | api |
+| `llm-screen-api-key` | api (the `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` for the configured provider) |
 | `entra-client-secret` | forgejo (OIDC) |
 
 When the Veracode secrets are present, the API passes `VERACODE_API_KEY_ID`,
 `VERACODE_API_KEY_SECRET`, and `VERACODE_POLICY` through to scanner container
 runs. If either API credential is absent, Veracode remains skipped.
+
+### LLM content screen (optional)
+
+The screen is activated by `LLM_SCREEN_PROVIDER` (`openai` | `anthropic`) plus the
+matching provider key/model; unset → disabled. Keys are **runtime** env on the `api`
+service only — never a `VITE_*` build var, so they never reach the web bundle. In prod the
+key is a Key Vault secret (`llm-screen-api-key`); in dev/test it is interpolated from the
+host shell into `docker-compose.yml`. The endpoint is fully configurable: the same
+OpenAI-compatible path serves Azure OpenAI, OpenRouter, or LiteLLM-in-OpenAI-mode via
+`OPENAI_BASE_URL`, and the Anthropic-compatible path serves a corporate LiteLLM→Bedrock
+proxy via `ANTHROPIC_BASE_URL`. A committed `.env.example` documents one example per
+provider (none authoritative); per-machine values live only in a gitignored `.env` or the
+shell. See [security-scanning.md#llm-content-screening](security-scanning.md#llm-content-screening).
 
 ### CI/CD (Forgejo Actions)
 

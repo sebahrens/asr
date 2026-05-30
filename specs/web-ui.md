@@ -12,6 +12,15 @@ React 19 + Vite 6 SPA living in `packages/web/`. Acts as the **registry browser*
 - Styling: CSS modules; design tokens in `packages/web/src/tokens.css` (colours, spacing, type scale)
 - Testing: Vitest + Testing Library; Playwright for E2E (drives the dev stack — see [ralph-scripts/PROMPT_visual_review.md](../ralph-scripts/PROMPT_visual_review.md))
 
+## Branding (build-time)
+
+The SPA ships a **build-time** brand selected by the `VITE_BRAND` env var (baked into the static bundle at `pnpm build` / Docker build):
+
+- `pwc` (**default**) — PwC logo (`/logo-pwc.svg`) + PwC accent palette.
+- `neutral` — generic **Agent Skill Repository** wordmark + neutral accent.
+
+`BrandProvider` resolves the mode from `import.meta.env.VITE_BRAND` (default `pwc`) and sets `data-brand` on `<html>` for the CSS accent override. There is **no runtime toggle** (the old localStorage `asr.brand` switch was removed); switching brand means rebuilding the web image with a different `VITE_BRAND`. The visible product name is **Agent Skill Repository** in both brands — only the logo and accent differ. Wired via a Docker build `ARG VITE_BRAND` (see [deployment.md](deployment.md)).
+
 ## Routes
 
 | Path | Screen | Auth | Roles |
@@ -35,7 +44,7 @@ Route protection is enforced both client-side (redirect to `/login` or `/error?c
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Topbar:  asr logo | search | nav | user menu            │
+│ Topbar:  brand logo | search | nav | user menu          │
 ├──────────┬──────────────────────────────────────────────┤
 │ Sidebar  │ Page content                                  │
 │ (sticky) │                                               │
@@ -96,7 +105,8 @@ Form validation messages appear inline next to fields, never via toast.
   - **Diff** — split-pane file diff (uses `react-diff-viewer-continued`); pulls from `GET /skills/:owner/:name/versions/:version/diff`
   - **Dependencies** — table of added/removed/changed
   - **Permissions** — before/after JSON with expanded-capability lines highlighted red
-  - **Scan** — full findings list, filterable by severity
+  - **Scan** — full container-scanner findings list, filterable by severity
+  - **Screening** — advisory LLM `ScreeningReport`: each finding rendered as declared-vs-observed (e.g. *"Permissions — declared `network: false`, observed `fetch()` at `scripts/run.sh:12`"*), grouped by category (permission / questionnaire / description / malicious). Explicitly renders `skipped` (screening not configured), `error`, and `truncated` states. Read-only — advisory, never a decision control.
   - **Audit** — chronological events
 - Decision panel (sticky, right):
   - Comment textarea (required for reject, optional for approve)
@@ -155,4 +165,5 @@ These are the deterministic Playwright assertions the visual-review prompt drive
 5. Yanked version appears in `/skills/:owner/:name` versions list with reason tooltip.
 6. Audit Explorer surfaces an `audit.verify.failed` event if injected (mock mode).
 7. No element in the DOM contains the string `ghp_`, `eyJ`, or any other token prefix.
-8. The product name renders as **asr** across all screens; the strings `skify`, `json2pptx`, `github` MUST NOT appear in the rendered DOM.
+8. The product name renders as **Agent Skill Repository** across all screens (the bare wordmark `asr` is no longer used as the visible name); the strings `skify`, `json2pptx`, `github` MUST NOT appear in the rendered DOM.
+9. The active brand is fixed at build time by `VITE_BRAND` (`pwc` default, or `neutral`). In `pwc` the PwC logo + PwC accent render; in `neutral` the generic wordmark + neutral accent render. There is no runtime brand toggle. A stale `asr.brand` localStorage value MUST be ignored.

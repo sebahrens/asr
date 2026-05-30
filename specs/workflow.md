@@ -12,7 +12,7 @@ Repository: https://github.com/gorango/flowcraft
 
 ## Pipeline
 
-**Both** the auto-approve path and the full approval path push to Forgejo so the Git history is the single source of truth for every published artifact. The auto-approve path differs only in skipping the questionnaire/scan/review nodes.
+**Both** the auto-approve path and the full approval path push to Forgejo so the Git history is the single source of truth for every published artifact. The auto-approve path differs only in skipping the questionnaire/scan/confirmation/review nodes. When the optional LLM screen is configured, the md-only path passes through a `screen-md` gate that can divert a suspicious markdown skill to compliance review instead of auto-publishing (its one and only human checkpoint).
 
 ```
                  ┌────────────┐
@@ -31,20 +31,24 @@ Repository: https://github.com/gorango/flowcraft
  └─────┬──────┘                 └─────┬──────┘
        ▼                              ▼
  ┌────────────┐                 ┌────────────────┐
- │ auto-      │                 │ questionnaire  │  (HITL, 7d)
- │ approve    │                 └─────┬──────────┘
+ │ screen-md  │                 │ questionnaire  │  (HITL, 7d)
+ │ (LLM, opt) │                 └─────┬──────────┘
  └─────┬──────┘                       ▼
-       │                        ┌────────────────┐
-       │                        │ scan (container)│
-       │                        └─────┬──────────┘
-       │              block      pass/review_required
-       │           ┌───────────┐      │
-       │           │ rejected  │◄─────┤
-       │           └───────────┘      │
-       │                              ▼
-       │                        ┌────────────────┐
-       │                        │ confirmation   │  (HITL, 14d)
-       │                        └─────┬──────────┘
+   clean│ flagged/error         ┌────────────────┐
+       │   └──► review          │ scan (container)│
+       ▼                        └─────┬──────────┘
+ ┌────────────┐    block      pass/review_required
+ │ auto-      │ ┌───────────┐        │
+ │ approve    │ │ rejected  │◄───────┤
+ └─────┬──────┘ └───────────┘        │
+       │                             ▼
+       │                       ┌────────────────┐
+       │                       │ screen (LLM,opt)│  advisory; always falls through
+       │                       └─────┬──────────┘
+       │                             ▼
+       │                       ┌────────────────┐
+       │                       │ confirmation   │  (HITL, 14d)
+       │                       └─────┬──────────┘
        │                              ▼
        │                        ┌────────────────┐
        │                        │ review         │  (HITL, 30d, Compliance)
@@ -68,6 +72,7 @@ import { Blueprint, HitlNode, ComputeNode } from 'flowcraft';
 import type { Submission, ScanReport } from '@asr/core/types';
 import { ForgejoClient } from '@asr/core/forgejo';
 import { runScanner } from '../scan/runner.js';
+import { runScreening } from '../screen/runScreening.js';   // optional LLM content screen
 
 export const approvalPipeline = new Blueprint<Submission>('skill-approval')
   .node(new ComputeNode('classify', {
@@ -110,6 +115,40 @@ export const approvalPipeline = new Blueprint<Submission>('skill-approval')
       });
       ctx.set('scanReport', report);
       if (report.verdict === 'block') ctx.jump('rejected');
+    },
+  }))
+
+  // Optional LLM screen — runs only when LLM_SCREEN_PROVIDER is configured.
+  // Advisory on the code path: attaches a report, never alters the flow.
+  .node(new ComputeNode('screen', {
+    idempotent: true,
+    async execute(ctx) {
+      const report = await runScreening({               // injected; no-op → status 'skipped'
+        submissionId: ctx.get('submissionId'),
+        contentHash: ctx.get('contentHash'),
+        extractedDir: ctx.get('workdir'),
+        manifest: ctx.get('manifest'),
+        questionnaire: ctx.get('questionnaireResponses'),
+        classification: 'code-containing',
+      });
+      ctx.set('screeningReport', report);               // surfaced in compliance review
+    },
+  }))
+
+  // Same core on the md-only path, but here it GATES: a finding (or error /
+  // truncation) diverts to compliance review instead of silent auto-publish.
+  .node(new ComputeNode('screen-md', {
+    idempotent: true,
+    async execute(ctx) {
+      const report = await runScreening({
+        submissionId: ctx.get('submissionId'),
+        contentHash: ctx.get('contentHash'),
+        extractedDir: ctx.get('workdir'),
+        manifest: ctx.get('manifest'),
+        classification: 'md-only',
+      });
+      ctx.set('screeningReport', report);
+      if (report.status !== 'clean' && report.status !== 'skipped') ctx.jump('review');
     },
   }))
 
@@ -162,16 +201,33 @@ export const approvalPipeline = new Blueprint<Submission>('skill-approval')
   .edge('classify', 'push-to-forgejo')
   .edge('push-to-forgejo', 'questionnaire', { when: (ctx) => ctx.get('classification') === 'code-containing' })
   .edge('questionnaire', 'scan')
-  .edge('scan', 'confirmation', { when: (ctx) => ctx.get('scanReport').verdict !== 'block' })
+  .edge('scan', 'screen', { when: (ctx) => ctx.get('scanReport').verdict !== 'block' })
+  .edge('screen', 'confirmation')
   .edge('confirmation', 'review')
   .edge('review', 'publish')
 
-  // Edges (auto-approve path — also goes through Forgejo)
-  .edge('push-to-forgejo', 'auto-approve', { when: (ctx) => ctx.get('classification') === 'md-only' })
+  // Edges (auto-approve path — also goes through Forgejo, now via the md-only screen gate)
+  .edge('push-to-forgejo', 'screen-md', { when: (ctx) => ctx.get('classification') === 'md-only' })
+  .edge('screen-md', 'auto-approve', { when: (ctx) => ['clean', 'skipped'].includes(ctx.get('screeningReport').status) })
   .edge('auto-approve', 'publish');
+  // screen-md jumps to 'review' in-node when status is flagged/error/truncated.
 ```
 
 `ctx.svc` resolves a service from the DI container; `ctx.audit` is the single audit helper from [audit.md](audit.md) (validates against the closed action enum and writes atomically with the workflow state update).
+
+## LLM Screening (optional node)
+
+The `screen` / `screen-md` nodes wrap one provider-pluggable `runScreening()` core (see [security-scanning.md#llm-content-screening](security-scanning.md#llm-content-screening)). Activation is by env: when `LLM_SCREEN_PROVIDER` is unset, `runScreening` returns `status: 'skipped'` and both nodes pass straight through — the pipeline behaves exactly as it did before the feature existed. The dependency is injected (like `runScanner`) so tests stub it with a fake provider.
+
+| Condition | Code path (`screen`) | Md-only path (`screen-md`) |
+|-----------|----------------------|----------------------------|
+| Unconfigured | `skipped` → confirmation | `skipped` → auto-approve (today's behavior) |
+| `clean` | → confirmation | → auto-approve |
+| `flagged` | advisory only → confirmation (already human-bound) | **gate** → review |
+| `error` / timeout | advisory "screen unavailable" → confirmation | **fail closed** → review |
+| `truncated` (over token budget) | `truncated` finding attached → confirmation | treated as a finding → review |
+
+Each terminal emits `workflow.screening.completed` via `ctx.audit` (see [audit.md](audit.md)).
 
 ## State Persistence
 

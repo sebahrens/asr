@@ -2,7 +2,7 @@
 
 ## Overview
 
-A submission pipeline for the Agent Skills Registry that accepts skill uploads, classifies contents, and routes through an approval workflow before publishing. The system uses **Forgejo** as the self-hosted Git backend, **Entra ID** for authentication, and deploys to **Azure Container Apps**. Security scanning runs in a **dedicated container** (Gitleaks + Trivy + Foxguard + Opengrep, optional Veracode) — there is no in-process plugin scanner model.
+A submission pipeline for the Agent Skills Registry that accepts skill uploads, classifies contents, and routes through an approval workflow before publishing. The system uses **Forgejo** as the self-hosted Git backend, **Entra ID** for authentication, and deploys to **Azure Container Apps**. Security scanning runs in a **dedicated container** (Gitleaks + Trivy + Foxguard + Opengrep, optional Veracode) — there is no in-process plugin scanner model. An **optional, provider-pluggable LLM content screen** (OpenAI / Anthropic and compatible endpoints) additionally checks that a submitter's declared permissions and questionnaire answers match the actual code — advisory for code-containing skills, a fail-closed gate for otherwise-unreviewed md-only skills.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -65,6 +65,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design including depl
 | Audit storage | SQLite + HMAC hash chain + Git tag anchoring | Queryable, tamper-evident, externally verifiable |
 | Classification | Whitelist approach | Only known-safe extensions bypass approval; everything else triggers code path |
 | Scanning | **External Docker container** with Gitleaks/Trivy/Foxguard/Opengrep (optional Veracode) | Reproducible, isolated, language-agnostic; no in-process plugin loading |
+| LLM screening | **Optional, provider-pluggable** (OpenAI/Anthropic + compatible) semantic screen of declared-vs-actual; advisory for code, fail-closed gate for md-only | Catches lies static rules can't; activated by env, never blocks legit code submissions |
+| Web branding | **Build-time** `VITE_BRAND` (`pwc` default / `neutral`); no runtime toggle | One image per brand; secret-free; product name "Agent Skill Repository" in both |
 | Versioning | Strict semver, mandatory re-scan on code changes, explicit yank flow | No approval inheritance between versions |
 | Authentication | Microsoft Entra ID (OIDC) | Enterprise SSO, role-based access, device code flow for CLIs |
 | Deployment (prod) | **Azure Container Apps only** (Cloudflare Workers path removed) | Serverless, scale-to-zero web, managed TLS, single deployment story |
@@ -134,8 +136,9 @@ Dependencies between phases are explicit. The plan loop must encode these as `bd
 
 - Flowcraft integration with HITL nodes per [specs/workflow.md](specs/workflow.md)
 - Scanner container image per [specs/security-scanning.md](specs/security-scanning.md)
+- Optional LLM content screen (provider-pluggable; advisory + md-only gate) per [specs/security-scanning.md#llm-content-screening](specs/security-scanning.md#llm-content-screening)
 - Questionnaire + confirmation + approve/reject endpoints per [specs/api.md](specs/api.md)
-- Compliance approval UI flow per [specs/web-ui.md](specs/web-ui.md)
+- Compliance approval UI flow (incl. Screening tab) per [specs/web-ui.md](specs/web-ui.md)
 - Entra ID authentication (mock in dev, real in prod) per [specs/security.md](specs/security.md)
 - Per-skill workflow mutex + crash-resume
 

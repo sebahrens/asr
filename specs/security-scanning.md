@@ -8,9 +8,11 @@ The ASR submission pipeline runs automated security scans on skills containing e
 
 | Skill contents | Scan behavior |
 |---------------|---------------|
-| Only `.md` files | No scan — auto-publish |
-| Contains `scripts/` with executable code | Full scan pipeline |
+| Only `.md` files | No container scan; **optional LLM screen** (see below), then auto-publish if clean |
+| Contains `scripts/` with executable code | Full container scan pipeline, then **optional LLM screen** |
 | Contains `package.json` / `requirements.txt` / lockfiles | Dependency scan added |
+
+The container scanner (Gitleaks/Trivy/Foxguard/Opengrep/Veracode) and the LLM screen are **independent analyzers**. The container scanner produces the blocking `ScanReport.verdict`; the LLM screen produces an advisory `ScreeningReport` that never feeds that verdict. Both are described here; their pipeline wiring is in [workflow.md](workflow.md).
 
 ## Tool Stack
 
@@ -45,6 +47,71 @@ All Tier 1 tools use permissive licenses (MIT, Apache-2.0) with no copyleft obli
 **Veracode**: Proprietary SaaS — never bundled. Called via CLI with API credentials. Zero licensing obligation beyond maintaining a valid subscription.
 
 **Semgrep Rules note**: Opengrep maintains its own community rule repository under LGPL-2.1. Do NOT use rules from `semgrep/semgrep-rules` (governed by Semgrep Rules License v1.0 which restricts SaaS use). Use Opengrep's rule repository or write custom rules.
+
+## LLM Content Screening
+
+A second, **optional** analyzer reads the entire extracted skill and applies semantic judgment the pattern scanners cannot: it verifies that the submitter's **declared statements** match the actual content, and flags malicious intent. It runs in-process in the submission service (no container), is activated purely by env, and is **provider-pluggable** (OpenAI / OpenAI-compatible / Anthropic / Anthropic-compatible). Its output is the canonical `ScreeningReport` ([types.md#llm-content-screening](types.md#llm-content-screening)).
+
+### What it checks (four categories)
+
+| `ScreeningCategory` | Compares | Example finding |
+|---------------------|----------|-----------------|
+| `permission` | Declared `PermissionsManifest` vs. actual code | declared `network: false` but `fetch()` in `scripts/run.sh:12` |
+| `questionnaire` | Publish-wizard answers vs. content | answered "no external network" but opens a socket |
+| `description` | `SKILL.md` description/tags vs. behavior | describes a "formatter" that uploads files |
+| `malicious` | Content semantics | credential harvesting, obfuscated payload, prompt injection aimed at the consuming agent |
+
+The container scanners and the screen overlap deliberately on `malicious`; the LLM adds semantic reasoning, the scanners add deterministic rules. They are complementary, not redundant.
+
+### Enforcement (advisory vs. fail-closed gate)
+
+- **Code-containing skills** already pass questionnaire → container scan → human compliance review. The screen is **advisory** there: it attaches a `ScreeningReport` for the reviewer and never blocks, rejects, or changes the verdict. An LLM false-positive cannot kill a legitimate submission.
+- **Md-only skills** otherwise auto-publish with *no human in the loop*. The screen is the **one gate** on that path: any finding (or an error / truncation) diverts the submission to compliance `review`; a clean result auto-approves as before. This is fail-closed — if the screen errors, md-only goes to a human rather than publishing blind.
+
+This split can later be promoted to a soft/hard gate for code-containing skills once precision is trusted; that is out of scope for v1.
+
+### Activation & providers (runtime env, server-side only)
+
+Configured on the submission service via `env.ts` (zod-validated), optional exactly like the Veracode tier. **Never** `VITE_*` — the keys must never reach the browser bundle.
+
+| Var | Role |
+|-----|------|
+| `LLM_SCREEN_PROVIDER` | `openai` \| `anthropic`; **unset → screening disabled** (`status: 'skipped'`) |
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` | provider=`openai`; base-URL override → any OpenAI-compatible endpoint (Azure OpenAI, OpenRouter, LiteLLM-in-OpenAI-mode, local) |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` | provider=`anthropic`; base-URL override → Anthropic-compatible proxy (corporate **LiteLLM → Claude on Bedrock**) |
+| `LLM_SCREEN_CONTEXT_TOKENS` | chosen model's context window (e.g. `200000`…`1000000`); default `200000` |
+| `LLM_SCREEN_RESERVE_OUTPUT_TOKENS` | headroom for rubric + JSON response; default `8000` |
+| `LLM_SCREEN_CHARS_PER_TOKEN` | conservative estimate ratio for budget packing; default `3.5` |
+
+Validation: provider=`openai` ⇒ `OPENAI_API_KEY`+`OPENAI_MODEL` required; provider=`anthropic` ⇒ `ANTHROPIC_API_KEY`+`ANTHROPIC_MODEL` required; base URLs optional. The feature is **not** added to the prod required-env set — it stays opt-in. `LLM_SCREEN_CONTEXT_TOKENS` is declared (not auto-detected) because behind LiteLLM/Bedrock/OpenRouter the model id is opaque.
+
+### Efficiency (single cached call, model-sized budget)
+
+- **One** call per submission. The static rubric is placed first so OpenAI/Azure/OpenRouter **auto-cache** the prefix; the Anthropic provider sets explicit `cache_control: ephemeral` on the rubric. Only the per-skill content is billed fresh.
+- Content is packed up to a token budget derived from the model, not a fixed byte cap:
+  `contentBudget = LLM_SCREEN_CONTEXT_TOKENS − rubricTokens − LLM_SCREEN_RESERVE_OUTPUT_TOKENS − safetyMargin`.
+  Token counts are estimated via `LLM_SCREEN_CHARS_PER_TOKEN` (robust across providers; exact tokenization is a later enhancement). This scales from 200k to 1M-context models.
+- Binaries/images are skipped; text/code files are included with `path:line` headers so findings cite locations. Overflow sets `truncated: true` and emits a finding.
+- The ingest path already rejects duplicate `contentHash`, so identical resubmissions never re-screen.
+
+### Module shape
+
+```
+packages/submission/src/screen/
+├── runScreening.ts        — orchestrator; injectable provider (test seam, like runScanner's RunContainer)
+├── packContent.ts         — walk extractedDir, skip binaries, token-budget pack, mark truncation
+├── prompt.ts              — static cacheable rubric (4 categories + required JSON/tool output shape)
+└── providers/
+    ├── types.ts           — ScreeningProvider { name; contextTokens; complete(system, content) }
+    ├── openai.ts          — `openai` SDK; structured output via response_format json_schema
+    ├── anthropic.ts       — `@anthropic-ai/sdk`; structured output via forced tool call; ephemeral cache
+    └── factory.ts         — build provider from env (the injected seam)
+```
+
+### Testing
+
+- **Unit (always-on, no network):** inject a fake `ScreeningProvider` returning canned structured findings. Covers packing/budget/truncation, env activation/skip/required-model validation, report→action mapping (advisory vs md-only gate), and fail-closed-on-error.
+- **Integration smoke (auto-gated, provider-agnostic):** `describe.skipIf(!screeningConfigured(env))` — keyed on "provider + matching key present", never on a specific provider's var, so the test env is fully configurable. Runs a real call through the configured provider against two fixtures — an **honest** skill and a **lying** one (`network: false` but `fetch()` in a script) — asserting `clean` vs `flagged`. Self-skips when unconfigured (CI stays green). Lives in the `pnpm test:e2e` smoke suite. The per-machine endpoint (e.g. OpenRouter locally) is supplied by shell/`.env`, never committed.
 
 ## Architecture
 

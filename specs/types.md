@@ -124,6 +124,42 @@ export function computeVerdict(
 ): ScanVerdict;
 ```
 
+## LLM Content Screening
+
+An **optional, provider-pluggable** LLM reads the full extracted skill content and checks that the submitter's declared statements (the `PermissionsManifest` and the questionnaire answers) match what the code actually does, plus screens for description accuracy and malicious intent. It is a *separate* analyzer from the Docker scanner — it never feeds `ScanReport.verdict`. It is **advisory** for code-containing skills and a **fail-closed gate** for md-only skills. See [security-scanning.md#llm-content-screening](security-scanning.md#llm-content-screening) for orchestration and [workflow.md](workflow.md) for pipeline placement.
+
+```typescript
+export type ScreeningProviderKind = 'openai' | 'anthropic';
+export type ScreeningCategory = 'permission' | 'questionnaire' | 'description' | 'malicious';
+export type ScreeningStatus = 'clean' | 'flagged' | 'skipped' | 'error';
+
+export interface ScreeningFinding {
+  category: ScreeningCategory;
+  severity: ScanSeverity;            // reuses the scanner severity scale
+  file?: string;                     // path inside the skill, when locatable
+  line?: number;
+  declared?: string;                 // what the submitter stated, e.g. "network: false"
+  observed?: string;                 // what the content shows, e.g. "fetch('https://…') at scripts/run.sh:12"
+  message: string;
+}
+
+export interface ScreeningReport {
+  submissionId: string;
+  contentHash: string;               // mirror of Submission.contentHash for join-ability
+  provider: ScreeningProviderKind;
+  model: string;                     // resolved model id used
+  contextTokens: number;             // declared context window the budget was derived from
+  status: ScreeningStatus;
+  truncated: boolean;                // content exceeded the token budget; partial screen
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  findings: ScreeningFinding[];
+}
+```
+
+`status` drives the pipeline edge: `flagged`/`error`/`truncated` divert an **md-only** submission to compliance `review`; for **code-containing** submissions the report is attached for the reviewer but the flow is unchanged. When screening is unconfigured the report is `status: 'skipped'` with no findings. The screen is carried on the workflow context (`screeningReport`) and persisted alongside the scan report; it is included in the compliance-review payload (see [web-ui.md](web-ui.md) Screening tab).
+
 ## Questionnaire
 
 ```typescript

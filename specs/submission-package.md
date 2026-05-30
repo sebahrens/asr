@@ -41,6 +41,11 @@ packages/submission/
 │   ├── scan/
 │   │   ├── runner.ts         — docker exec of asr-scanner image (or bind-mount in dev)
 │   │   └── report.ts         — ScanReport persistence + verdict computation
+│   ├── screen/               — optional LLM content screen (activated by LLM_SCREEN_PROVIDER)
+│   │   ├── runScreening.ts   — orchestrator; injectable provider (test seam)
+│   │   ├── packContent.ts    — token-budget content packing (skip binaries, mark truncation)
+│   │   ├── prompt.ts         — static cacheable rubric (4 check categories)
+│   │   └── providers/        — openai.ts, anthropic.ts, factory.ts, types.ts
 │   ├── audit/
 │   │   ├── emit.ts           — single insert helper, validates AUDIT_ACTIONS
 │   │   ├── verify.ts         — chain verification
@@ -79,6 +84,7 @@ packages/submission/
     "test:integration": "vitest run --dir test/integration"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
     "@asr/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@octokit/rest": "^21.0.0",
@@ -87,6 +93,7 @@ packages/submission/
     "hono": "^4.6.0",
     "jsonwebtoken": "^9.0.0",
     "jwks-rsa": "^3.0.0",
+    "openai": "^4.70.0",
     "pino": "^9.0.0",
     "semver": "^7.6.0",
     "ulid": "^2.3.0",
@@ -172,6 +179,14 @@ new Server(app.fetch).listen(env.PORT);
 | `SCANNER_TIMEOUT_SECONDS` | no | default 300 |
 | `SCANNER_SEVERITY_THRESHOLD` | no | default `high` |
 | `VERACODE_API_KEY_ID` / `VERACODE_API_KEY_SECRET` | no | optional Tier 3 |
+| `LLM_SCREEN_PROVIDER` | no | `openai` \| `anthropic`; unset → LLM screen disabled |
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` | iff provider=`openai` | key+model required; base URL → any OpenAI-compatible endpoint |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` | iff provider=`anthropic` | key+model required; base URL → Anthropic-compatible proxy (LiteLLM→Bedrock) |
+| `LLM_SCREEN_CONTEXT_TOKENS` | no | model context window; default `200000` |
+| `LLM_SCREEN_RESERVE_OUTPUT_TOKENS` | no | default `8000` |
+| `LLM_SCREEN_CHARS_PER_TOKEN` | no | budget estimate ratio; default `3.5` |
+
+The LLM screen ([security-scanning.md#llm-content-screening](security-scanning.md#llm-content-screening)) is server-side only — its keys are **never** exposed as `VITE_*` build vars.
 
 `src/env.ts` validates these with zod and refuses to boot if anything required is missing — fail-fast, never silently default in prod.
 
