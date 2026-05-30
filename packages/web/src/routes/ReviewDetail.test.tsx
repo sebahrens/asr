@@ -521,7 +521,9 @@ describe('ReviewDetail', () => {
     expect(await screen.findByRole('heading', { name: /example-skill/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: /^screening$/i }));
 
-    expect(screen.getByRole('tabpanel', { name: /screening/i })).toHaveTextContent(/screening not available/i);
+    expect(screen.getByRole('tabpanel', { name: /screening/i })).toHaveTextContent(
+      /screening not available the llm content screen/i,
+    );
     const decisionSlot = screen.getByRole('complementary', { name: /decision panel/i });
     expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^approve$/i }));
     expect(decisionSlot).toContainElement(screen.getByRole('button', { name: /^reject$/i }));

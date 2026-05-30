@@ -507,6 +507,7 @@ function EvidencePanelContent({
     return (
       <div className="review-detail-empty" role="status" aria-live="polite">
         <strong>{unavailableTitle}</strong>
+        {' '}
         <span>{unavailableMessage}</span>
       </div>
     );
