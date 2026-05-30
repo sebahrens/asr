@@ -11,15 +11,34 @@ import {
 
 function openTempDb(initialEvents = 0): Database.Database {
   const db = new Database(':memory:');
-  db.exec('CREATE TABLE audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT)');
-  const insert = db.prepare('INSERT INTO audit_events DEFAULT VALUES');
-  for (let i = 0; i < initialEvents; i += 1) insert.run();
+  db.exec(`
+    CREATE TABLE audit_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action TEXT NOT NULL,
+      timestamp TEXT NOT NULL
+    )
+  `);
+  for (let i = 0; i < initialEvents; i += 1) addEvent(db, i);
   return db;
 }
 
-function addEvents(db: Database.Database, count: number): void {
-  const insert = db.prepare('INSERT INTO audit_events DEFAULT VALUES');
-  for (let i = 0; i < count; i += 1) insert.run();
+function addEvent(
+  db: Database.Database,
+  timestampMs: number,
+  action = 'submission.created',
+): void {
+  db.prepare('INSERT INTO audit_events (action, timestamp) VALUES (?, ?)').run(
+    action,
+    new Date(timestampMs).toISOString(),
+  );
+}
+
+function addEvents(
+  db: Database.Database,
+  count: number,
+  action = 'submission.created',
+): void {
+  for (let i = 0; i < count; i += 1) addEvent(db, i, action);
 }
 
 const stubForgejo = {} as unknown as ForgejoClient;
@@ -109,7 +128,7 @@ describe('createAnchorScheduler', () => {
         _key: PrivateKey,
         _keys: KeyRing,
       ): Promise<AnchorResult | null> => {
-        addEvents(database, 1); // emulate runAnchorOnce inserting audit.anchored
+        addEvents(database, 1, 'audit.anchored');
         return { tagName: 'audit-anchor-test', eventCount: 100 };
       },
     );
@@ -169,6 +188,73 @@ describe('createAnchorScheduler', () => {
     expect(scheduler.getState().lastAnchorEventCount).toBe(0);
   });
 
+  it('initializes from the latest audit.anchored row after restart', async () => {
+    const database = db!;
+
+    addEvent(database, 0);
+    addEvent(database, 1_000);
+    addEvent(database, 2_000, 'audit.anchored');
+    addEvent(database, 3_000);
+    addEvent(database, 4_000);
+
+    let currentTime = 5_000;
+    const run = vi.fn(async () => ({ tagName: 't', eventCount: 5 }));
+    const scheduler = createAnchorScheduler({
+      db: database,
+      forgejo: stubForgejo,
+      key: stubKey,
+      keys: stubKeys,
+      intervalMs: 3_600_000,
+      eventThreshold: 100,
+      now: () => currentTime,
+      run,
+    });
+
+    expect(scheduler.getState()).toEqual({
+      lastAnchorAt: 2_000,
+      lastAnchorEventCount: 3,
+    });
+
+    await scheduler.tick();
+    expect(run).not.toHaveBeenCalled();
+
+    currentTime = 3_602_000;
+    await scheduler.tick();
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('initializes from the earliest event timestamp when no anchor exists', async () => {
+    const database = db!;
+
+    addEvent(database, 1_000);
+    addEvent(database, 1_500);
+
+    let currentTime = 1_999;
+    const run = vi.fn(async () => ({ tagName: 't', eventCount: 2 }));
+    const scheduler = createAnchorScheduler({
+      db: database,
+      forgejo: stubForgejo,
+      key: stubKey,
+      keys: stubKeys,
+      intervalMs: 1_000,
+      eventThreshold: 100,
+      now: () => currentTime,
+      run,
+    });
+
+    expect(scheduler.getState()).toEqual({
+      lastAnchorAt: 1_000,
+      lastAnchorEventCount: 0,
+    });
+
+    await scheduler.tick();
+    expect(run).not.toHaveBeenCalled();
+
+    currentTime = 2_000;
+    await scheduler.tick();
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   it('invokes run when the time interval is crossed even with no new events', async () => {
     const database = db!;
     let currentTime = 0;
@@ -199,7 +285,7 @@ describe('createAnchorScheduler', () => {
 
       let currentTime = 0;
       const run = vi.fn(async () => {
-        addEvents(database, 1);
+        addEvents(database, 1, 'audit.anchored');
         return { tagName: 't', eventCount: 100 };
       });
 

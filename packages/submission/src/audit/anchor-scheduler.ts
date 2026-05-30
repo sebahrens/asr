@@ -58,6 +58,59 @@ function countEvents(db: Database.Database): number {
   return db.prepare('SELECT COUNT(*) FROM audit_events').pluck().get() as number;
 }
 
+function countEventsThroughRowid(
+  db: Database.Database,
+  rowid: number,
+): number {
+  return db
+    .prepare('SELECT COUNT(*) FROM audit_events WHERE rowid <= ?')
+    .pluck()
+    .get(rowid) as number;
+}
+
+function parseAuditTimestamp(timestamp: string | null | undefined): number | null {
+  if (!timestamp) return null;
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function loadInitialAnchorState(
+  db: Database.Database,
+  now: () => number,
+): AnchorSchedulerState {
+  const latestAnchor = db
+    .prepare(
+      `
+        SELECT rowid AS anchor_rowid, timestamp
+        FROM audit_events
+        WHERE action = 'audit.anchored'
+        ORDER BY rowid DESC
+        LIMIT 1
+      `,
+    )
+    .get() as { anchor_rowid: number; timestamp: string } | undefined;
+
+  if (latestAnchor) {
+    return {
+      lastAnchorAt: parseAuditTimestamp(latestAnchor.timestamp) ?? now(),
+      lastAnchorEventCount: countEventsThroughRowid(
+        db,
+        latestAnchor.anchor_rowid,
+      ),
+    };
+  }
+
+  const firstEventTimestamp = db
+    .prepare('SELECT MIN(timestamp) FROM audit_events')
+    .pluck()
+    .get() as string | null;
+
+  return {
+    lastAnchorAt: parseAuditTimestamp(firstEventTimestamp) ?? now(),
+    lastAnchorEventCount: 0,
+  };
+}
+
 export function createAnchorScheduler(
   opts: AnchorSchedulerOpts,
 ): AnchorSchedulerHandle {
@@ -67,8 +120,9 @@ export function createAnchorScheduler(
   const now = opts.now ?? Date.now;
   const run = opts.run ?? runAnchorOnce;
 
-  let lastAnchorAt = now();
-  let lastAnchorEventCount = countEvents(opts.db);
+  const initialState = loadInitialAnchorState(opts.db, now);
+  let lastAnchorAt = initialState.lastAnchorAt;
+  let lastAnchorEventCount = initialState.lastAnchorEventCount;
   let timer: ReturnType<typeof setInterval> | undefined;
   let running = false;
 
