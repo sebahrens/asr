@@ -4,7 +4,10 @@ import { getSkillVersion, insertSkillVersion } from '../db/repositories/skillVer
 import { ownerFromPrincipal } from '../identity/owners.js';
 import { updateSubmissionStatus } from '../db/repositories/submissions.js';
 import { packSkillZip } from '../zip/pack.js';
+import { LockVersionMismatchError } from './errors.js';
 import { buildPublishRecord, serializePublishRecord } from './publishRecord.js';
+
+export { LockVersionMismatchError } from './errors.js';
 
 export interface PublishMdOnlyDeps {
   db: Database;
@@ -83,7 +86,7 @@ export async function publishMdOnly(
     });
   }
 
-  updateSubmissionStatus(db, submission.id, lockVersion, {
+  const updated = updateSubmissionStatus(db, submission.id, lockVersion, {
     statusPhase: 'published',
     statusJson: JSON.stringify({
       phase: 'published',
@@ -91,6 +94,9 @@ export async function publishMdOnly(
       mergeCommit: sha,
     }),
   });
+  if (!updated) {
+    throw new LockVersionMismatchError(submission.id, lockVersion);
+  }
 
   if (deps.triggerMarketplaceSync) {
     try {

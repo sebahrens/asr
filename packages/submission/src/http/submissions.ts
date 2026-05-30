@@ -46,6 +46,7 @@ import {
   acquirePendingVersion,
   releasePendingVersion,
 } from '../workflow/pendingVersionLock.js';
+import { LockVersionMismatchError } from '../workflow/errors.js';
 import {
   runApprovalPipeline,
   type ApprovalPipelineContext,
@@ -348,6 +349,8 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
       };
 
       if (db) {
+        const initialRow = getSubmissionById(db, id);
+        const submissionLockVersion = initialRow?.lock_version ?? 0;
         const workflowDependencies =
           options.workflowDependencies ?? defaultWorkflowDependencies(options);
         await workflowDependencies.audit('submission.created', {
@@ -409,10 +412,13 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
               yank_reason: null,
             });
           }
-          updateSubmissionStatus(db, id, 0, {
+          const statusUpdated = updateSubmissionStatus(db, id, submissionLockVersion, {
             statusPhase: workflowStatus.phase,
             statusJson: JSON.stringify(statusJsonWithApprovalPath(workflowStatus, approvalPath)),
           });
+          if (!statusUpdated) {
+            throw new LockVersionMismatchError(id, submissionLockVersion);
+          }
           submission.status = workflowStatus;
           if (workflowStatus.phase === 'published' && options.triggerMarketplaceSync) {
             await options.triggerMarketplaceSync(manifest.name);
@@ -420,6 +426,11 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
           releasePendingVersionIfTerminal(db, manifest, workflowStatus);
         } catch (error) {
           releasePendingVersion(db, manifest.name, manifest.version);
+          if (error instanceof LockVersionMismatchError) {
+            return apiError(c, 409, 'submission_in_progress', {
+              message: error.message,
+            });
+          }
           return apiError(c, 500, 'internal_error', {
             message: error instanceof Error ? error.message : 'approval pipeline failed',
           });

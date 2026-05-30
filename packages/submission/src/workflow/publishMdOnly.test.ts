@@ -8,9 +8,10 @@ import {
   getSubmissionById,
   insertSubmission,
   rowToSubmission,
+  updateSubmissionStatus,
 } from '../db/repositories/submissions.js';
 import { packSkillZip } from '../zip/pack.js';
-import { publishMdOnly } from './publishMdOnly.js';
+import { LockVersionMismatchError, publishMdOnly } from './publishMdOnly.js';
 
 describe('publishMdOnly', () => {
   let db: Database.Database | undefined;
@@ -207,6 +208,69 @@ describe('publishMdOnly', () => {
 
     const secondRow = getSkillVersion(db, manifest.name, manifest.version);
     expect(secondRow).toEqual(firstRow);
+  });
+
+  it('throws when a concurrent status update advances lock_version before publish completes', async () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    const manifest: SkillManifest = {
+      name: 'stale-lock-skill',
+      version: '1.0.0',
+      author: 'alice',
+      description: 'Stale lock regression',
+      tags: ['demo'],
+      kind: 'skill',
+      permissions: {
+        network: false,
+        filesystem: 'read-own',
+        subprocess: false,
+        environment: [],
+      },
+    };
+
+    const files = [{ path: 'SKILL.md', content: Buffer.from('# Stale\n') }];
+    const expectedZip = await packSkillZip(files);
+    const expectedContentHash = `sha256:${createHash('sha256').update(expectedZip).digest('hex')}`;
+    const submission: Submission = {
+      id: 'submission-stale-lock',
+      manifest,
+      classification: 'md-only',
+      contentHash: expectedContentHash,
+      submittedAt: '2026-05-26T00:00:00.000Z',
+      submittedBy: 'alice',
+      status: { phase: 'pushing-to-forgejo' },
+    };
+
+    insertSubmission(db, {
+      id: submission.id,
+      manifestJson: JSON.stringify(submission.manifest),
+      classification: submission.classification,
+      contentHash: submission.contentHash,
+      submittedAt: submission.submittedAt,
+      submittedBy: submission.submittedBy,
+      statusPhase: submission.status.phase,
+      statusJson: JSON.stringify(submission.status),
+    });
+
+    expect(
+      updateSubmissionStatus(db, submission.id, 0, {
+        statusPhase: 'scanning',
+        statusJson: JSON.stringify({ phase: 'scanning', scanJobId: 'scan-1' }),
+      }),
+    ).toBe(true);
+
+    const forgejo = new FakeForgejoClient('https://forgejo.example/pkg');
+    await expect(
+      publishMdOnly(
+        { db, forgejo: forgejo as unknown as ForgejoClient },
+        { submission, files, lockVersion: 0 },
+      ),
+    ).rejects.toBeInstanceOf(LockVersionMismatchError);
+
+    const row = getSubmissionById(db, submission.id);
+    expect(row?.status_phase).toBe('scanning');
+    expect(row?.lock_version).toBe(1);
   });
 
   it('invokes triggerMarketplaceSync exactly once with the published skill name after publish', async () => {
