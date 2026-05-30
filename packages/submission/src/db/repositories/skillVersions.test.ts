@@ -52,6 +52,7 @@ function sampleRow(overrides: Partial<SkillVersionRow> = {}): SkillVersionRow {
     pr_number: 42,
     merge_commit: 'merge-sha-1',
     scan_report_id: null,
+    risk_assessment: 'low',
     yanked_at: null,
     yanked_by: null,
     yank_reason: null,

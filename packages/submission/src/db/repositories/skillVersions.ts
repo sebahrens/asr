@@ -1,4 +1,5 @@
 import { rsortVersions } from '@asr/core';
+import type { RiskAssessment } from '@asr/core';
 import type Database from 'better-sqlite3';
 import { ownerFromPrincipal } from '../../identity/owners.js';
 
@@ -14,12 +15,16 @@ export interface SkillVersionRow {
   pr_number: number;
   merge_commit: string;
   scan_report_id: string | null;
+  risk_assessment: RiskAssessment;
   yanked_at: string | null;
   yanked_by: string | null;
   yank_reason: string | null;
 }
 
-export type InsertSkillVersionRow = Omit<SkillVersionRow, 'owner'> & { owner?: string };
+export type InsertSkillVersionRow = Omit<SkillVersionRow, 'owner' | 'risk_assessment'> & {
+  owner?: string;
+  risk_assessment?: RiskAssessment;
+};
 
 export function insertSkillVersion(db: Database.Database, row: InsertSkillVersionRow): void {
   const owner = row.owner ?? ownerFromPrincipal(row.published_by);
@@ -37,6 +42,7 @@ export function insertSkillVersion(db: Database.Database, row: InsertSkillVersio
         pr_number,
         merge_commit,
         scan_report_id,
+        risk_assessment,
         yanked_at,
         yanked_by,
         yank_reason
@@ -52,12 +58,13 @@ export function insertSkillVersion(db: Database.Database, row: InsertSkillVersio
         @pr_number,
         @merge_commit,
         @scan_report_id,
+        @risk_assessment,
         @yanked_at,
         @yanked_by,
         @yank_reason
       )
     `,
-  ).run({ ...row, owner });
+  ).run({ ...row, owner, risk_assessment: row.risk_assessment ?? 'low' });
 }
 
 export function getSkillVersion(
@@ -83,6 +90,7 @@ export function getSkillVersion(
           pr_number,
           merge_commit,
           scan_report_id,
+          risk_assessment,
           yanked_at,
           yanked_by,
           yank_reason
@@ -118,6 +126,7 @@ export function listVersions(
           pr_number,
           merge_commit,
           scan_report_id,
+          risk_assessment,
           yanked_at,
           yanked_by,
           yank_reason

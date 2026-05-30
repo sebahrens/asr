@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runMigrations } from '../db/migrations/index.js';
 import { insertSkillVersion } from '../db/repositories/skillVersions.js';
 import { insertSubmission } from '../db/repositories/submissions.js';
@@ -61,6 +61,32 @@ describe('registryRoutes', () => {
       items: [expect.objectContaining({ name: 'x' })],
       nextCursor: null,
     });
+  });
+
+  it('opens a fresh production DATABASE_PATH without seeding demo registry skills', async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), 'asr-production-registry-'));
+    tempRoots.push(tempRoot);
+    const dbPath = join(tempRoot, 'workflow.db');
+
+    vi.resetModules();
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('AUTH_MODE', 'entra');
+    vi.stubEnv('DATABASE_PATH', dbPath);
+
+    const imported = await import('./registry.js');
+    const defaultDb = imported.getDefaultRegistryDb();
+    const app = new Hono();
+    app.route('/api/v1/skills', imported.createRegistryRoutes());
+
+    const res = await app.request('/api/v1/skills');
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ items: [], nextCursor: null });
+    expect((defaultDb.pragma('table_info(skill_versions)') as Array<{ name: string }>).map((column) => column.name))
+      .toContain('risk_assessment');
+
+    defaultDb.close();
+    vi.unstubAllEnvs();
   });
 
   it('returns published skill detail', async () => {

@@ -68,6 +68,22 @@ describe('published skills repository', () => {
     expect(detail?.versions).toHaveLength(2);
   });
 
+  it('reads published risk assessment from skill_versions', () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    insertPublishedSubmission(db, {
+      id: 'submission-risk',
+      version: '1.0.0',
+      submittedAt: '2026-05-23T10:00:00.000Z',
+      publishedAt: '2026-05-23T10:05:00.000Z',
+      riskAssessment: 'medium',
+    });
+
+    expect(listPublishedSkills(db).items[0]?.riskAssessmentLatest).toBe('medium');
+    expect(getPublishedSkill(db, 'acme', 'x')?.versions[0]?.riskAssessment).toBe('medium');
+  });
+
   it('filters by query, tag, and kind before paginating', () => {
     db = new Database(':memory:');
     runMigrations(db);
@@ -295,6 +311,7 @@ interface PublishedSubmissionFixture {
   yankedAt?: string;
   yankReason?: string;
   includeSkillVersion?: boolean;
+  riskAssessment?: 'low' | 'medium' | 'high';
 }
 
 function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubmissionFixture): void {
@@ -339,6 +356,7 @@ function insertPublishedSubmission(db: Database.Database, fixture: PublishedSubm
     pr_number: 42,
     merge_commit: `merge-${fixture.id}`,
     scan_report_id: null,
+    risk_assessment: fixture.riskAssessment,
     yanked_at: fixture.yankedAt ?? null,
     yanked_by: fixture.yankedAt ? 'compliance@example.com' : null,
     yank_reason: fixture.yankReason ?? null,

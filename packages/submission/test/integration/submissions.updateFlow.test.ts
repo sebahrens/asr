@@ -267,9 +267,9 @@ function seedPriorVersion(db: Database.Database, input: SeedInput): void {
       INSERT INTO skill_versions (
         owner, skill_name, version, content_hash, submission_id,
         published_at, published_by, approved_by, pr_number, merge_commit,
-        scan_report_id, yanked_at, yanked_by, yank_reason
+        scan_report_id, risk_assessment, yanked_at, yanked_by, yank_reason
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
     'alice',
@@ -283,6 +283,7 @@ function seedPriorVersion(db: Database.Database, input: SeedInput): void {
     1,
     'prior-merge-sha',
     null,
+    'low',
     null,
     null,
     null,

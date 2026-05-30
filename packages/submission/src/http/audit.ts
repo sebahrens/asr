@@ -97,5 +97,3 @@ export function createAuditRoutes(options: AuditRouteOptions = {}) {
 
   return routes;
 }
-
-export const auditRoutes = createAuditRoutes();

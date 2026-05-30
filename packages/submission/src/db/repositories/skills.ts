@@ -26,6 +26,7 @@ interface PublishedSubmissionRow {
   submitted_by: string;
   pr_number: number | null;
   status_json: string;
+  risk_assessment: SkillVersion['riskAssessment'];
   yanked_at: string | null;
   yank_reason: string | null;
 }
@@ -237,6 +238,7 @@ function readPublishedRowsWhere(
           submissions.submitted_by,
           submissions.pr_number,
           submissions.status_json,
+          sv.risk_assessment,
           sv.yanked_at,
           sv.yank_reason
         FROM submissions
@@ -328,7 +330,7 @@ function toSkillDetail(group: PublishedSkillGroup): SkillDetail {
     kind: latest.manifest.kind,
     publishedAt: publishedAtFor(latest),
     downloadCount: 0,
-    riskAssessmentLatest: latest.status.riskAssessment ?? 'low',
+    riskAssessmentLatest: latest.row.risk_assessment,
     manifestLatest: latest.manifest,
     skillMd: latest.status.skillMd,
     versions: sortedVersions.map(toSkillVersion),
@@ -356,7 +358,7 @@ function toSkillVersion(version: PublishedSkillVersion): SkillVersion {
     yanked,
     ...(version.row.yanked_at ? { yankedAt: version.row.yanked_at } : {}),
     ...(version.row.yank_reason ? { yankReason: version.row.yank_reason } : {}),
-    riskAssessment: version.status.riskAssessment ?? 'low',
+    riskAssessment: version.row.risk_assessment,
   };
 }
 

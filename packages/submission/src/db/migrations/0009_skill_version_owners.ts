@@ -13,6 +13,7 @@ interface ExistingSkillVersionRow {
   pr_number: number;
   merge_commit: string;
   scan_report_id: string | null;
+  risk_assessment?: string;
   yanked_at: string | null;
   yanked_by: string | null;
   yank_reason: string | null;
@@ -43,6 +44,7 @@ export const migration0009SkillVersionOwners: Migration = {
         pr_number INTEGER NOT NULL,
         merge_commit TEXT NOT NULL,
         scan_report_id TEXT REFERENCES scan_results(id),
+        risk_assessment TEXT NOT NULL CHECK(risk_assessment IN ('low','medium','high')),
         yanked_at TEXT,
         yanked_by TEXT,
         yank_reason TEXT,
@@ -73,6 +75,7 @@ export const migration0009SkillVersionOwners: Migration = {
         pr_number,
         merge_commit,
         scan_report_id,
+        risk_assessment,
         yanked_at,
         yanked_by,
         yank_reason
@@ -88,6 +91,7 @@ export const migration0009SkillVersionOwners: Migration = {
         @pr_number,
         @merge_commit,
         @scan_report_id,
+        @risk_assessment,
         @yanked_at,
         @yanked_by,
         @yank_reason
@@ -95,7 +99,11 @@ export const migration0009SkillVersionOwners: Migration = {
     `);
 
     for (const row of rows) {
-      insert.run({ ...row, owner: ownerFromPrincipal(row.published_by) });
+      insert.run({
+        ...row,
+        owner: ownerFromPrincipal(row.published_by),
+        risk_assessment: row.risk_assessment ?? 'low',
+      });
     }
 
     db.exec('DROP TABLE skill_versions_old;');

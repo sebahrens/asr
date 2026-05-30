@@ -85,6 +85,7 @@ describe('migration0005Versioning', () => {
       'pr_number',
       'merge_commit',
       'scan_report_id',
+      'risk_assessment',
       'yanked_at',
       'yanked_by',
       'yank_reason',
@@ -146,9 +147,10 @@ describe('migration0005Versioning', () => {
         published_at,
         published_by,
         pr_number,
-        merge_commit
+        merge_commit,
+        risk_assessment
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     insertVersion.run(
@@ -161,6 +163,7 @@ describe('migration0005Versioning', () => {
       'submitter@example.com',
       42,
       'merge-sha',
+      'low',
     );
 
     expect(() => {
@@ -174,6 +177,7 @@ describe('migration0005Versioning', () => {
         'submitter@example.com',
         43,
         'merge-sha-2',
+        'low',
       );
     }).toThrow();
 

@@ -17,6 +17,7 @@ export const migration0005Versioning: Migration = {
         pr_number INTEGER NOT NULL,
         merge_commit TEXT NOT NULL,
         scan_report_id TEXT REFERENCES scan_results(id),
+        risk_assessment TEXT NOT NULL CHECK(risk_assessment IN ('low','medium','high')),
         yanked_at TEXT,
         yanked_by TEXT,
         yank_reason TEXT,
