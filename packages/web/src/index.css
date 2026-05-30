@@ -634,6 +634,7 @@ main {
   color: var(--text-secondary);
   line-height: 1.7;
   font-size: 0.925rem;
+  overflow-x: auto;
 }
 
 .skill-content h1, .skill-content h2, .skill-content h3 {
@@ -656,23 +657,31 @@ main {
 }
 
 .skill-content table {
+  border: 1px solid var(--border);
+  width: 100%;
   border-collapse: collapse;
-  display: block;
   margin: 16px 0;
-  max-width: 100%;
-  overflow-x: auto;
+  font-size: 0.8rem;
+  table-layout: fixed;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
-.skill-content th,
-.skill-content td {
-  border: 1px solid var(--border-light);
+.skill-content th, .skill-content td {
+  border: 1px solid var(--border);
   padding: 8px 10px;
   text-align: left;
+  vertical-align: top;
 }
 
 .skill-content th {
   background: var(--bg-secondary);
   color: var(--text);
+  font-weight: 600;
+}
+
+.skill-content td a {
+  word-break: break-all;
 }
 
 .skill-content code {
@@ -706,32 +715,6 @@ main {
 
 .skill-content li {
   margin: 6px 0;
-}
-
-.skill-content table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 16px 0;
-  font-size: 0.8rem;
-  table-layout: fixed;
-  overflow-wrap: break-word;
-  word-break: break-word;
-}
-
-.skill-content th, .skill-content td {
-  border: 1px solid var(--border-light);
-  padding: 8px 10px;
-  text-align: left;
-  vertical-align: top;
-}
-
-.skill-content th {
-  background: var(--bg-secondary);
-  font-weight: 600;
-}
-
-.skill-content td a {
-  word-break: break-all;
 }
 
 /* States */
