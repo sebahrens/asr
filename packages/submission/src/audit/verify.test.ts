@@ -367,4 +367,51 @@ describe('verifyChain', () => {
     expect(countAfter).toBe(countBefore);
     expect(lastHashAfter).toBe(lastHashBefore);
   });
+
+  it('streams audit rows through iterate instead of buffering with all', () => {
+    const database = db!;
+    emitThree(database);
+    const keys = loadKeyRing();
+    let iterateCallCount = 0;
+
+    const sniffingDb: Database.Database = new Proxy(database, {
+      get(target, prop, receiver) {
+        if (prop === 'prepare') {
+          return (sql: string, ...rest: unknown[]) => {
+            const statement = (
+              target.prepare as (s: string, ...r: unknown[]) => {
+                all?: (...args: unknown[]) => unknown[];
+                iterate?: (...args: unknown[]) => IterableIterator<unknown>;
+              }
+            )(sql, ...rest);
+
+            if (sql.includes('FROM audit_events') && sql.includes('ORDER BY rowid')) {
+              return new Proxy(statement, {
+                get(statementTarget, statementProp, statementReceiver) {
+                  if (statementProp === 'all') {
+                    return () => {
+                      throw new Error('verifyChain must not buffer audit rows');
+                    };
+                  }
+                  if (statementProp === 'iterate') {
+                    return (...args: unknown[]) => {
+                      iterateCallCount += 1;
+                      return statementTarget.iterate!(...args);
+                    };
+                  }
+                  return Reflect.get(statementTarget, statementProp, statementReceiver);
+                },
+              });
+            }
+
+            return statement;
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as Database.Database;
+
+    expect(verifyChain(sniffingDb, keys)).toMatchObject({ valid: true });
+    expect(iterateCallCount).toBe(1);
+  });
 });

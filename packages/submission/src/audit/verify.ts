@@ -21,6 +21,7 @@ export type VerifyResult =
     };
 
 interface AuditEventRow {
+  rowid: number;
   id: string;
   submission_id: string | null;
   skill_name: string | null;
@@ -34,6 +35,12 @@ interface AuditEventRow {
   hash: string;
   hmac_key_id: string;
   hash_version: number;
+}
+
+export interface VerifyChainOptions {
+  startAfterRowid?: number;
+  expectedPrevHash?: string;
+  initialEventCount?: number;
 }
 
 function rowToUnsignedEvent(
@@ -58,13 +65,22 @@ function rowToUnsignedEvent(
 export function verifyChain(
   db: Database.Database,
   keys: KeyRing,
+  options: VerifyChainOptions = {},
 ): VerifyResult {
+  const startAfterRowid = normalizeStartAfterRowid(options.startAfterRowid);
   const rows = db
-    .prepare('SELECT * FROM audit_events ORDER BY rowid')
-    .all() as AuditEventRow[];
+    .prepare(
+      `
+        SELECT rowid, *
+        FROM audit_events
+        WHERE rowid > ?
+        ORDER BY rowid
+      `,
+    )
+    .iterate(startAfterRowid) as IterableIterator<AuditEventRow>;
 
-  let expectedPrev = '0'.repeat(64);
-  let eventCount = 0;
+  let expectedPrev = options.expectedPrevHash ?? '0'.repeat(64);
+  let eventCount = options.initialEventCount ?? 0;
   let lastHmacKeyId: string | null = null;
 
   for (const row of rows) {
@@ -92,4 +108,12 @@ export function verifyChain(
   }
 
   return { valid: true, eventCount, lastHash: expectedPrev, lastHmacKeyId };
+}
+
+function normalizeStartAfterRowid(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.trunc(value));
 }

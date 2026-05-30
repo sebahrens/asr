@@ -24,12 +24,38 @@ export function auditChainGuard(
 
   const cacheMs = options.cacheMs ?? 1000;
   let cached: { result: VerifyResult; expiresAt: number } | null = null;
+  let verifiedPrefix:
+    | {
+        rowid: number;
+        eventCount: number;
+        lastHash: string;
+        lastHmacKeyId: string | null;
+      }
+    | null = null;
 
   function readVerifyResult(): VerifyResult {
     if (cacheMs > 0 && cached && cached.expiresAt > Date.now()) {
       return cached.result;
     }
-    const result = verifyChain(db, keys);
+    const result = verifiedPrefix
+      ? verifyChain(db, keys, {
+          startAfterRowid: verifiedPrefix.rowid,
+          expectedPrevHash: verifiedPrefix.lastHash,
+          initialEventCount: verifiedPrefix.eventCount,
+        })
+      : verifyChain(db, keys);
+
+    if (result.valid) {
+      const tail = readAuditTail();
+      verifiedPrefix = {
+        rowid: tail.rowid,
+        eventCount: result.eventCount,
+        lastHash: result.lastHash,
+        lastHmacKeyId:
+          result.lastHmacKeyId ?? verifiedPrefix?.lastHmacKeyId ?? null,
+      };
+    }
+
     if (cacheMs > 0) {
       cached = { result, expiresAt: Date.now() + cacheMs };
     } else {
@@ -72,4 +98,12 @@ export function auditChainGuard(
 
     return apiError(c, 503, 'audit_chain_broken', { brokenAt: result.brokenAt });
   };
+
+  function readAuditTail(): { rowid: number } {
+    const row = db
+      .prepare('SELECT rowid FROM audit_events ORDER BY rowid DESC LIMIT 1')
+      .get() as { rowid: number } | undefined;
+
+    return { rowid: row?.rowid ?? 0 };
+  }
 }

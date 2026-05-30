@@ -115,7 +115,7 @@ describe('auditEvents repository', () => {
   });
 
   it('getBySubmission returns only that submission events in chronological order', () => {
-    const events = getBySubmission(db!, 'sub_a');
+    const events = getBySubmission(db!, 'sub_a').items;
     expect(events.map((e) => e.action)).toEqual([
       'submission.created',
       'submission.classified',
@@ -126,17 +126,17 @@ describe('auditEvents repository', () => {
   });
 
   it('getBySkill returns events across all versions when version is undefined', () => {
-    const events = getBySkill(db!, 'owner-a', 'foo');
+    const events = getBySkill(db!, 'owner-a', 'foo').items;
     expect(events).toHaveLength(2);
     expect(events.every((e) => e.skillName === 'foo')).toBe(true);
     expect(events.map((e) => e.version)).toEqual(['1.0.0', '1.0.0']);
     // none of bar's events leak in
     expect(events.some((e) => e.skillName === 'bar')).toBe(false);
-    expect(getBySkill(db!, 'owner-b', 'foo').map((e) => e.version)).toEqual(['2.0.0']);
+    expect(getBySkill(db!, 'owner-b', 'foo').items.map((e) => e.version)).toEqual(['2.0.0']);
   });
 
   it('getBySkill filters by version when provided', () => {
-    const events = getBySkill(db!, 'owner-a', 'foo', '1.0.0');
+    const events = getBySkill(db!, 'owner-a', 'foo', '1.0.0').items;
     expect(events).toHaveLength(2);
     expect(events.every((e) => e.skillName === 'foo' && e.version === '1.0.0')).toBe(
       true,
@@ -148,21 +148,21 @@ describe('auditEvents repository', () => {
   });
 
   it('getByUser returns only that actor events', () => {
-    const events = getByUser(db!, 'alice');
+    const events = getByUser(db!, 'alice').items;
     expect(events).toHaveLength(2);
     expect(events.every((e) => e.actor === 'alice')).toBe(true);
     expect(events.map((e) => e.action)).toEqual([
       'submission.created',
       'version.yanked',
     ]);
-    expect(getByUser(db!, 'bob').map((e) => e.action)).toEqual([
+    expect(getByUser(db!, 'bob').items.map((e) => e.action)).toEqual([
       'submission.created',
     ]);
-    expect(getByUser(db!, 'nobody')).toEqual([]);
+    expect(getByUser(db!, 'nobody')).toEqual({ items: [], nextOffset: null });
   });
 
   it('getAllChronological returns every row in timestamp/rowid order', () => {
-    const events = getAllChronological(db!);
+    const events = getAllChronological(db!).items;
     expect(events).toHaveLength(4);
     expect(events.map((e) => e.action)).toEqual([
       'submission.created',
@@ -176,7 +176,7 @@ describe('auditEvents repository', () => {
   });
 
   it('row mapping preserves snake_case -> camelCase fields and parses detail JSON', () => {
-    const events = getBySubmission(db!, 'sub_a');
+    const events = getBySubmission(db!, 'sub_a').items;
     const event = events[0]!;
     expect(event).toMatchObject({
       submissionId: 'sub_a',
@@ -191,5 +191,24 @@ describe('auditEvents repository', () => {
     expect(event.prevHash).toBe('0'.repeat(64));
     expect(typeof event.hash).toBe('string');
     expect(event.hash).toHaveLength(64);
+  });
+
+  it('paginates list queries with a bounded limit and next offset', () => {
+    const firstPage = getAllChronological(db!, { limit: 2 });
+    expect(firstPage.items.map((e) => e.action)).toEqual([
+      'submission.created',
+      'submission.classified',
+    ]);
+    expect(firstPage.nextOffset).toBe(2);
+
+    const secondPage = getAllChronological(db!, {
+      limit: 2,
+      offset: firstPage.nextOffset ?? 0,
+    });
+    expect(secondPage.items.map((e) => e.action)).toEqual([
+      'submission.created',
+      'version.yanked',
+    ]);
+    expect(secondPage.nextOffset).toBeNull();
   });
 });

@@ -266,7 +266,7 @@ describe('DELETE /api/v1/submissions/:id', () => {
     };
     expect(row.status_phase).toBe('withdrawn');
     expect(JSON.parse(row.status_json)).toMatchObject({ phase: 'withdrawn' });
-    expect(getBySubmission(db!, 'sub-1')).toMatchObject([
+    expect(getBySubmission(db!, 'sub-1').items).toMatchObject([
       {
         action: 'submission.withdrawn',
         actor: 'submitter-1',

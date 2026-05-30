@@ -119,8 +119,13 @@ describe('GET /api/v1/audit routes', () => {
     const app = makeApp(db!, { sub: 'r1', roles: ['Compliance'] });
     const res = await app.request('/api/v1/audit/skill/o/foo');
     expect(res.status).toBe(200);
-    const events = (await res.json()) as Array<{ skillName: string | null; version: string | null; action: string }>;
+    const body = (await res.json()) as {
+      items: Array<{ skillName: string | null; version: string | null; action: string }>;
+      nextCursor: string | null;
+    };
+    const events = body.items;
     expect(events).toHaveLength(2);
+    expect(body.nextCursor).toBeNull();
     expect(events.every((e) => e.skillName === 'foo')).toBe(true);
     expect(events.some((e) => e.skillName === 'bar')).toBe(false);
     // chronological order
@@ -134,7 +139,10 @@ describe('GET /api/v1/audit routes', () => {
     const app = makeApp(db!, { sub: 'r1', roles: ['Compliance'] });
     const res = await app.request('/api/v1/audit/skill/other-owner/foo');
     expect(res.status).toBe(200);
-    const events = (await res.json()) as Array<{ version: string | null; action: string }>;
+    const body = (await res.json()) as {
+      items: Array<{ version: string | null; action: string }>;
+    };
+    const events = body.items;
     expect(events.map((e) => [e.action, e.version])).toEqual([
       ['submission.created', '2.0.0'],
     ]);
@@ -144,7 +152,8 @@ describe('GET /api/v1/audit routes', () => {
     const app = makeApp(db!, { sub: 'r1', roles: ['Admin'] });
     const res = await app.request('/api/v1/audit/skill/o/foo/v/1.0.0');
     expect(res.status).toBe(200);
-    const events = (await res.json()) as Array<{ version: string | null }>;
+    const body = (await res.json()) as { items: Array<{ version: string | null }> };
+    const events = body.items;
     expect(events).toHaveLength(2);
     expect(events.every((e) => e.version === '1.0.0')).toBe(true);
   });
@@ -188,7 +197,10 @@ describe('GET /api/v1/audit routes', () => {
       '/api/v1/audit/user/s1',
     );
     expect(admin.status).toBe(200);
-    const events = (await admin.json()) as Array<{ actor: string; action: string }>;
+    const body = (await admin.json()) as {
+      items: Array<{ actor: string; action: string }>;
+    };
+    const events = body.items;
     expect(events.every((e) => e.actor === 's1')).toBe(true);
     expect(events.map((e) => e.action)).toEqual(['submission.created', 'version.yanked']);
   });
@@ -216,10 +228,13 @@ describe('GET /api/v1/audit routes', () => {
     const app = makeApp(db!, { sub: 'o', roles: ['Submitter'] });
     const res = await app.request('/api/v1/audit/submission/sub_a');
     expect(res.status).toBe(200);
-    const events = (await res.json()) as Array<{
-      submissionId: string | null;
-      action: string;
-    }>;
+    const body = (await res.json()) as {
+      items: Array<{
+        submissionId: string | null;
+        action: string;
+      }>;
+    };
+    const events = body.items;
     expect(events).toHaveLength(2);
     expect(events.every((e) => e.submissionId === 'sub_a')).toBe(true);
     expect(events.map((e) => e.action)).toEqual([
@@ -240,9 +255,39 @@ describe('GET /api/v1/audit routes', () => {
     const app = makeApp(db!, { sub: 'compliance@example.com', roles: ['Compliance'] });
     const res = await app.request('/api/v1/audit/submission/sub_a');
     expect(res.status).toBe(200);
-    const events = (await res.json()) as Array<{ submissionId: string | null }>;
+    const body = (await res.json()) as {
+      items: Array<{ submissionId: string | null }>;
+    };
+    const events = body.items;
     expect(events).toHaveLength(2);
     expect(events.every((e) => e.submissionId === 'sub_a')).toBe(true);
+  });
+
+  it('GET audit list endpoints paginate with limit and opaque cursor', async () => {
+    const app = makeApp(db!, { sub: 'r1', roles: ['Compliance'] });
+    const first = await app.request('/api/v1/audit/skill/o/foo?limit=1');
+    expect(first.status).toBe(200);
+    const firstBody = (await first.json()) as {
+      items: Array<{ action: string }>;
+      nextCursor: string | null;
+    };
+    expect(firstBody.items.map((e) => e.action)).toEqual(['submission.created']);
+    expect(firstBody.nextCursor).toBeTruthy();
+
+    const second = await app.request(
+      `/api/v1/audit/skill/o/foo?limit=1&cursor=${encodeURIComponent(
+        firstBody.nextCursor ?? '',
+      )}`,
+    );
+    expect(second.status).toBe(200);
+    const secondBody = (await second.json()) as {
+      items: Array<{ action: string }>;
+      nextCursor: string | null;
+    };
+    expect(secondBody.items.map((e) => e.action)).toEqual([
+      'submission.classified',
+    ]);
+    expect(secondBody.nextCursor).toBeNull();
   });
 
   it('GET /submission/:id returns 404 for an unknown submission id', async () => {

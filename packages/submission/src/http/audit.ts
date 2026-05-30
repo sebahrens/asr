@@ -32,7 +32,17 @@ export function createAuditRoutes(options: AuditRouteOptions = {}) {
     requireRole('Compliance', 'Admin'),
     (c) => {
       try {
-        return c.json(getBySkill(db, c.req.param('owner'), c.req.param('name')));
+        return c.json(
+          toAuditPageResponse(
+            getBySkill(
+              db,
+              c.req.param('owner'),
+              c.req.param('name'),
+              undefined,
+              parsePageOptions(c.req.query('limit'), c.req.query('cursor')),
+            ),
+          ),
+        );
       } catch (error) {
         if (error instanceof AuditSkillOwnerScopeUnavailableError) {
           return apiError(c, 503, 'audit_scope_unavailable');
@@ -53,6 +63,7 @@ export function createAuditRoutes(options: AuditRouteOptions = {}) {
             c.req.param('owner'),
             c.req.param('name'),
             c.req.param('version'),
+            parsePageOptions(c.req.query('limit'), c.req.query('cursor')),
           ),
         );
       } catch (error) {
@@ -67,7 +78,16 @@ export function createAuditRoutes(options: AuditRouteOptions = {}) {
   routes.get(
     '/user/:sub',
     requireRole('Admin'),
-    (c) => c.json(getByUser(db, c.req.param('sub'))),
+    (c) =>
+      c.json(
+        toAuditPageResponse(
+          getByUser(
+            db,
+            c.req.param('sub'),
+            parsePageOptions(c.req.query('limit'), c.req.query('cursor')),
+          ),
+        ),
+      ),
   );
 
   routes.get('/submission/:id', (c) => {
@@ -85,7 +105,15 @@ export function createAuditRoutes(options: AuditRouteOptions = {}) {
       return apiError(c, 403, 'insufficient_permissions');
     }
 
-    return c.json(getBySubmission(db, submissionId));
+    return c.json(
+      toAuditPageResponse(
+        getBySubmission(
+          db,
+          submissionId,
+          parsePageOptions(c.req.query('limit'), c.req.query('cursor')),
+        ),
+      ),
+    );
   });
 
   // TODO(asr-3f8): rate-limit this admin-only chain scan (specs/audit.md L189).
@@ -96,4 +124,67 @@ export function createAuditRoutes(options: AuditRouteOptions = {}) {
   );
 
   return routes;
+}
+
+function parsePageOptions(
+  limitValue: string | undefined,
+  cursorValue: string | undefined,
+): { limit?: number; offset?: number } {
+  return {
+    limit: parseLimit(limitValue),
+    offset: decodeCursor(cursorValue),
+  };
+}
+
+function parseLimit(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit <= 0) {
+    return undefined;
+  }
+
+  return Math.min(limit, 100);
+}
+
+function decodeCursor(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    const decoded = JSON.parse(Buffer.from(value, 'base64').toString('utf8')) as {
+      offset?: unknown;
+    };
+    return isValidCursorOffset(decoded.offset) ? decoded.offset : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const MAX_CURSOR_OFFSET = 100_000;
+
+function isValidCursorOffset(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value < MAX_CURSOR_OFFSET
+  );
+}
+
+function encodeCursor(offset: number): string {
+  return Buffer.from(JSON.stringify({ offset }), 'utf8').toString('base64');
+}
+
+function toAuditPageResponse<T>(page: { items: T[]; nextOffset: number | null }): {
+  items: T[];
+  nextCursor: string | null;
+} {
+  return {
+    items: page.items,
+    nextCursor: page.nextOffset === null ? null : encodeCursor(page.nextOffset),
+  };
 }

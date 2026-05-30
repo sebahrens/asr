@@ -198,7 +198,7 @@ describe('auditChainGuard', () => {
       get(target, prop, receiver) {
         if (prop === 'prepare') {
           return (sql: string, ...rest: unknown[]) => {
-            if (sql.includes('FROM audit_events ORDER BY rowid')) {
+            if (sql.includes('FROM audit_events') && sql.includes('WHERE rowid >')) {
               verifyCallCount += 1;
             }
             return (target.prepare as (s: string, ...r: unknown[]) => unknown)(
@@ -223,5 +223,65 @@ describe('auditChainGuard', () => {
     expect(r2.status).toBe(200);
     expect(r3.status).toBe(200);
     expect(verifyCallCount).toBe(1);
+  });
+
+  it('re-verifies only rows appended after the last verified prefix', async () => {
+    const database = db!;
+    seedThreeEvents(database);
+    const keys = loadKeyRing();
+    const verifyStartRows: number[] = [];
+
+    const sniffingDb: Database.Database = new Proxy(database, {
+      get(target, prop, receiver) {
+        if (prop === 'prepare') {
+          return (sql: string, ...rest: unknown[]) => {
+            const statement = (
+              target.prepare as (s: string, ...r: unknown[]) => {
+                iterate?: (...args: unknown[]) => IterableIterator<unknown>;
+              }
+            )(sql, ...rest);
+
+            if (sql.includes('FROM audit_events') && sql.includes('WHERE rowid >')) {
+              return new Proxy(statement, {
+                get(statementTarget, statementProp, statementReceiver) {
+                  if (statementProp === 'iterate') {
+                    return (...args: unknown[]) => {
+                      verifyStartRows.push(args[0] as number);
+                      return statementTarget.iterate!(...args);
+                    };
+                  }
+                  return Reflect.get(statementTarget, statementProp, statementReceiver);
+                },
+              });
+            }
+
+            return statement;
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as Database.Database;
+
+    const app = new Hono();
+    app.use('*', auditChainGuard(sniffingDb, keys, { cacheMs: 0 }));
+    app.post('/api/v1/submissions', (c) => c.json({ ok: true }));
+
+    expect(
+      (await app.request('/api/v1/submissions', { method: 'POST' })).status,
+    ).toBe(200);
+    emitAudit(database, {
+      action: 'workflow.scan.completed',
+      submissionId: 'sub_1',
+      skillName: 'example-skill',
+      version: '1.0.0',
+      actor: 'system',
+      actorType: 'system',
+      detail: { findings: 1 },
+    });
+
+    expect(
+      (await app.request('/api/v1/submissions', { method: 'POST' })).status,
+    ).toBe(200);
+    expect(verifyStartRows).toEqual([0, 3]);
   });
 });
