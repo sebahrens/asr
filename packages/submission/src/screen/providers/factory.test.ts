@@ -103,14 +103,19 @@ describe('createScreeningProvider', () => {
     });
   });
 
-  it('throws when configured provider has no registered implementation', () => {
-    expect(() =>
-      createScreeningProvider({
-        ...baseEnv,
-        LLM_SCREEN_PROVIDER: 'openai',
-        OPENAI_API_KEY: 'openai-key',
-        OPENAI_MODEL: 'gpt-4.1',
-      }),
-    ).toThrow(/No LLM screening provider implementation registered for openai/);
+  it('builds the default OpenAI provider implementation', () => {
+    const provider = createScreeningProvider({
+      ...baseEnv,
+      LLM_SCREEN_PROVIDER: 'openai',
+      OPENAI_API_KEY: 'openai-key',
+      OPENAI_MODEL: 'gpt-4.1',
+      LLM_SCREEN_CONTEXT_TOKENS: 1000000,
+    });
+
+    expect(provider).toMatchObject({
+      name: 'openai',
+      model: 'gpt-4.1',
+      contextTokens: 1000000,
+    });
   });
 });

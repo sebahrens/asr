@@ -1,6 +1,7 @@
 import type { ScreeningProviderKind } from '@asr/core';
 import type { Env } from '../../env.js';
 import { createAnthropicScreeningProvider } from './anthropic.js';
+import { createOpenAIScreeningProvider } from './openai.js';
 import type {
   ScreeningProvider,
   ScreeningProviderConfig,
@@ -45,6 +46,7 @@ export function createScreeningProvider(
 export const buildScreeningProvider = createScreeningProvider;
 
 const defaultProviderRegistry: ScreeningProviderRegistry = {
+  openai: createOpenAIScreeningProvider,
   anthropic: createAnthropicScreeningProvider,
 };
 
