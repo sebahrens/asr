@@ -38,6 +38,18 @@ AGENTS.md
 
 # Visual test artifacts
 .playwright-mcp/
+.dev-*.log
+.api-dev.log
+.web-dev.log
+.visual-review-*
+visual-review-*.js
+visual-review-*.mjs
+visual-review-*.ts
+visual-inspection-*.js
+form-*.js
+continue-click-test.js
+skill-detail-capture.js
+review-console.log
 
 # Playwright runtime artifacts
 test-results/
