@@ -1,4 +1,4 @@
-import { ForgejoClient, type ScanReport, type SkillManifest, type Submission } from '@asr/core';
+import { ForgejoClient, type ScanReport, type ScreeningReport, type SkillManifest, type Submission } from '@asr/core';
 import { describe, expect, it } from 'vitest';
 import { InMemoryTransport } from '../notify/transport.js';
 import {
@@ -216,6 +216,25 @@ function makeDependencies(opts: { verdict: ScanReport['verdict'] }): ApprovalPip
     async runScanner() {
       return makeScanReport(opts.verdict);
     },
+    async runScreening() {
+      return makeScreeningReport();
+    },
+  };
+}
+
+function makeScreeningReport(): ScreeningReport {
+  return {
+    submissionId: 'sub-1',
+    contentHash: 'abc123',
+    provider: 'none',
+    model: 'none',
+    contextTokens: 0,
+    status: 'skipped',
+    truncated: false,
+    startedAt: '2026-05-24T00:00:00.000Z',
+    completedAt: '2026-05-24T00:00:00.000Z',
+    durationMs: 0,
+    findings: [],
   };
 }
 

@@ -38,6 +38,20 @@ describe('runScreening', () => {
     });
   });
 
+  it('does not require service env vars when the default provider is unconfigured', async () => {
+    delete process.env.LLM_SCREEN_PROVIDER;
+    delete process.env.NODE_ENV;
+    delete process.env.AUTH_MODE;
+
+    const report = await runScreening(baseInput());
+
+    expect(report).toMatchObject({
+      provider: 'none',
+      model: 'none',
+      status: 'skipped',
+    });
+  });
+
   it('returns clean when the provider reports no findings', async () => {
     const provider = fakeProvider([]);
 

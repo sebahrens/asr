@@ -33,11 +33,10 @@ describe('approvalPipeline', () => {
     const audit: Array<{ action: AuditAction; detail: Record<string, unknown> }> = [];
     const scanReport = makeScanReport('review_required');
     const screeningReport = makeScreeningReport();
-    const dependencies = makeDependencies(forgejo, audit, scanReport);
+    const dependencies = makeDependencies(forgejo, audit, scanReport, screeningReport);
 
     const started = await runApprovalPipeline(makeContext({
       files: [{ path: 'SKILL.md', contentBase64: b64('# test') }, { path: 'scripts/check.ts', contentBase64: b64('export {};') }],
-      screeningReport,
     }), dependencies);
     expect(started.status).toBe('awaiting');
     expect(started.context._awaitingNodeIds).toEqual(['questionnaire']);
@@ -81,6 +80,7 @@ describe('approvalPipeline', () => {
       'workflow.questionnaire.completed',
       'workflow.scan.started',
       'workflow.scan.completed',
+      'workflow.screening.completed',
       'workflow.confirmation.received',
       'workflow.review.approved',
       'workflow.published',
@@ -107,6 +107,7 @@ describe('approvalPipeline', () => {
     expect(forgejo.mergeCalls).toBe(0);
     expect(forgejo.publishCalls).toBe(0);
     expect(audit.map((entry) => entry.action)).toEqual([
+      'workflow.screening.completed',
       'workflow.review.approved',
     ]);
   });
@@ -136,9 +137,69 @@ describe('approvalPipeline', () => {
     expect(audit.map((entry) => entry.action)).toEqual([
       'workflow.classify.completed',
       'workflow.pushed_to_forgejo',
+      'workflow.screening.completed',
       'workflow.review.approved',
       'workflow.published',
     ]);
+  });
+
+  it('runs code-path screening as advisory and continues to submitter confirmation when flagged', async () => {
+    const forgejo = new FakeForgejoClient();
+    const audit: Array<{ action: AuditAction; detail: Record<string, unknown> }> = [];
+    const screeningReport = makeScreeningReport({ status: 'flagged', findings: [makeScreeningFinding()] });
+    const dependencies = makeDependencies(forgejo, audit, makeScanReport('pass'), screeningReport);
+
+    const started = await runApprovalPipeline(makeContext({
+      files: [{ path: 'SKILL.md', contentBase64: b64('# test') }, { path: 'scripts/check.ts', contentBase64: b64('export {};') }],
+    }), dependencies);
+    const questionnaire = await resumeApprovalPipeline(started.serializedContext, {
+      actor: 'submitter-1',
+      responses: [{ questionId: 'network', answer: false }],
+    }, 'questionnaire', dependencies);
+
+    expect(questionnaire.status).toBe('awaiting');
+    expect(questionnaire.context.screeningReport).toEqual(screeningReport);
+    expect(questionnaire.context._awaitingNodeIds).toEqual(['confirmation']);
+    expect(audit).toContainEqual({
+      action: 'workflow.screening.completed',
+      detail: { status: 'flagged', findingCount: 1, truncated: false },
+    });
+  });
+
+  it('auto-approves md-only submissions when screening is skipped', async () => {
+    const forgejo = new FakeForgejoClient();
+    const audit: Array<{ action: AuditAction; detail: Record<string, unknown> }> = [];
+    const dependencies = makeDependencies(forgejo, audit, makeScanReport('pass'), makeScreeningReport({ status: 'skipped' }));
+
+    const result = await runApprovalPipeline(makeContext({
+      files: [{ path: 'SKILL.md', contentBase64: b64('# test') }],
+    }), dependencies);
+
+    expect(result.status).toBe('completed');
+    expect(result.context.status).toBe('published');
+    expect(result.context.review).toBeUndefined();
+    expect(forgejo.publishCalls).toBe(1);
+  });
+
+  it.each([
+    ['flagged', makeScreeningReport({ status: 'flagged', findings: [makeScreeningFinding()] })],
+    ['error', makeScreeningReport({ status: 'error' })],
+    ['truncated', makeScreeningReport({ status: 'clean', truncated: true, findings: [makeScreeningFinding()] })],
+  ] as const)('routes md-only submissions to compliance review when screening is %s', async (_case, screeningReport) => {
+    const forgejo = new FakeForgejoClient();
+    const audit: Array<{ action: AuditAction; detail: Record<string, unknown> }> = [];
+    const dependencies = makeDependencies(forgejo, audit, makeScanReport('pass'), screeningReport);
+
+    const result = await runApprovalPipeline(makeContext({
+      files: [{ path: 'SKILL.md', contentBase64: b64('# test') }],
+    }), dependencies);
+
+    expect(result.status).toBe('awaiting');
+    expect(result.context.status).toBeUndefined();
+    expect(result.context.screeningReport).toEqual(screeningReport);
+    expect(result.context._awaitingNodeIds).toEqual(['review']);
+    expect(forgejo.mergeCalls).toBe(0);
+    expect(forgejo.publishCalls).toBe(0);
   });
 
   it('carries the expected HITL metadata on wait nodes', () => {
@@ -220,6 +281,7 @@ describe('approvalPipeline', () => {
     expect(nodeIds).toEqual(expect.arrayContaining([
       'questionnaire',
       'scan',
+      'screen',
       'confirmation',
       'review',
       'rejected',
@@ -227,21 +289,27 @@ describe('approvalPipeline', () => {
 
     const scanNodeBlueprint = blueprint.nodes.find((node) => node.id === 'scan');
     expect(scanNodeBlueprint?.params?.idempotent).toBe(true);
+    const screenNodeBlueprint = blueprint.nodes.find((node) => node.id === 'screen');
+    expect(screenNodeBlueprint?.params?.idempotent).toBe(true);
     const rejectedBlueprint = blueprint.nodes.find((node) => node.id === 'rejected');
     expect(rejectedBlueprint?.params?.idempotent).toBe(true);
 
     expect(blueprint.edges).toEqual(expect.arrayContaining([
       expect.objectContaining({ source: 'questionnaire', target: 'scan' }),
-      expect.objectContaining({ source: 'scan', target: 'confirmation', action: 'continue' }),
+      expect.objectContaining({ source: 'scan', target: 'screen', action: 'continue' }),
       expect.objectContaining({ source: 'scan', target: 'rejected', action: 'block' }),
+      expect.objectContaining({ source: 'screen', target: 'confirmation', action: 'continue' }),
       expect.objectContaining({ source: 'confirmation', target: 'review' }),
       expect.objectContaining({ source: 'review', target: 'publish' }),
     ]));
   });
 
-  it('routes md-only submissions through an idempotent auto-approve node into the shared publish node', () => {
+  it('routes md-only submissions through an idempotent screening gate and auto-approve node into the shared publish node', () => {
     const blueprint = approvalPipeline.toBlueprint();
 
+    const screenMd = blueprint.nodes.find((node) => node.id === 'screen-md');
+    expect(screenMd).toBeDefined();
+    expect(screenMd?.params?.idempotent).toBe(true);
     const autoApprove = blueprint.nodes.find((node) => node.id === 'auto-approve');
     expect(autoApprove).toBeDefined();
     expect(autoApprove?.params?.idempotent).toBe(true);
@@ -249,8 +317,15 @@ describe('approvalPipeline', () => {
     const pushOutgoing = blueprint.edges.filter((edge) => edge.source === 'push-to-forgejo');
     expect(pushOutgoing).toHaveLength(2);
     expect(pushOutgoing).toEqual(expect.arrayContaining([
-      expect.objectContaining({ source: 'push-to-forgejo', target: 'auto-approve', action: 'md-only' }),
+      expect.objectContaining({ source: 'push-to-forgejo', target: 'screen-md', action: 'md-only' }),
       expect.objectContaining({ source: 'push-to-forgejo', target: 'questionnaire', action: 'code-containing' }),
+    ]));
+
+    const screenMdOutgoing = blueprint.edges.filter((edge) => edge.source === 'screen-md');
+    expect(screenMdOutgoing).toHaveLength(2);
+    expect(screenMdOutgoing).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'screen-md', target: 'auto-approve', action: 'auto-approve' }),
+      expect.objectContaining({ source: 'screen-md', target: 'review', action: 'review' }),
     ]));
 
     const autoApproveOutgoing = blueprint.edges.filter((edge) => edge.source === 'auto-approve');
@@ -314,6 +389,7 @@ function makeDependencies(
   forgejo: FakeForgejoClient,
   audit: Array<{ action: AuditAction; detail: Record<string, unknown> }>,
   scanReport: ScanReport,
+  screeningReport: ScreeningReport = makeScreeningReport(),
 ): ApprovalPipelineDependencies {
   return {
     svc(token) {
@@ -327,6 +403,9 @@ function makeDependencies(
     },
     async runScanner() {
       return scanReport;
+    },
+    async runScreening() {
+      return screeningReport;
     },
   };
 }
@@ -389,7 +468,7 @@ function makeScanReport(verdict: ScanReport['verdict']): ScanReport {
   };
 }
 
-function makeScreeningReport(): ScreeningReport {
+function makeScreeningReport(overrides: Partial<ScreeningReport> = {}): ScreeningReport {
   return {
     submissionId: 'sub-1',
     contentHash: 'abc123',
@@ -402,6 +481,15 @@ function makeScreeningReport(): ScreeningReport {
     completedAt: '2026-05-24T00:00:00.000Z',
     durationMs: 0,
     findings: [],
+    ...overrides,
+  };
+}
+
+function makeScreeningFinding(): ScreeningReport['findings'][number] {
+  return {
+    category: 'description',
+    severity: 'medium',
+    message: 'Declared behavior does not match observed behavior.',
   };
 }
 

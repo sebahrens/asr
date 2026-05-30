@@ -89,6 +89,10 @@ export async function runScreening(
 }
 
 function defaultProviderFactory(): ScreeningProvider | null {
+  if (!process.env.LLM_SCREEN_PROVIDER) {
+    return null;
+  }
+
   return createScreeningProvider(getEnv());
 }
 

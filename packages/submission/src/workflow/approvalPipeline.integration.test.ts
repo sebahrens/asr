@@ -1,4 +1,4 @@
-import { ForgejoClient, type AuditAction, type ScanReport, type SkillManifest, type Submission } from '@asr/core';
+import { ForgejoClient, type AuditAction, type ScanReport, type ScreeningReport, type SkillManifest, type Submission } from '@asr/core';
 import { describe, expect, it, vi } from 'vitest';
 import {
   resumeApprovalPipeline,
@@ -78,6 +78,7 @@ describe('approvalPipeline (integration)', () => {
       'workflow.questionnaire.completed',
       'workflow.scan.started',
       'workflow.scan.completed',
+      'workflow.screening.completed',
       'workflow.confirmation.received',
       'workflow.review.approved',
       'workflow.published',
@@ -115,6 +116,7 @@ describe('approvalPipeline (integration)', () => {
     expect(actions).toEqual([
       'workflow.classify.completed',
       'workflow.pushed_to_forgejo',
+      'workflow.screening.completed',
       'workflow.review.approved',
       'workflow.published',
     ]);
@@ -185,6 +187,9 @@ function makeDependencies(
     audit(action, detail) {
       audit.push({ action, detail });
     },
+    async runScreening() {
+      return makeScreeningReport();
+    },
   };
 }
 
@@ -243,6 +248,22 @@ function makeScanReport(verdict: ScanReport['verdict']): ScanReport {
       opengrep: { exitCode: 0, findingCount: 0 },
       veracode: { exitCode: 0, findingCount: 0, skipped: true },
     },
+  };
+}
+
+function makeScreeningReport(): ScreeningReport {
+  return {
+    submissionId: 'sub-1',
+    contentHash: 'abc123',
+    provider: 'none',
+    model: 'none',
+    contextTokens: 0,
+    status: 'skipped',
+    truncated: false,
+    startedAt: '2026-05-24T00:00:00.000Z',
+    completedAt: '2026-05-24T00:00:00.000Z',
+    durationMs: 0,
+    findings: [],
   };
 }
 

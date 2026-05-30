@@ -1,6 +1,7 @@
 import { ForgejoClient, type AuditAction, type ScanReport, type ScreeningReport, type SkillManifest, type Submission, type VersionDiff } from '@asr/core';
 import { createFlow, FlowRuntime, type NodeContext, type WorkflowResult } from 'flowcraft';
 import { runScanner, type RunScannerInput } from '../scan/runScanner.js';
+import { runScreening, type RunScreeningInput } from '../screen/runScreening.js';
 import { notify, type NotifyEvent } from '../notify/mailer.js';
 import type { EmailTransport } from '../notify/transport.js';
 import { classifySkill } from '../zip/classify.js';
@@ -57,6 +58,7 @@ export interface ApprovalPipelineDependencies {
   svc<T>(token: unknown): T;
   audit(action: AuditAction, detail: Record<string, unknown>): Promise<void> | void;
   runScanner?: (input: RunScannerInput) => Promise<ScanReport>;
+  runScreening?: (input: RunScreeningInput) => Promise<ScreeningReport>;
   regenerateRegistryIndex?: () => Promise<void> | void;
   now?: () => Date;
   notifier?: NotifierDependency;
@@ -134,13 +136,19 @@ export const approvalPipeline = createFlow<ApprovalPipelineContext, ApprovalPipe
   .node('scan', scanNode, {
     params: { idempotent: true },
   })
+  .node('screen', screenNode, {
+    params: { idempotent: true },
+  })
+  .node('screen-md', screenMdNode, {
+    params: { idempotent: true },
+  })
   .wait('confirmation', {
     params: hitlNodeParams.confirmation,
     config: { timeout: 14 * dayMs },
   })
   .wait('review', {
     params: hitlNodeParams.review,
-    config: { timeout: 30 * dayMs },
+    config: { timeout: 30 * dayMs, joinStrategy: 'any' },
   })
   .node('auto-approve', autoApproveNode, {
     params: { idempotent: true },
@@ -155,11 +163,14 @@ export const approvalPipeline = createFlow<ApprovalPipelineContext, ApprovalPipe
   .edge('classify', 'push-to-forgejo')
   .edge('push-to-forgejo', 'questionnaire', { action: 'code-containing' })
   .edge('questionnaire', 'scan')
-  .edge('scan', 'confirmation', { action: 'continue' })
+  .edge('scan', 'screen', { action: 'continue' })
   .edge('scan', 'rejected', { action: 'block' })
+  .edge('screen', 'confirmation', { action: 'continue' })
   .edge('confirmation', 'review')
   .edge('review', 'publish')
-  .edge('push-to-forgejo', 'auto-approve', { action: 'md-only' })
+  .edge('push-to-forgejo', 'screen-md', { action: 'md-only' })
+  .edge('screen-md', 'auto-approve', { action: 'auto-approve' })
+  .edge('screen-md', 'review', { action: 'review' })
   .edge('auto-approve', 'publish');
 
 export function createApprovalPipelineRuntime(
@@ -309,6 +320,49 @@ async function scanNode({ context, dependencies }: PipelineNodeContext) {
   }
 
   return { action: report.verdict === 'block' ? 'block' : 'continue' };
+}
+
+async function screenNode({ context, dependencies }: PipelineNodeContext) {
+  await runScreeningNode(context, dependencies, 'code-containing');
+  return { action: 'continue' };
+}
+
+async function screenMdNode({ context, dependencies }: PipelineNodeContext) {
+  const report = await runScreeningNode(context, dependencies, 'md-only');
+  return { action: shouldGateMdOnlyScreening(report) ? 'review' : 'auto-approve' };
+}
+
+async function runScreeningNode(
+  context: PipelineNodeContext['context'],
+  dependencies: ApprovalPipelineDependencies,
+  classification: Submission['classification'],
+): Promise<ScreeningReport> {
+  const existingReport = await context.get('screeningReport');
+  if (existingReport) {
+    return existingReport;
+  }
+
+  const screen = dependencies.runScreening ?? runScreening;
+  const report = await screen({
+    submissionId: required(await context.get('submissionId'), 'submissionId'),
+    contentHash: required(await context.get('contentHash'), 'contentHash'),
+    extractedDir: required(await context.get('extractedDir'), 'extractedDir'),
+    manifest: required(await context.get('manifest'), 'manifest'),
+    questionnaire: await context.get('questionnaire'),
+    classification,
+  });
+
+  await context.set('screeningReport', report);
+  await dependencies.audit('workflow.screening.completed', {
+    status: report.status,
+    findingCount: report.findings.length,
+    truncated: report.truncated,
+  });
+  return report;
+}
+
+function shouldGateMdOnlyScreening(report: ScreeningReport): boolean {
+  return report.truncated || (report.status !== 'clean' && report.status !== 'skipped');
 }
 
 async function autoApproveNode({ dependencies }: PipelineNodeContext) {
