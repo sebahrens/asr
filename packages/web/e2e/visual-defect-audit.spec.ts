@@ -276,9 +276,9 @@ test.describe('Visual Defect Audit - Against Taxonomy', () => {
 
       const bodyText = await page.textContent('body');
 
-      // Should use "asr install" or not reference "npm install" or old command formats
-      const hasValidCommand = /asr\s+install|asr\s+add/i.test(bodyText || '');
-      const hasInvalidCommand = /npm\s+install\s+@asr\/|npm\s+add\s+@asr\//i.test(bodyText || '');
+      // Should use the documented CLI command and reject obsolete install snippets.
+      const hasValidCommand = /asr\s+install\s+[\w-]+\/[\w-]+/i.test(bodyText || '');
+      const hasInvalidCommand = /asr\s+add|npm\s+install\s+@asr\/|npm\s+add\s+@asr\//i.test(bodyText || '');
 
       console.log(`Valid install command present: ${hasValidCommand}`);
       console.log(`Invalid install command present: ${hasInvalidCommand}`);
