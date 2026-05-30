@@ -1,5 +1,6 @@
 import type { ScreeningProviderKind } from '@asr/core';
 import type { Env } from '../../env.js';
+import { createAnthropicScreeningProvider } from './anthropic.js';
 import type {
   ScreeningProvider,
   ScreeningProviderConfig,
@@ -20,7 +21,7 @@ type ScreeningEnv = Pick<
 
 export function createScreeningProvider(
   env: ScreeningEnv,
-  registry: ScreeningProviderRegistry = {},
+  registry: ScreeningProviderRegistry = defaultProviderRegistry,
 ): ScreeningProvider | null {
   if (!env.LLM_SCREEN_PROVIDER) {
     return null;
@@ -42,6 +43,10 @@ export function createScreeningProvider(
 }
 
 export const buildScreeningProvider = createScreeningProvider;
+
+const defaultProviderRegistry: ScreeningProviderRegistry = {
+  anthropic: createAnthropicScreeningProvider,
+};
 
 function providerConfig(
   env: ScreeningEnv,

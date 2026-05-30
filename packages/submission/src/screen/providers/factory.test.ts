@@ -88,14 +88,29 @@ describe('createScreeningProvider', () => {
     ).toBeNull();
   });
 
+  it('builds the default Anthropic provider implementation', () => {
+    const provider = createScreeningProvider({
+      ...baseEnv,
+      LLM_SCREEN_PROVIDER: 'anthropic',
+      ANTHROPIC_API_KEY: 'anthropic-key',
+      ANTHROPIC_MODEL: 'claude-sonnet-4-5',
+    });
+
+    expect(provider).toMatchObject({
+      name: 'anthropic',
+      model: 'claude-sonnet-4-5',
+      contextTokens: 200000,
+    });
+  });
+
   it('throws when configured provider has no registered implementation', () => {
     expect(() =>
       createScreeningProvider({
         ...baseEnv,
-        LLM_SCREEN_PROVIDER: 'anthropic',
-        ANTHROPIC_API_KEY: 'anthropic-key',
-        ANTHROPIC_MODEL: 'claude-sonnet-4-5',
+        LLM_SCREEN_PROVIDER: 'openai',
+        OPENAI_API_KEY: 'openai-key',
+        OPENAI_MODEL: 'gpt-4.1',
       }),
-    ).toThrow(/No LLM screening provider implementation registered for anthropic/);
+    ).toThrow(/No LLM screening provider implementation registered for openai/);
   });
 });
