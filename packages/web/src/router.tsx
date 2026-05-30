@@ -17,18 +17,25 @@ function RouteRenderError() {
   );
 }
 
+const reviewQueueRouteElement = (
+  <SessionProvider>
+    <RequireRole allowed={['Compliance', 'Admin']}>
+      <ReviewAppShell current="review">
+        <ReviewQueue />
+      </ReviewAppShell>
+    </RequireRole>
+  </SessionProvider>
+);
+
 export const routes: RouteObject[] = [
   {
     path: '/review',
-    element: (
-      <SessionProvider>
-        <RequireRole allowed={['Compliance', 'Admin']}>
-          <ReviewAppShell current="review">
-            <ReviewQueue />
-          </ReviewAppShell>
-        </RequireRole>
-      </SessionProvider>
-    ),
+    element: reviewQueueRouteElement,
+    errorElement: <RouteRenderError />,
+  },
+  {
+    path: '/reviews',
+    element: reviewQueueRouteElement,
     errorElement: <RouteRenderError />,
   },
   {

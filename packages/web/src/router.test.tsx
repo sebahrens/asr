@@ -181,6 +181,13 @@ function stubMatchMedia(matches: boolean) {
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (input) => {
     const url = String(input);
+    if (url.endsWith('/api/v1/skills/asr/does-not-exist')) {
+      return new Response(JSON.stringify({ error: 'not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     const body = url.endsWith('/api/v1/skills/asr/security-review')
       ? skillDetail
       : { items: [skillDetail, workflowSkill] };
@@ -206,6 +213,14 @@ describe('router', () => {
     expect(await screen.findByRole('heading', { name: /^review queue$/i })).toBeInTheDocument();
     expect(await screen.findByText(/no submissions awaiting review/i)).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /approval dashboard/i })).not.toBeInTheDocument();
+  });
+
+  it('routes /reviews to the review queue for compatibility with approval dashboard links', async () => {
+    renderRoute('/reviews');
+
+    expect(await screen.findByRole('heading', { name: /^review queue$/i })).toBeInTheDocument();
+    expect(await screen.findByText(/no submissions awaiting review/i)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /route not found/i })).not.toBeInTheDocument();
   });
 
   it('renders the application shell (logo, primary nav, mock auth banner) on /review', async () => {
@@ -603,6 +618,14 @@ Use this skill when testing upload validation.`,
     renderRoute('/skills/does-not-exist');
 
     expect(screen.getByRole('heading', { name: /skill not found/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /registry route error/i })).not.toBeInTheDocument();
+  });
+
+  it('renders a graceful inline 404 for unknown owner/name skill detail routes', async () => {
+    renderRoute('/skills/asr/does-not-exist');
+
+    expect(await screen.findByRole('heading', { name: /skill not found/i })).toBeInTheDocument();
+    expect(screen.getByText(/no published skill exists for asr\/does-not-exist/i)).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /registry route error/i })).not.toBeInTheDocument();
   });
 });
