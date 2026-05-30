@@ -49,6 +49,21 @@ describe('loadKeyRing', () => {
     expect(() => loadKeyRing(env)).toThrow(/32 bytes/);
   });
 
+  it.each([
+    ['missing', undefined],
+    ['garbage', 'not base64'],
+    ['short', Buffer.alloc(16, 0x00).toString('base64')],
+  ])('throws when a previous key value is %s', (_name, previousKey) => {
+    const env = {
+      AUDIT_HMAC_KEY_ID: 'k1',
+      AUDIT_HMAC_KEY_BYTES: keyB64(0x11),
+      AUDIT_HMAC_KEY_BYTES_k0: previousKey,
+    };
+    expect(() => loadKeyRing(env)).toThrow(
+      /AUDIT_HMAC_KEY_BYTES_k0 must decode to 32 bytes/,
+    );
+  });
+
   it('throws when AUDIT_HMAC_KEY_ID or AUDIT_HMAC_KEY_BYTES is missing', () => {
     expect(() => loadKeyRing({ AUDIT_HMAC_KEY_ID: 'k1' })).toThrow();
     expect(() =>

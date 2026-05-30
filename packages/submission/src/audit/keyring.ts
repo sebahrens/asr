@@ -45,10 +45,16 @@ export function loadKeyRing(
   keys.set(activeId, activeBytes);
 
   for (const [name, value] of Object.entries(env)) {
-    if (!name.startsWith(PREVIOUS_KEY_PREFIX) || !value) continue;
+    if (!name.startsWith(PREVIOUS_KEY_PREFIX)) continue;
     const id = name.slice(PREVIOUS_KEY_PREFIX.length);
     if (!id || id === activeId) continue;
-    keys.set(id, Buffer.from(value, 'base64'));
+    const bytes = Buffer.from(value ?? '', 'base64');
+    if (bytes.length !== 32) {
+      throw new Error(
+        `${name} must decode to 32 bytes (got ${bytes.length})`,
+      );
+    }
+    keys.set(id, bytes);
   }
 
   let currentActiveId = activeId;
