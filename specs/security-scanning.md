@@ -14,7 +14,7 @@ The ASR submission pipeline runs automated security scans on skills containing e
 
 ## Tool Stack
 
-> **Pre-flight verification required.** Several tool names/URLs in earlier drafts were unverified. Before the scanner Docker image is built for the first time, a Phase 1 task **must** confirm: (a) Foxguard's actual distribution channel (Rust binary release, cargo, npm name) since `npm i -g foxguard` may not resolve to the intended package; (b) Opengrep's exact release asset filename and download URL pattern; (c) Veracode CLI verbs (`veracode static scan` should be replaced with the documented `veracode scan` invocation); (d) pinned version numbers for all tools — `:latest` is forbidden in production images. The version numbers below are placeholders to be replaced with the validated pins.
+> **Pre-flight verification required.** Several tool names/URLs in earlier drafts were unverified. Before the scanner Docker image is built for the first time, a Phase 1 task **must** confirm: (a) Foxguard's actual distribution channel (Rust binary release, cargo, npm name) since `npm i -g foxguard` may not resolve to the intended package; (b) Opengrep's exact release asset filename and download URL pattern; (c) Veracode CLI verbs and output formats; (d) pinned version numbers for all tools — `:latest` is forbidden in production images. The version numbers below are placeholders to be replaced with the validated pins.
 
 ### Tier 1 — Always Run (Permissive Licenses)
 
@@ -62,7 +62,7 @@ All Tier 1 tools use permissive licenses (MIT, Apache-2.0) with no copyleft obli
 │         │                │                   │              │
 │         ▼                ▼                   ▼              │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │              SARIF Aggregator                         │   │
+│  │             Finding Aggregator                        │   │
 │  │  - Deduplicates across tools                         │   │
 │  │  - Normalizes severity (critical/high/medium/low)    │   │
 │  │  - Computes blocking verdict                         │   │
@@ -281,15 +281,18 @@ async function runOpengrep(): Promise<ScanFinding[]> {
 }
 
 async function runVeracode(): Promise<ScanFinding[]> {
-  if (!process.env.VERACODE_API_KEY_ID) return [];
+  if (!process.env.VERACODE_API_KEY_ID || !process.env.VERACODE_API_KEY_SECRET) return [];
 
-  const sarifPath = join(OUTPUT_DIR, 'veracode.sarif');
+  const outputPath = join(OUTPUT_DIR, 'veracode.json');
   await exec('veracode', [
-    'static', 'scan', SCAN_DIR,
-    '--format', 'sarif',
-    '--output', sarifPath,
+    'scan',
+    '--type', 'directory',
+    '--source', SCAN_DIR,
+    '--format', 'json',
+    '--output', outputPath,
+    '--policy', process.env.VERACODE_POLICY || 'default',
   ], { timeout: TIMEOUT }).catch(() => {});
-  return parseSarif(sarifPath, 'veracode');
+  return parseVeracodeJson(outputPath);
 }
 
 async function hasExecutableCode(): Promise<boolean> {
@@ -557,13 +560,15 @@ Veracode is an optional enterprise add-on. When API credentials are configured:
 # Environment variables (set in Azure Key Vault → Container App secrets)
 VERACODE_API_KEY_ID=<32-char-hex>
 VERACODE_API_KEY_SECRET=<128-char-hex>
+VERACODE_POLICY=default
 ```
 
 ### CLI Installation (in scanner Dockerfile)
 
 ```dockerfile
 # Veracode CLI — only if enterprise scanning desired
-RUN curl -fsS https://tools.veracode.com/veracode-cli/install | sh && \
+RUN curl -fsS https://tools.veracode.com/veracode-cli/install \
+  | VERACODE_CLI_VERSION=2.49.0 sh && \
     mv veracode /usr/local/bin/veracode || true
 ```
 
@@ -584,7 +589,7 @@ docker run --rm \
 
 | Veracode product | Use case | ASR context |
 |-----------------|----------|-------------|
-| `veracode static scan` (CLI) | Source code scanning | Primary — scan extracted `scripts/` directory |
+| `veracode scan` (CLI) | Directory policy scan | Primary — scan extracted skill directory |
 | Pipeline Scan (Java JAR) | Compiled artifact scanning | For Go/Java skills that produce binaries |
 | Container Scan | Docker image vulnerabilities | Not needed — skills don't ship containers |
 

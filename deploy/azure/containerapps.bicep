@@ -114,6 +114,21 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           keyVaultUrl: '${keyVaultUri}secrets/scan-signing-key'
           identity: managedIdentityId
         }
+        {
+          name: 'veracode-api-key-id'
+          keyVaultUrl: '${keyVaultUri}secrets/veracode-api-key-id'
+          identity: managedIdentityId
+        }
+        {
+          name: 'veracode-api-key-secret'
+          keyVaultUrl: '${keyVaultUri}secrets/veracode-api-key-secret'
+          identity: managedIdentityId
+        }
+        {
+          name: 'veracode-policy'
+          keyVaultUrl: '${keyVaultUri}secrets/veracode-policy'
+          identity: managedIdentityId
+        }
       ]
     }
     template: {
@@ -193,6 +208,18 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'SCAN_SIGNING_KEY'
               secretRef: 'scan-signing-key'
+            }
+            {
+              name: 'VERACODE_API_KEY_ID'
+              secretRef: 'veracode-api-key-id'
+            }
+            {
+              name: 'VERACODE_API_KEY_SECRET'
+              secretRef: 'veracode-api-key-secret'
+            }
+            {
+              name: 'VERACODE_POLICY'
+              secretRef: 'veracode-policy'
             }
           ]
           volumeMounts: [

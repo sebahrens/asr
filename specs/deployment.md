@@ -259,7 +259,15 @@ Sensitive values stored in Azure Key Vault, referenced by Container Apps:
 | `forgejo-upload-token` | api |
 | `forgejo-merge-token` | api |
 | `audit-hmac-key` | api |
+| `scan-signing-key` | api |
+| `veracode-api-key-id` | api |
+| `veracode-api-key-secret` | api |
+| `veracode-policy` | api |
 | `entra-client-secret` | forgejo (OIDC) |
+
+When the Veracode secrets are present, the API passes `VERACODE_API_KEY_ID`,
+`VERACODE_API_KEY_SECRET`, and `VERACODE_POLICY` through to scanner container
+runs. If either API credential is absent, Veracode remains skipped.
 
 ### CI/CD (Forgejo Actions)
 

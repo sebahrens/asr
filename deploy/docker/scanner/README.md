@@ -13,7 +13,7 @@ images must use resolved version pins and must not use `:latest` tags or
 | Trivy | `v0.70.0` | Installer fetched from `aquasecurity/trivy` raw tag `v0.70.0` (`contrib/install.sh`), then `trivy image --download-db-only` | Tag-pinned source URL; verify via `trivy_0.70.0_checksums.txt` from the release |
 | Foxguard | `0.8.1` | npm package `foxguard@0.8.1`, which exposes the `foxguard` bin | `sha512-RGk/S/0fFSaPvft41ZMHjTMoblFjdDuUTITcE2NfT7yKPp8giN4ICk1l4e9M6kPC/yDGVB/pvIZzrFDdCM2JvA==` (npm tarball integrity) |
 | Opengrep | `v1.22.0` | GitHub release asset `opengrep_manylinux_x86` or `opengrep_manylinux_aarch64`, selected from Docker `TARGETARCH` | `sha256:45bcd58440e397ed52c50e953ccf5948909ea77087c9186fc7d277216f62e319` (x86), `sha256:8df71670e20336646687c6f4ddf9b4532f1a7fcd8a8ea7bfa4ea46747f61e088` (aarch64) |
-| Veracode | `2.27.0` | Installer from `tools.veracode.com/veracode-cli/install` with `VERSION=2.27.0` (Tier 3, optional). Layer is build-safe (`\|\| true`); the orchestrator only invokes `veracode` when `VERACODE_API_KEY_ID`/`VERACODE_API_KEY_SECRET` are set, so a missing binary is a clean skip. | Upstream installer does not publish a per-version artifact digest; the `VERSION` env pins the resolver output. |
+| Veracode | `2.49.0` | Installer from `tools.veracode.com/veracode-cli/install` with `VERACODE_CLI_VERSION=2.49.0` (Tier 3, optional). Layer is build-safe (`\|\| true`); the orchestrator only invokes `veracode` when `VERACODE_API_KEY_ID`/`VERACODE_API_KEY_SECRET` are set, so a missing binary is a clean skip. | Upstream installer does not publish a per-version artifact digest; the `VERACODE_CLI_VERSION` env pins the resolver output. |
 
 Every pin is parameterised by a Dockerfile `ARG` so future bumps are explicit
 and auditable. `grep -REn ':latest|@latest|releases/latest'
@@ -82,6 +82,19 @@ Foxguard SARIF commonly reports numeric `security-severity` metadata such as
 `8.0` instead of literal labels. The orchestrator maps numeric values using the
 standard SARIF convention: `>=9` critical, `>=7` high, `>=4` medium, and `>0`
 low, falling back to SARIF `level` when metadata is absent.
+
+## Veracode policy
+
+Veracode is Tier 3 and remains a clean skip unless both
+`VERACODE_API_KEY_ID` and `VERACODE_API_KEY_SECRET` are present. Production
+Container Apps read those values, plus `VERACODE_POLICY`, from Azure Key Vault
+and pass them through to the scanner container at runtime.
+
+The pinned CLI uses the documented `veracode scan --type directory --source
+/scan/input --format json --output /scan/output/veracode.json --policy
+<policy>` form. Veracode CLI `2.49.0` does not advertise SARIF output for this
+command, so the orchestrator parses the JSON output directly and normalizes
+Veracode severities into ASR severities. `Very High` maps to `critical`.
 
 ## Build check
 

@@ -160,19 +160,21 @@ async function runOpengrep() {
 }
 
 async function runVeracode() {
-  if (!process.env.VERACODE_API_KEY_ID) {
+  if (!process.env.VERACODE_API_KEY_ID || !process.env.VERACODE_API_KEY_SECRET) {
     return { tool: 'veracode', exitCode: 0, findings: [], skipped: true };
   }
 
-  const sarifPath = join(OUTPUT_DIR, 'veracode.sarif');
+  const outputPath = join(OUTPUT_DIR, 'veracode.json');
   const exitCode = await runCommand('veracode', [
-    'static',
     'scan',
+    '--type',
+    'directory',
+    '--source',
     SCAN_DIR,
     '--format',
-    'sarif',
+    'json',
     '--output',
-    sarifPath,
+    outputPath,
     '--policy',
     process.env.VERACODE_POLICY || 'default',
   ]);
@@ -180,7 +182,7 @@ async function runVeracode() {
   return {
     tool: 'veracode',
     exitCode,
-    findings: await parseSarif(sarifPath, 'veracode'),
+    findings: await parseVeracodeJson(outputPath),
   };
 }
 
@@ -221,6 +223,87 @@ async function parseSarif(path, tool, overrideSeverity) {
   } catch {
     return [];
   }
+}
+
+async function parseVeracodeJson(path) {
+  try {
+    const raw = JSON.parse(await readFile(path, 'utf8'));
+    const records = veracodeRecords(raw);
+
+    return records.map((record) => ({
+      tool: 'veracode',
+      ruleId: veracodeRuleId(record),
+      severity: mapVeracodeSeverity(record),
+      message: String(
+        record.message ||
+          record.description ||
+          record.title ||
+          record.name ||
+          record.finding_details?.title ||
+          '',
+      ),
+      file: String(
+        record.file ||
+          record.file_path ||
+          record.path ||
+          record.component_path ||
+          record.location?.file ||
+          record.source_file ||
+          '',
+      ),
+      line: Number(
+        record.line ||
+          record.line_number ||
+          record.location?.line ||
+          record.source_line ||
+          0,
+      ),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function veracodeRecords(raw) {
+  if (Array.isArray(raw)) return raw;
+
+  return [
+    ...(Array.isArray(raw.results) ? raw.results : []),
+    ...(Array.isArray(raw.findings) ? raw.findings : []),
+    ...(Array.isArray(raw.vulnerabilities) ? raw.vulnerabilities : []),
+    ...(Array.isArray(raw.policy_results?.vulnerabilities)
+      ? raw.policy_results.vulnerabilities
+      : []),
+  ];
+}
+
+function veracodeRuleId(record) {
+  const cwe = record.cwe || record.cwe_id || record.cweId || record.cwe_name;
+  if (typeof cwe === 'object' && cwe?.id) return `CWE-${cwe.id}`;
+  if (cwe) return String(cwe).startsWith('CWE-') ? String(cwe) : `CWE-${cwe}`;
+
+  return String(record.rule_id || record.ruleId || record.issue_id || record.id || 'unknown');
+}
+
+function mapVeracodeSeverity(record) {
+  const severity = String(
+    record.severity ||
+      record.Severity ||
+      record.policy_severity ||
+      record.cvss_severity ||
+      record.risk ||
+      record.severity_name ||
+      '',
+  ).toLowerCase();
+
+  if (severity === 'very high' || severity === 'very_high' || severity === 'critical') {
+    return 'critical';
+  }
+  if (severity === 'high') return 'high';
+  if (severity === 'medium') return 'medium';
+  if (severity === 'low') return 'low';
+
+  return 'medium';
 }
 
 function mapToolSeverity(tool, result, rule) {

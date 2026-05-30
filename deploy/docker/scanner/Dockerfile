@@ -5,7 +5,7 @@ FROM node:22-slim AS base
 ARG TRIVY_VERSION=0.70.0
 ARG FOXGUARD_VERSION=0.8.1
 ARG OPENGREP_VERSION=1.22.0
-ARG VERACODE_CLI_VERSION=2.27.0
+ARG VERACODE_CLI_VERSION=2.49.0
 ARG TARGETARCH
 
 RUN apt-get update \
@@ -39,10 +39,9 @@ RUN case "${TARGETARCH}" in \
 # Build-safe (`|| true`): images still build when tools.veracode.com is
 # unreachable. The orchestrator only invokes `veracode` when VERACODE_API_KEY_ID
 # and VERACODE_API_KEY_SECRET are set; a missing binary is a clean skip there.
-# VERSION env var pins the installer where supported; falls through to latest
-# silently if ignored.
+# VERACODE_CLI_VERSION pins the installer where supported.
 RUN (curl -fsS https://tools.veracode.com/veracode-cli/install \
-        | VERSION="${VERACODE_CLI_VERSION}" sh \
+        | VERACODE_CLI_VERSION="${VERACODE_CLI_VERSION}" sh \
       && mv veracode /usr/local/bin/veracode \
       && veracode --version) || true
 
