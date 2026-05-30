@@ -733,7 +733,7 @@ function PublishSkill() {
       const body = new FormData();
       body.set('owner', owner.trim());
       body.set('skillMd', skillMd);
-      body.set('archive', skillArchive);
+      body.set('file', skillArchive);
 
       const res = await fetch(SUBMISSIONS_API_BASE, {
         method: 'POST',

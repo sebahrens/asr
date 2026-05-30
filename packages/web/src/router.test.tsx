@@ -614,6 +614,60 @@ Use this skill when testing upload validation.`,
     expect(await screen.findByRole('heading', { name: /review manifest/i })).toBeInTheDocument();
   });
 
+  it('posts the uploaded archive using the submission API file field', async () => {
+    renderPublishRoute();
+
+    fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'asr' } });
+    fireEvent.change(screen.getByLabelText(/skill.md/i), {
+      target: {
+        value: `---
+name: valid-skill
+version: 1.0.0
+author: Platform Team
+description: Valid skill.
+---
+
+Use this skill when testing submission payloads.`,
+      },
+    });
+    fireEvent.change(screen.getByLabelText(/skill archive/i), {
+      target: {
+        files: [createZipFile(['valid-skill/SKILL.md'])],
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    expect(await screen.findByRole('heading', { name: /review manifest/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    expect(await screen.findByRole('heading', { name: /questionnaire/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('radio', { name: /^no$/i }));
+    fireEvent.change(screen.getByLabelText(/filesystem access/i), {
+      target: { value: 'read-own' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    expect(await screen.findByRole('heading', { name: /review & submit/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /submit for review/i }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('/api/v1/submissions', expect.objectContaining({
+        method: 'POST',
+        body: expect.any(FormData),
+      }));
+    });
+
+    const postCall = vi.mocked(fetch).mock.calls.find(([, init]) => {
+      return typeof init === 'object' && init?.method === 'POST';
+    });
+    const body = postCall?.[1]?.body as FormData;
+    expect(body.get('file')).toBeInstanceOf(File);
+    expect(body.get('archive')).toBeNull();
+    expect(body.get('owner')).toBe('asr');
+    expect(String(body.get('skillMd'))).toContain('name: valid-skill');
+  });
+
   it('renders a graceful inline 404 for unknown skill routes', () => {
     renderRoute('/skills/does-not-exist');
 
