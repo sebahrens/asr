@@ -142,6 +142,29 @@ describe('parseEnv', () => {
     expect(screeningConfigured(env)).toBe(false);
   });
 
+  it('treats empty compose LLM screening values as disabled defaults', () => {
+    const env = parseEnv({
+      NODE_ENV: 'development',
+      AUTH_MODE: 'mock',
+      MOCK_USER_SUB: 'dev-user',
+      MOCK_USER_ROLES: 'Submitter',
+      LLM_SCREEN_PROVIDER: '',
+      OPENAI_API_KEY: '',
+      OPENAI_BASE_URL: '',
+      OPENAI_MODEL: '',
+      ANTHROPIC_API_KEY: '',
+      ANTHROPIC_BASE_URL: '',
+      ANTHROPIC_MODEL: '',
+      LLM_SCREEN_CONTEXT_TOKENS: '',
+    });
+
+    expect(env).toMatchObject({
+      LLM_SCREEN_CONTEXT_TOKENS: 200000,
+    });
+    expect(env.LLM_SCREEN_PROVIDER).toBeUndefined();
+    expect(screeningConfigured(env)).toBe(false);
+  });
+
   it('recognizes configured OpenAI screening env', () => {
     const env = parseEnv({
       NODE_ENV: 'development',

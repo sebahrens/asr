@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+const emptyStringAsUndefined = (value: unknown): unknown =>
+  value === '' ? undefined : value;
+
 const envSchema = z
   .object({
     PORT: z.coerce.number().default(3001),
@@ -35,14 +38,20 @@ const envSchema = z
     VERACODE_API_KEY_ID: z.string().optional(),
     VERACODE_API_KEY_SECRET: z.string().optional(),
     VERACODE_POLICY: z.string().optional(),
-    LLM_SCREEN_PROVIDER: z.enum(['openai', 'anthropic']).optional(),
+    LLM_SCREEN_PROVIDER: z.preprocess(
+      emptyStringAsUndefined,
+      z.enum(['openai', 'anthropic']).optional(),
+    ),
     OPENAI_API_KEY: z.string().optional(),
     OPENAI_BASE_URL: z.string().optional(),
     OPENAI_MODEL: z.string().optional(),
     ANTHROPIC_API_KEY: z.string().optional(),
     ANTHROPIC_BASE_URL: z.string().optional(),
     ANTHROPIC_MODEL: z.string().optional(),
-    LLM_SCREEN_CONTEXT_TOKENS: z.coerce.number().int().positive().default(200000),
+    LLM_SCREEN_CONTEXT_TOKENS: z.preprocess(
+      emptyStringAsUndefined,
+      z.coerce.number().int().positive().default(200000),
+    ),
     LLM_SCREEN_RESERVE_OUTPUT_TOKENS: z.coerce.number().int().positive().default(8000),
     LLM_SCREEN_CHARS_PER_TOKEN: z.coerce.number().positive().default(3.5),
   })

@@ -40,6 +40,14 @@ services:
       - FORGEJO_REPO=skills-registry
       - DATABASE_PATH=/app/data/workflow.db
       - PORT=3001
+      - LLM_SCREEN_PROVIDER=${LLM_SCREEN_PROVIDER:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-}
+      - LLM_SCREEN_CONTEXT_TOKENS=${LLM_SCREEN_CONTEXT_TOKENS:-}
     depends_on:
       - forgejo
     healthcheck:
