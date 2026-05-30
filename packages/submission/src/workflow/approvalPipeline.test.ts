@@ -1,4 +1,4 @@
-import { ForgejoClient, type AuditAction, type ScanReport, type SkillManifest, type Submission } from '@asr/core';
+import { ForgejoClient, type AuditAction, type ScanReport, type ScreeningReport, type SkillManifest, type Submission } from '@asr/core';
 import { describe, expect, it } from 'vitest';
 import {
   approvalPipeline,
@@ -32,10 +32,12 @@ describe('approvalPipeline', () => {
     const forgejo = new FakeForgejoClient();
     const audit: Array<{ action: AuditAction; detail: Record<string, unknown> }> = [];
     const scanReport = makeScanReport('review_required');
+    const screeningReport = makeScreeningReport();
     const dependencies = makeDependencies(forgejo, audit, scanReport);
 
     const started = await runApprovalPipeline(makeContext({
       files: [{ path: 'SKILL.md', contentBase64: b64('# test') }, { path: 'scripts/check.ts', contentBase64: b64('export {};') }],
+      screeningReport,
     }), dependencies);
     expect(started.status).toBe('awaiting');
     expect(started.context._awaitingNodeIds).toEqual(['questionnaire']);
@@ -46,6 +48,7 @@ describe('approvalPipeline', () => {
     }, 'questionnaire', dependencies);
     expect(questionnaire.status).toBe('awaiting');
     expect(questionnaire.context.scanReport).toMatchObject({ verdict: 'review_required' });
+    expect(questionnaire.context.screeningReport).toEqual(screeningReport);
     expect(questionnaire.context._awaitingNodeIds).toEqual(['confirmation']);
 
     const confirmation = await resumeApprovalPipeline(questionnaire.serializedContext, {
@@ -383,6 +386,22 @@ function makeScanReport(verdict: ScanReport['verdict']): ScanReport {
       opengrep: { exitCode: 0, findingCount: 0 },
       veracode: { exitCode: 0, findingCount: 0, skipped: true },
     },
+  };
+}
+
+function makeScreeningReport(): ScreeningReport {
+  return {
+    submissionId: 'sub-1',
+    contentHash: 'abc123',
+    provider: 'none',
+    model: 'none',
+    contextTokens: 0,
+    status: 'skipped',
+    truncated: false,
+    startedAt: '2026-05-24T00:00:00.000Z',
+    completedAt: '2026-05-24T00:00:00.000Z',
+    durationMs: 0,
+    findings: [],
   };
 }
 

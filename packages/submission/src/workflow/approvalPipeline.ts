@@ -1,4 +1,4 @@
-import { ForgejoClient, type AuditAction, type ScanReport, type SkillManifest, type Submission, type VersionDiff } from '@asr/core';
+import { ForgejoClient, type AuditAction, type ScanReport, type ScreeningReport, type SkillManifest, type Submission, type VersionDiff } from '@asr/core';
 import { createFlow, FlowRuntime, type NodeContext, type WorkflowResult } from 'flowcraft';
 import { runScanner, type RunScannerInput } from '../scan/runScanner.js';
 import { notify, type NotifyEvent } from '../notify/mailer.js';
@@ -30,6 +30,7 @@ export interface ApprovalPipelineContext {
   confirmation?: HitlSignal;
   review?: HitlSignal;
   scanReport?: ScanReport;
+  screeningReport?: ScreeningReport;
   mergeCommit?: string;
   status?: Submission['status']['phase'];
   _awaitingNodeIds?: string[];
