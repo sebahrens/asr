@@ -259,12 +259,12 @@ describe('router', () => {
     const searchInput = screen.getByPlaceholderText(/search agent skills/i);
     fireEvent.change(searchInput, { target: { value: 'xyzzzzzzzzzzzzzz-impossible' } });
 
+    expect(await screen.findByText(/no skills match your search/i)).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /open asr\/security-review details/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /open asr\/release-notes details/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/no skills match your search/i)).toBeInTheDocument();
 
     fireEvent.change(searchInput, { target: { value: 'security' } });
-    expect(screen.getByRole('link', { name: /open asr\/security-review details/i })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /open asr\/security-review details/i })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /open asr\/release-notes details/i })).not.toBeInTheDocument();
   });
 

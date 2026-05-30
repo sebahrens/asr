@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowseRegistry, SessionProvider } from './App';
 import { BrandProvider } from './branding/BrandProvider';
 
@@ -49,12 +50,22 @@ function makeFetchStub(items: MockSkill[]): typeof fetch {
 }
 
 function renderBrowse() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  });
+
   return render(
-    <SessionProvider>
-      <BrandProvider>
-        <BrowseRegistry />
-      </BrandProvider>
-    </SessionProvider>,
+    <QueryClientProvider client={queryClient}>
+      <SessionProvider>
+        <BrandProvider>
+          <BrowseRegistry />
+        </BrandProvider>
+      </SessionProvider>
+    </QueryClientProvider>,
   );
 }
 

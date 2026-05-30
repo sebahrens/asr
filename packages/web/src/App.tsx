@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { ReactDiffViewerProps } from 'react-diff-viewer-continued';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -55,6 +56,16 @@ const ZIP_CENTRAL_DIRECTORY_COMMENT_LENGTH_OFFSET = 32;
 
 interface RegistrySkillsResponse {
   items?: SkillSummary[];
+}
+
+class RegistryRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'RegistryRequestError';
+  }
 }
 
 type PublishStatus = 'idle' | 'submitting' | 'submitted';
@@ -137,6 +148,43 @@ function mapSkillSummary(skill: SkillSummary): Skill {
     riskAssessmentLatest: skill.riskAssessmentLatest,
     updated_at: skill.publishedAt,
   };
+}
+
+async function fetchRegistrySkills(query: string): Promise<Skill[]> {
+  const params = new URLSearchParams();
+  if (query) params.set('q', query);
+  const queryString = params.toString();
+  const res = await fetch(`${API_URL}/api/v1/skills${queryString ? `?${queryString}` : ''}`);
+  if (!res.ok) {
+    throw new RegistryRequestError(`Skills request failed with ${res.status}`, res.status);
+  }
+
+  const data = (await res.json()) as RegistrySkillsResponse;
+  return Array.isArray(data.items) ? data.items.map(mapSkillSummary) : [];
+}
+
+async function fetchSkillVersionDiff(owner: string, name: string, version: string): Promise<VersionDiff> {
+  const res = await fetch(
+    `${API_URL}/api/v1/skills/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/diff`,
+  );
+  if (!res.ok) {
+    throw new RegistryRequestError(`Skill version diff request failed with ${res.status}`, res.status);
+  }
+
+  return (await res.json()) as VersionDiff;
+}
+
+async function fetchSkillDetail(owner: string, name: string): Promise<SkillDetail> {
+  const res = await fetch(`${API_URL}/api/v1/skills/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`);
+  if (!res.ok) {
+    throw new RegistryRequestError(`Skill detail request failed with ${res.status}`, res.status);
+  }
+
+  return (await res.json()) as SkillDetail;
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return error instanceof RegistryRequestError && error.status === 404;
 }
 
 function getInstallCommand(owner: string, name: string): string {
@@ -1253,66 +1301,42 @@ function BrowseLoadingSkeleton() {
 export function BrowseRegistry() {
   const { mode: brandMode } = useBrand();
   const heroTitle = brandMode === 'pwc' ? 'Agent Skill Repository' : 'asr';
-  const [skills, setSkills] = useState<Skill[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [registryStatus, setRegistryStatus] = useState<RegistryConnectionStatus>('checking');
-  const [registryError, setRegistryError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [activeKind, setActiveKind] = useState<BrowseKindFilter>('all');
   const [activeRisk, setActiveRisk] = useState<BrowseRiskFilter>('all');
-  const latestFetchId = useRef(0);
 
-  const fetchSkills = useCallback(async (query: string) => {
-    const fetchId = latestFetchId.current + 1;
-    latestFetchId.current = fetchId;
-    setLoading(true);
-    setRegistryStatus('checking');
-    setRegistryError(null);
-    try {
-      const params = new URLSearchParams();
-      if (query) params.set('q', query);
-      const res = await fetch(`${API_URL}/api/v1/skills?${params}`);
-      if (!res.ok) {
-        throw new Error(`Skills request failed with ${res.status}`);
-      }
+  const searchQuery = search.trim();
+  const skillsQuery = useQuery({
+    queryKey: ['skills', searchQuery],
+    queryFn: () => fetchRegistrySkills(searchQuery),
+    staleTime: 60_000,
+  });
+  const skills = skillsQuery.data ?? [];
+  const loading = skillsQuery.isLoading;
+  const registryError = skillsQuery.isError
+    ? 'Registry API is unreachable. Check the API service and retry.'
+    : null;
+  const registryStatus: RegistryConnectionStatus = skillsQuery.isLoading || (skillsQuery.isFetching && !skillsQuery.data)
+    ? 'checking'
+    : skillsQuery.isError
+      ? 'unavailable'
+      : 'connected';
 
-      const data = (await res.json()) as RegistrySkillsResponse;
-      if (fetchId !== latestFetchId.current) {
-        return;
-      }
-      setSkills(Array.isArray(data.items) ? data.items.map(mapSkillSummary) : []);
-      setRegistryStatus('connected');
-    } catch {
-      if (fetchId !== latestFetchId.current) {
-        return;
-      }
-      setSkills([]);
-      setRegistryStatus('unavailable');
-      setRegistryError('Registry API is unreachable. Check the API service and retry.');
-    } finally {
-      if (fetchId === latestFetchId.current) {
-        setLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchSkills(search);
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [search, fetchSkills]);
-
-  const availableTags = Array.from(new Set(skills.flatMap((skill) => skill.tags))).sort((a, b) => a.localeCompare(b));
-  const availableKinds = Array.from(new Set(skills.map((skill) => skill.kind))).sort((a, b) => a.localeCompare(b));
-  const availableRisks = Array.from(new Set(skills.map((skill) => skill.riskAssessmentLatest))).sort((a, b) => {
+  const availableTags = useMemo(
+    () => Array.from(new Set(skills.flatMap((skill) => skill.tags))).sort((a, b) => a.localeCompare(b)),
+    [skills],
+  );
+  const availableKinds = useMemo(
+    () => Array.from(new Set(skills.map((skill) => skill.kind))).sort((a, b) => a.localeCompare(b)),
+    [skills],
+  );
+  const availableRisks = useMemo(() => Array.from(new Set(skills.map((skill) => skill.riskAssessmentLatest))).sort((a, b) => {
     const order: Record<SkillSummary['riskAssessmentLatest'], number> = { low: 0, medium: 1, high: 2 };
     return order[a] - order[b];
-  });
+  }), [skills]);
   const normalizedSearch = search.trim().toLowerCase();
-  const filteredSkills = skills.filter((skill) => {
+  const filteredSkills = useMemo(() => skills.filter((skill) => {
     const matchesSearch = normalizedSearch === ''
       || [skill.owner, skill.name, skill.description, ...skill.tags]
         .some((value) => value.toLowerCase().includes(normalizedSearch));
@@ -1323,7 +1347,7 @@ export function BrowseRegistry() {
       && (activeKind === 'all' || skill.kind === activeKind)
       && (activeRisk === 'all' || skill.riskAssessmentLatest === activeRisk)
     );
-  });
+  }), [activeKind, activeRisk, activeTag, normalizedSearch, skills]);
   const totalStars = filteredSkills.reduce((a, s) => a + s.stars, 0);
 
   const hasActiveFilters =
@@ -1487,7 +1511,7 @@ export function BrowseRegistry() {
           ) : registryError ? (
             <div className="empty-state registry-error-state" role="alert" aria-live="assertive">
               <p>{registryError}</p>
-              <button className="secondary-btn" type="button" onClick={() => fetchSkills(search)}>
+              <button className="secondary-btn" type="button" onClick={() => void skillsQuery.refetch()}>
                 Retry
               </button>
             </div>
@@ -1680,41 +1704,14 @@ function NotFoundState() {
 }
 
 function SkillVersionDiffPage({ owner, name, version }: { owner: string; name: string; version: string }) {
-  const [diff, setDiff] = useState<VersionDiff | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<'not-found' | 'unavailable' | null>(null);
+  const diffQuery = useQuery({
+    queryKey: ['skills', owner, name, 'versions', version, 'diff'],
+    queryFn: () => fetchSkillVersionDiff(owner, name, version),
+    staleTime: 60_000,
+  });
+  const diff = diffQuery.data;
 
-  const fetchDiff = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const res = await fetch(
-        `${API_URL}/api/v1/skills/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/diff`,
-      );
-      if (res.status === 404) {
-        setDiff(null);
-        setError('not-found');
-        return;
-      }
-      if (!res.ok) {
-        throw new Error(`Skill version diff request failed with ${res.status}`);
-      }
-
-      setDiff((await res.json()) as VersionDiff);
-    } catch {
-      setDiff(null);
-      setError('unavailable');
-    } finally {
-      setLoading(false);
-    }
-  }, [name, owner, version]);
-
-  useEffect(() => {
-    fetchDiff();
-  }, [fetchDiff]);
-
-  if (loading) {
+  if (diffQuery.isLoading) {
     return (
       <>
         <div className="brand-stripe" />
@@ -1736,22 +1733,22 @@ function SkillVersionDiffPage({ owner, name, version }: { owner: string; name: s
     );
   }
 
-  if (error === 'not-found') {
+  if (isNotFoundError(diffQuery.error)) {
     return (
       <SkillNotFoundState
         title="Diff not found"
         message={`No version diff is available for ${owner}/${name} v${version}. Return to the skill detail page or retry the lookup.`}
-        onRetry={fetchDiff}
+        onRetry={() => void diffQuery.refetch()}
       />
     );
   }
 
-  if (error === 'unavailable' || !diff) {
+  if (diffQuery.isError || !diff) {
     return (
       <SkillNotFoundState
         title="Diff unavailable"
         message={`Unable to load the version diff for ${owner}/${name} v${version} from the registry API.`}
-        onRetry={fetchDiff}
+        onRetry={() => void diffQuery.refetch()}
       />
     );
   }
@@ -1834,40 +1831,16 @@ function SkillVersionDiffPage({ owner, name, version }: { owner: string; name: s
 }
 
 function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
-  const [detail, setDetail] = useState<SkillDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<'not-found' | 'unavailable' | null>(null);
   const [activeTab, setActiveTab] = useState<SkillDetailTab>('preview');
 
-  const fetchSkill = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const detailQuery = useQuery({
+    queryKey: ['skills', owner, name],
+    queryFn: () => fetchSkillDetail(owner, name),
+    staleTime: 60_000,
+  });
+  const detail = detailQuery.data;
 
-    try {
-      const res = await fetch(`${API_URL}/api/v1/skills/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`);
-      if (res.status === 404) {
-        setDetail(null);
-        setError('not-found');
-        return;
-      }
-      if (!res.ok) {
-        throw new Error(`Skill detail request failed with ${res.status}`);
-      }
-
-      setDetail((await res.json()) as SkillDetail);
-    } catch {
-      setDetail(null);
-      setError('unavailable');
-    } finally {
-      setLoading(false);
-    }
-  }, [name, owner]);
-
-  useEffect(() => {
-    fetchSkill();
-  }, [fetchSkill]);
-
-  if (loading) {
+  if (detailQuery.isLoading) {
     return (
       <>
         <div className="brand-stripe" />
@@ -1889,21 +1862,21 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
     );
   }
 
-  if (error === 'not-found') {
+  if (isNotFoundError(detailQuery.error)) {
     return (
       <SkillNotFoundState
         message={`No published skill exists for ${owner}/${name}. Return to browse or retry the lookup.`}
-        onRetry={fetchSkill}
+        onRetry={() => void detailQuery.refetch()}
       />
     );
   }
 
-  if (error === 'unavailable' || !detail) {
+  if (detailQuery.isError || !detail) {
     return (
       <SkillNotFoundState
         title="Registry unavailable"
         message={`Unable to load ${owner}/${name} from the registry API.`}
-        onRetry={fetchSkill}
+        onRetry={() => void detailQuery.refetch()}
       />
     );
   }
