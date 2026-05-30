@@ -85,6 +85,8 @@ All Tier 1 tools use permissive licenses (MIT, Apache-2.0) with no copyleft obli
 # Tier 1 — no credentials needed (run locally)
 SCAN_TIMEOUT_SECONDS=300          # Max time per tool (default: 5 min)
 SCAN_SEVERITY_THRESHOLD=high      # Block on: critical, high (default)
+TRIVY_CONFIG=/opt/scan/trivy.yaml # Committed ASR Trivy policy
+TRIVY_IGNOREFILE=/opt/scan/.trivyignore
 
 # Tier 2 — Opengrep
 OPENGREP_RULES_DIR=/opt/scan/rules  # Custom rules directory (optional)
@@ -113,10 +115,10 @@ All tools produce SARIF with varying severity labels. Normalized to:
 |----------|-----------------|---------------|
 | Critical | Hard block — submission rejected automatically | No |
 | High | Block — requires compliance reviewer override | Yes |
-| Medium | Advisory — shown to reviewer, non-blocking | Yes |
-| Low | Informational — logged, not shown by default | Yes |
+| Medium | Advisory when `SCAN_SEVERITY_THRESHOLD<=medium` | Yes |
+| Low | Informational when `SCAN_SEVERITY_THRESHOLD=low` | Yes |
 
-**Secret detection is always a hard block.** Any finding from Gitleaks blocks the submission regardless of severity configuration.
+**Secret detection is always a hard block.** Any finding from Gitleaks blocks the submission regardless of severity configuration. Trivy is configured for `vuln,misconfig` only so credentials are not double-reported by both scanners.
 
 ## Scanner Docker Image
 
@@ -196,7 +198,9 @@ interface ScanReport {
 const SCAN_DIR = process.env.SCAN_DIR || '/scan/input';
 const OUTPUT_DIR = process.env.OUTPUT_DIR || '/scan/output';
 const TIMEOUT = (parseInt(process.env.SCAN_TIMEOUT_SECONDS || '300')) * 1000;
-const SEVERITY_THRESHOLD = process.env.SCAN_SEVERITY_THRESHOLD || 'high';
+const SEVERITY_THRESHOLD = (process.env.SCAN_SEVERITY_THRESHOLD || 'high').toLowerCase();
+const TRIVY_CONFIG = process.env.TRIVY_CONFIG || '/opt/scan/trivy.yaml';
+const TRIVY_IGNOREFILE = process.env.TRIVY_IGNOREFILE || '/opt/scan/.trivyignore';
 
 async function runGitleaks(): Promise<ScanFinding[]> {
   const sarifPath = join(OUTPUT_DIR, 'gitleaks.sarif');
@@ -217,13 +221,28 @@ async function runTrivy(): Promise<ScanFinding[]> {
   const sarifPath = join(OUTPUT_DIR, 'trivy.sarif');
   await exec('trivy', [
     'fs', SCAN_DIR,
-    '--scanners', 'vuln,secret,misconfig',
+    '--config', TRIVY_CONFIG,
+    '--ignorefile', TRIVY_IGNOREFILE,
     '--format', 'sarif',
     '--output', sarifPath,
-    '--severity', 'CRITICAL,HIGH,MEDIUM',
+    '--severity', trivySeverityList(SEVERITY_THRESHOLD),
     '--timeout', `${TIMEOUT / 1000}s`,
   ], { timeout: TIMEOUT }).catch(() => {});
   return parseSarif(sarifPath, 'trivy');
+}
+
+function trivySeverityList(threshold: string): string {
+  switch (threshold) {
+    case 'critical':
+      return 'CRITICAL';
+    case 'high':
+      return 'CRITICAL,HIGH';
+    case 'low':
+      return 'CRITICAL,HIGH,MEDIUM,LOW';
+    case 'medium':
+    default:
+      return 'CRITICAL,HIGH,MEDIUM';
+  }
 }
 
 async function runFoxguard(): Promise<ScanFinding[]> {
@@ -564,7 +583,7 @@ docker run --rm \
 
 | Database | Tool | Update cadence | Mechanism |
 |----------|------|---------------|-----------|
-| CVE/NVD | Trivy | Daily | `trivy --download-db-only` in cron |
+| CVE/NVD | Trivy | Daily | Rebuild scanner image daily; runtime scans keep DB updates enabled as fallback |
 | Secret patterns | Gitleaks | On image rebuild | Built-in patterns + custom `.toml` |
 | SAST rules | Foxguard | On image rebuild | Built-in 170+ rules |
 | Opengrep rules | Opengrep | Weekly | `git pull` on rules repo |

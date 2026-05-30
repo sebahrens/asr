@@ -48,6 +48,8 @@ RUN (curl -fsS https://tools.veracode.com/veracode-cli/install \
 
 COPY rules/ /opt/scan/rules/
 COPY gitleaks.toml /opt/scan/gitleaks.toml
+COPY trivy.yaml /opt/scan/trivy.yaml
+COPY .trivyignore /opt/scan/.trivyignore
 
 WORKDIR /scan
 COPY scan-orchestrator.mjs /opt/scan/

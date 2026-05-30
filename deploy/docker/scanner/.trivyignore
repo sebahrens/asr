@@ -1,0 +1,4 @@
+# ASR has no accepted Trivy suppressions yet.
+#
+# Add narrowly scoped CVE or misconfiguration IDs only after reviewer approval,
+# and include a reason plus expiry date in the adjacent commit/issue.

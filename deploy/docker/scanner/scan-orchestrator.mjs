@@ -10,8 +10,10 @@ const exec = promisify(execFile);
 const SCAN_DIR = process.env.SCAN_DIR || '/scan/input';
 const OUTPUT_DIR = process.env.OUTPUT_DIR || '/scan/output';
 const TIMEOUT = Number.parseInt(process.env.SCAN_TIMEOUT_SECONDS || '300', 10) * 1000;
-const SEVERITY_THRESHOLD = process.env.SCAN_SEVERITY_THRESHOLD || 'high';
+const SEVERITY_THRESHOLD = (process.env.SCAN_SEVERITY_THRESHOLD || 'high').toLowerCase();
 const GITLEAKS_CONFIG = process.env.GITLEAKS_CONFIG || '/opt/scan/gitleaks.toml';
+const TRIVY_CONFIG = process.env.TRIVY_CONFIG || '/opt/scan/trivy.yaml';
+const TRIVY_IGNOREFILE = process.env.TRIVY_IGNOREFILE || '/opt/scan/.trivyignore';
 
 const TOOLS = ['gitleaks', 'trivy', 'foxguard', 'opengrep', 'veracode'];
 
@@ -50,14 +52,16 @@ async function runTrivy() {
   const exitCode = await runCommand('trivy', [
     'fs',
     SCAN_DIR,
-    '--scanners',
-    'vuln,secret,misconfig',
+    '--config',
+    TRIVY_CONFIG,
+    '--ignorefile',
+    TRIVY_IGNOREFILE,
     '--format',
     'sarif',
     '--output',
     sarifPath,
     '--severity',
-    'CRITICAL,HIGH,MEDIUM',
+    trivySeverityList(SEVERITY_THRESHOLD),
     '--timeout',
     `${TIMEOUT / 1000}s`,
   ]);
@@ -67,6 +71,20 @@ async function runTrivy() {
     exitCode,
     findings: await parseSarif(sarifPath, 'trivy'),
   };
+}
+
+function trivySeverityList(threshold) {
+  switch (threshold) {
+    case 'critical':
+      return 'CRITICAL';
+    case 'high':
+      return 'CRITICAL,HIGH';
+    case 'low':
+      return 'CRITICAL,HIGH,MEDIUM,LOW';
+    case 'medium':
+    default:
+      return 'CRITICAL,HIGH,MEDIUM';
+  }
 }
 
 async function runFoxguard() {

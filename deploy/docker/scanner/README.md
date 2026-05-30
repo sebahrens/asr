@@ -38,6 +38,29 @@ are project-owned; future community-rule imports must come from
 `opengrep/opengrep-rules` with source path, commit, and LGPL-2.1 provenance
 recorded. Do not vendor rules from `semgrep/semgrep-rules`.
 
+## Trivy policy
+
+Trivy is configured by `trivy.yaml` and `.trivyignore`, both copied into the
+image under `/opt/scan/`. ASR uses Trivy for dependency CVEs and IaC
+misconfiguration findings only; secret scanning is intentionally left to
+Gitleaks so the unified SARIF report does not double-report the same credential.
+
+The orchestrator passes `--config /opt/scan/trivy.yaml` and
+`--ignorefile /opt/scan/.trivyignore` on every filesystem scan. Runtime severity
+filtering follows `SCAN_SEVERITY_THRESHOLD`: `critical` scans only critical
+findings, `high` scans critical/high, `medium` scans critical/high/medium, and
+`low` includes low findings as well. `.trivyignore` is currently empty except
+for comments; accepted suppressions must be narrow CVE or misconfiguration IDs
+with reviewer-approved expiry context in the associated bead or commit.
+
+The Dockerfile preloads Trivy vulnerability databases at build time for faster
+first scans, but production freshness depends on image rebuild cadence. Rebuild
+and redeploy the scanner image daily, or before each release train, so
+`trivy image --download-db-only` refreshes both the vulnerability DB and Java DB
+from the configured mirror-first repositories. Runtime scans leave
+`db.skip-update` disabled as a fallback, allowing Trivy to refresh stale DBs if
+egress is available.
+
 ## Build check
 
 ```bash

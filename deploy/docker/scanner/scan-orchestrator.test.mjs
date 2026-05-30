@@ -112,6 +112,34 @@ test('runs opengrep when executable code and rule files are present', async () =
   }
 });
 
+test('invokes trivy with committed config, ignorefile, and threshold-aligned severities', async () => {
+  const fixture = await createFixture();
+  try {
+    const recordPath = join(fixture.root, 'trivy-invocation.json');
+    const configPath = join(fixture.root, 'trivy.yaml');
+    const ignorePath = join(fixture.root, '.trivyignore');
+    await writeFile(configPath, 'scan:\n  scanners:\n    - vuln\n    - misconfig\n');
+    await writeFile(ignorePath, '');
+    await installRecordingTrivy(fixture.binDir, recordPath);
+
+    const result = await runOrchestrator(fixture, {
+      SCAN_SEVERITY_THRESHOLD: 'critical',
+      TRIVY_CONFIG: configPath,
+      TRIVY_IGNOREFILE: ignorePath,
+    });
+
+    const invocation = JSON.parse(await readFile(recordPath, 'utf8'));
+    assert.equal(invocation.argv[0], 'fs');
+    assert.equal(invocation.argv[1], fixture.scanDir);
+    assert.equal(invocation.argv[invocation.argv.indexOf('--config') + 1], configPath);
+    assert.equal(invocation.argv[invocation.argv.indexOf('--ignorefile') + 1], ignorePath);
+    assert.equal(invocation.argv[invocation.argv.indexOf('--severity') + 1], 'CRITICAL');
+    assert.equal(result.report.toolResults.trivy.skipped, undefined);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test('invokes veracode CLI with documented args when credentials are set', async () => {
   const fixture = await createFixture();
   try {
@@ -278,6 +306,20 @@ const argv = process.argv.slice(2);
 const outputPath = argv[argv.indexOf('--output') + 1];
 await writeFile(${JSON.stringify(recordPath)}, JSON.stringify({ argv }));
 await writeFile(outputPath, JSON.stringify({ version: '2.1.0', runs: [{ tool: { driver: { name: 'veracode' } }, results: [] }] }));
+`,
+  );
+}
+
+async function installRecordingTrivy(binDir, recordPath) {
+  await writeExecutable(
+    join(binDir, 'trivy'),
+    `#!/usr/bin/env node
+import { writeFile } from 'node:fs/promises';
+
+const argv = process.argv.slice(2);
+const outputPath = argv[argv.indexOf('--output') + 1];
+await writeFile(${JSON.stringify(recordPath)}, JSON.stringify({ argv }));
+await writeFile(outputPath, JSON.stringify({ version: '2.1.0', runs: [{ tool: { driver: { name: 'trivy' } }, results: [] }] }));
 `,
   );
 }
