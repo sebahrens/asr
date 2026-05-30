@@ -1,28 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SkillSummary } from '@asr/core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowseRegistry, SessionProvider } from './App';
 import { BrandProvider } from './branding/BrandProvider';
 
-interface MockSkill {
-  owner: string;
-  name: string;
-  description: string;
-  tags: string[];
-  kind: 'instructions';
-  latestVersion: string;
-  riskAssessmentLatest: 'low' | 'medium' | 'high';
-  downloadCount: number;
-  publishedAt: string;
-}
-
-const skills: MockSkill[] = [
+const skills = [
   {
     owner: 'platform',
     name: 'release-notes',
     description: 'Drafts concise release notes from merged pull requests.',
     tags: ['release', 'docs'],
-    kind: 'instructions',
+    kind: 'skill',
     latestVersion: '0.8.2',
     riskAssessmentLatest: 'low',
     downloadCount: 42,
@@ -33,15 +22,15 @@ const skills: MockSkill[] = [
     name: 'secure-review',
     description: 'Compliance-grade dependency review workflow.',
     tags: ['security', 'compliance'],
-    kind: 'instructions',
+    kind: 'skill',
     latestVersion: '1.2.0',
     riskAssessmentLatest: 'medium',
     downloadCount: 18,
     publishedAt: '2026-05-19T10:00:00Z',
   },
-];
+] satisfies SkillSummary[];
 
-function makeFetchStub(items: MockSkill[]): typeof fetch {
+function makeFetchStub(items: readonly SkillSummary[]): typeof fetch {
   return vi.fn().mockImplementation(async () => ({
     ok: true,
     status: 200,
@@ -117,6 +106,14 @@ describe('BrowseRegistry empty state (asr-4e0)', () => {
 
     expect(await screen.findByText(/no skills are available yet/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /clear search and filters/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('BrowseRegistry core type drift guard (asr-eau0)', () => {
+  it('uses canonical SkillSummary fixtures for browse responses', () => {
+    const driftGuard: readonly SkillSummary[] = skills;
+
+    expect(driftGuard).toHaveLength(2);
   });
 });
 

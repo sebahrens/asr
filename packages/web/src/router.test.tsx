@@ -426,7 +426,7 @@ describe('router', () => {
     expect(screen.getAllByText(/\(required\)/i)).toHaveLength(3);
   });
 
-  it('keeps future publish steps locked after invalid archive validation', async () => {
+  it('keeps future publish steps locked after invalid archive extension validation', async () => {
     renderPublishRoute();
 
     fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'asr' } });
@@ -444,11 +444,11 @@ Use this skill when testing upload validation.`,
     });
     fireEvent.change(screen.getByLabelText(/skill archive/i), {
       target: {
-        files: [createZipFile(['valid-skill/SKILL.md', 'valid-skill/README.txt'])],
+        files: [new File(['not a zip'], 'skill.txt', { type: 'text/plain' })],
       },
     });
 
-    expect(await screen.findAllByText(/archive must include manifest.yaml/i)).toHaveLength(2);
+    expect(await screen.findAllByText(/upload a \.zip archive/i)).toHaveLength(2);
     expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
     expect(screen.getByRole('button', { name: /manifest/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /questionnaire/i })).toBeDisabled();
@@ -553,7 +553,7 @@ Use this skill when testing step navigation.`,
     expect(screen.getByRole('button', { name: /review & submit/i })).toBeDisabled();
   });
 
-  it('rejects archive uploads that omit manifest.yaml from the root directory', async () => {
+  it('leaves archive structure validation to the submission API', async () => {
     renderPublishRoute();
 
     fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'asr' } });
@@ -575,13 +575,13 @@ Use this skill when testing upload validation.`,
       },
     });
 
-    expect(await screen.findAllByText(/archive must include manifest.yaml/i)).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.queryByText(/archive must include manifest.yaml/i)).not.toBeInTheDocument();
+    });
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
-    await waitFor(() => {
-      expect(screen.queryByRole('heading', { name: /review manifest/i })).not.toBeInTheDocument();
-    });
+    expect(await screen.findByRole('heading', { name: /review manifest/i })).toBeInTheDocument();
   });
 
   it('renders a graceful inline 404 for unknown skill routes', () => {

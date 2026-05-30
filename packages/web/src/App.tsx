@@ -16,43 +16,15 @@ export { SessionProvider } from './auth/SessionProvider';
 
 type BrowseKindFilter = 'all' | SkillSummary['kind'];
 type BrowseRiskFilter = 'all' | SkillSummary['riskAssessmentLatest'];
+type BrowseSkill = SkillSummary & { id: string };
 
 function stripFrontmatter(content: string): string {
   return content.replace(/^---\n[\s\S]*?\n---\n*/, '');
 }
 
-interface Skill {
-  id: string;
-  owner: string;
-  name: string;
-  description: string;
-  tags: string[];
-  kind: SkillSummary['kind'];
-  stars: number;
-  installs: number;
-  version?: string;
-  riskAssessmentLatest: SkillSummary['riskAssessmentLatest'];
-  content?: string;
-  updated_at: string;
-}
-
 const API_URL = import.meta.env.VITE_API_URL || '';
 const SUBMISSIONS_API_BASE = `${API_URL}/api/v1/submissions`;
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-const ZIP_LOCAL_FILE_HEADER = 0x04034b50;
-const ZIP_EMPTY_ARCHIVE_HEADER = 0x06054b50;
-const ZIP_SPANNED_ARCHIVE_HEADER = 0x08074b50;
-const ZIP_CENTRAL_DIRECTORY_HEADER = 0x02014b50;
-const ZIP_EOCD_HEADER = 0x06054b50;
-const ZIP_EOCD_MIN_BYTES = 22;
-const ZIP_EOCD_MAX_COMMENT_BYTES = 0xffff;
-const ZIP_EOCD_ENTRY_COUNT_OFFSET = 10;
-const ZIP_EOCD_DIRECTORY_SIZE_OFFSET = 12;
-const ZIP_EOCD_DIRECTORY_OFFSET = 16;
-const ZIP_CENTRAL_DIRECTORY_FIXED_BYTES = 46;
-const ZIP_CENTRAL_DIRECTORY_NAME_LENGTH_OFFSET = 28;
-const ZIP_CENTRAL_DIRECTORY_EXTRA_LENGTH_OFFSET = 30;
-const ZIP_CENTRAL_DIRECTORY_COMMENT_LENGTH_OFFSET = 32;
 
 interface RegistrySkillsResponse {
   items?: SkillSummary[];
@@ -134,23 +106,14 @@ function sessionRoleLabel(session: Session): string {
   return session.roles.length > 0 ? session.roles.join(', ') : 'Viewer';
 }
 
-function mapSkillSummary(skill: SkillSummary): Skill {
+function mapSkillSummary(skill: SkillSummary): BrowseSkill {
   return {
+    ...skill,
     id: `${skill.owner}/${skill.name}`,
-    owner: skill.owner,
-    name: skill.name,
-    description: skill.description,
-    tags: skill.tags,
-    kind: skill.kind,
-    stars: 0,
-    installs: skill.downloadCount,
-    version: skill.latestVersion,
-    riskAssessmentLatest: skill.riskAssessmentLatest,
-    updated_at: skill.publishedAt,
   };
 }
 
-async function fetchRegistrySkills(query: string): Promise<Skill[]> {
+async function fetchRegistrySkills(query: string): Promise<BrowseSkill[]> {
   const params = new URLSearchParams();
   if (query) params.set('q', query);
   const queryString = params.toString();
@@ -484,114 +447,6 @@ function validateArchive(file: File | null): string | undefined {
   return undefined;
 }
 
-async function validateZipArchive(file: File | null): Promise<string | undefined> {
-  const archiveError = validateArchive(file);
-  if (archiveError || !file) {
-    return archiveError;
-  }
-
-  if (file.size < 4) {
-    return 'Archive file is not a valid zip archive.';
-  }
-
-  const header = new DataView(await readBlobSlice(file, 0, 4)).getUint32(0, true);
-  if (![ZIP_LOCAL_FILE_HEADER, ZIP_EMPTY_ARCHIVE_HEADER, ZIP_SPANNED_ARCHIVE_HEADER].includes(header)) {
-    return 'Archive file is not a valid zip archive.';
-  }
-
-  const tailLength = Math.min(file.size, ZIP_EOCD_MIN_BYTES + ZIP_EOCD_MAX_COMMENT_BYTES);
-  const tailOffset = file.size - tailLength;
-  const tail = new DataView(await readBlobSlice(file, tailOffset));
-  for (let offset = tail.byteLength - ZIP_EOCD_MIN_BYTES; offset >= 0; offset -= 1) {
-    if (tail.getUint32(offset, true) === ZIP_EOCD_HEADER) {
-      const entryCount = tail.getUint16(offset + ZIP_EOCD_ENTRY_COUNT_OFFSET, true);
-      const directorySize = tail.getUint32(offset + ZIP_EOCD_DIRECTORY_SIZE_OFFSET, true);
-      const directoryOffset = tail.getUint32(offset + ZIP_EOCD_DIRECTORY_OFFSET, true);
-
-      if (entryCount === 0 || directorySize === 0 || directoryOffset + directorySize > file.size) {
-        return 'Archive file is not a valid zip archive.';
-      }
-
-      return validateZipPackageEntries(
-        await readBlobSlice(file, directoryOffset, directoryOffset + directorySize),
-        entryCount,
-      );
-    }
-  }
-
-  return 'Archive file is not a valid zip archive.';
-}
-
-async function readBlobSlice(file: File, start: number, end?: number): Promise<ArrayBuffer> {
-  const blob = file.slice(start, end);
-  if (typeof blob.arrayBuffer === 'function') {
-    return blob.arrayBuffer();
-  }
-
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener('load', () => {
-      if (reader.result instanceof ArrayBuffer) {
-        resolve(reader.result);
-      } else {
-        reject(new Error('Unable to read archive bytes.'));
-      }
-    });
-    reader.addEventListener('error', () => reject(reader.error ?? new Error('Unable to read archive bytes.')));
-    reader.readAsArrayBuffer(blob);
-  });
-}
-
-function validateZipPackageEntries(directoryBuffer: ArrayBuffer, entryCount: number): string | undefined {
-  const directory = new DataView(directoryBuffer);
-  const decoder = new TextDecoder();
-  const entries: string[] = [];
-  let offset = 0;
-
-  for (let index = 0; index < entryCount; index += 1) {
-    if (offset + ZIP_CENTRAL_DIRECTORY_FIXED_BYTES > directory.byteLength) {
-      return 'Archive file is not a valid zip archive.';
-    }
-
-    if (directory.getUint32(offset, true) !== ZIP_CENTRAL_DIRECTORY_HEADER) {
-      return 'Archive file is not a valid zip archive.';
-    }
-
-    const nameLength = directory.getUint16(offset + ZIP_CENTRAL_DIRECTORY_NAME_LENGTH_OFFSET, true);
-    const extraLength = directory.getUint16(offset + ZIP_CENTRAL_DIRECTORY_EXTRA_LENGTH_OFFSET, true);
-    const commentLength = directory.getUint16(offset + ZIP_CENTRAL_DIRECTORY_COMMENT_LENGTH_OFFSET, true);
-    const nameStart = offset + ZIP_CENTRAL_DIRECTORY_FIXED_BYTES;
-    const nameEnd = nameStart + nameLength;
-
-    if (nameEnd > directory.byteLength) {
-      return 'Archive file is not a valid zip archive.';
-    }
-
-    entries.push(decoder.decode(new Uint8Array(directoryBuffer, nameStart, nameLength)));
-    offset = nameEnd + extraLength + commentLength;
-  }
-
-  const paths = entries
-    .map((entry) => entry.replace(/\\/g, '/').replace(/^\/+/, ''))
-    .filter((entry) => entry && !entry.endsWith('/'));
-  const rootNames = new Set(paths.map((entry) => entry.split('/')[0]).filter(Boolean));
-
-  if (paths.length === 0 || rootNames.size !== 1 || paths.some((entry) => entry.split('/').length < 2)) {
-    return 'Archive must contain a single root directory.';
-  }
-
-  const [rootName] = [...rootNames];
-  if (!paths.includes(`${rootName}/manifest.yaml`)) {
-    return 'Archive must include manifest.yaml in the root directory.';
-  }
-
-  if (!paths.includes(`${rootName}/SKILL.md`)) {
-    return 'Archive must include SKILL.md in the root directory.';
-  }
-
-  return undefined;
-}
-
 function getParsedSkillMd(content: string): ParsedSkillMd | null {
   if (validateSkillMd(content)) {
     return null;
@@ -628,7 +483,6 @@ function createManifestDraft(content: string): PublishManifestDraft {
 
 function PublishSkill() {
   const session = useSession();
-  const archiveSelectionId = useRef(0);
   const validationSummaryRef = useRef<HTMLDivElement>(null);
   const [owner, setOwner] = useState('');
   const [skillMd, setSkillMd] = useState('');
@@ -894,16 +748,10 @@ function PublishSkill() {
     }
   }
 
-  async function selectArchive(file: File | null, input: HTMLInputElement) {
-    const selectionId = archiveSelectionId.current + 1;
-    archiveSelectionId.current = selectionId;
+  function selectArchive(file: File | null, input: HTMLInputElement) {
     setSkillArchive(null);
 
-    const archiveError = await validateZipArchive(file);
-    if (archiveSelectionId.current !== selectionId) {
-      return;
-    }
-
+    const archiveError = validateArchive(file);
     if (archiveError) {
       setSkillArchive(null);
       setErrors((current) => ({ ...current, skillArchive: archiveError }));
@@ -1348,7 +1196,7 @@ export function BrowseRegistry() {
       && (activeRisk === 'all' || skill.riskAssessmentLatest === activeRisk)
     );
   }), [activeKind, activeRisk, activeTag, normalizedSearch, skills]);
-  const totalStars = filteredSkills.reduce((a, s) => a + s.stars, 0);
+  const totalDownloads = filteredSkills.reduce((total, skill) => total + skill.downloadCount, 0);
 
   const hasActiveFilters =
     normalizedSearch !== '' || activeTag !== null || activeKind !== 'all' || activeRisk !== 'all';
@@ -1412,8 +1260,8 @@ export function BrowseRegistry() {
                 <div className="stat-label">Skills</div>
               </div>
               <div className="stat">
-                <div className="stat-value">{totalStars.toLocaleString()}</div>
-                <div className="stat-label">Stars</div>
+                <div className="stat-value">{totalDownloads.toLocaleString()}</div>
+                <div className="stat-label">Downloads</div>
               </div>
             </div>
           </div>
@@ -1549,8 +1397,8 @@ export function BrowseRegistry() {
                         <div className="skill-name">{skill.name}</div>
                         <div className="skill-repo">{skill.owner}</div>
                       </div>
-                      {skill.version && (
-                        <span className="skill-version">v{skill.version}</span>
+                      {skill.latestVersion && (
+                        <span className="skill-version">v{skill.latestVersion}</span>
                       )}
                     </div>
                     <div className="skill-card-badges" aria-label="Skill metadata">
@@ -1563,20 +1411,12 @@ export function BrowseRegistry() {
                       {skill.description || 'No description available'}
                     </div>
                     <div className="skill-footer">
-                      <div className="skill-stat stars">
-                        <svg viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                      <div className="skill-stat">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
                         </svg>
-                        {skill.stars.toLocaleString()}
+                        {skill.downloadCount.toLocaleString()}
                       </div>
-                      {skill.installs > 0 && (
-                        <div className="skill-stat">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-                          </svg>
-                          {skill.installs}
-                        </div>
-                      )}
                     </div>
                   </a>
                   {skill.tags.length > 0 && (
