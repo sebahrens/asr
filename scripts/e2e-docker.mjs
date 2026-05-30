@@ -226,7 +226,15 @@ async function assertRegistryBrowse() {
   }
 }
 
+function runProviderScreeningSmoke() {
+  execSync(
+    'pnpm --filter @asr/submission exec vitest run test/integration/screening-provider.e2e.test.ts',
+    { cwd: repoRoot, stdio: 'inherit' },
+  );
+}
+
 const composeCmd = pickComposeCommand();
+runProviderScreeningSmoke();
 assertDockerDaemon();
 
 console.log(`Starting dev stack via "${composeCmd}" in ${composeCwd}...`);

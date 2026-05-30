@@ -192,6 +192,15 @@ describe('parseEnv', () => {
     expect(screeningConfigured(env)).toBe(true);
   });
 
+  it('does not treat incomplete raw OpenAI screening env as configured', () => {
+    expect(
+      screeningConfigured({
+        LLM_SCREEN_PROVIDER: 'openai',
+        OPENAI_API_KEY: 'openai-key',
+      }),
+    ).toBe(false);
+  });
+
   it('recognizes configured Anthropic screening env', () => {
     const env = parseEnv({
       NODE_ENV: 'development',

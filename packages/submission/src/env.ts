@@ -156,13 +156,21 @@ export function parseEnv(raw: NodeJS.ProcessEnv): Env {
   return env;
 }
 
-export function screeningConfigured(env: Env): boolean {
+type ScreeningConfiguredEnv = {
+  LLM_SCREEN_PROVIDER?: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_MODEL?: string;
+  ANTHROPIC_API_KEY?: string;
+  ANTHROPIC_MODEL?: string;
+};
+
+export function screeningConfigured(env: ScreeningConfiguredEnv): boolean {
   if (env.LLM_SCREEN_PROVIDER === 'openai') {
-    return Boolean(env.OPENAI_API_KEY);
+    return Boolean(env.OPENAI_API_KEY && env.OPENAI_MODEL);
   }
 
   if (env.LLM_SCREEN_PROVIDER === 'anthropic') {
-    return Boolean(env.ANTHROPIC_API_KEY);
+    return Boolean(env.ANTHROPIC_API_KEY && env.ANTHROPIC_MODEL);
   }
 
   return false;
