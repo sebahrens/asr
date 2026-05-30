@@ -87,6 +87,9 @@ SCAN_TIMEOUT_SECONDS=300          # Max time per tool (default: 5 min)
 SCAN_SEVERITY_THRESHOLD=high      # Block on: critical, high (default)
 TRIVY_CONFIG=/opt/scan/trivy.yaml # Committed ASR Trivy policy
 TRIVY_IGNOREFILE=/opt/scan/.trivyignore
+FOXGUARD_SEVERITY_THRESHOLD=medium # Minimum Foxguard finding severity
+FOXGUARD_MIN_CONFIDENCE=0.5        # Minimum Foxguard confidence score
+FOXGUARD_RULES=                    # Optional ASR-owned external rules file/dir
 
 # Tier 2 — Opengrep
 OPENGREP_RULES_DIR=/opt/scan/rules  # Custom rules directory (optional)
@@ -104,10 +107,10 @@ All tools produce SARIF with varying severity labels. Normalized to:
 
 | Normalized | Gitleaks | Trivy | Foxguard | Opengrep | Veracode |
 |-----------|----------|-------|----------|----------|----------|
-| Critical | — | CRITICAL | critical | error (confidence: high) | Very High |
-| High | all findings (secrets are always high) | HIGH | high | error (confidence: medium) | High |
-| Medium | — | MEDIUM | medium | warning | Medium |
-| Low | — | LOW | low | info | Low |
+| Critical | — | CRITICAL | critical or security-severity >=9 | error (confidence: high) | Very High |
+| High | all findings (secrets are always high) | HIGH | high or security-severity >=7 | error (confidence: medium) | High |
+| Medium | — | MEDIUM | medium or security-severity >=4 | warning | Medium |
+| Low | — | LOW | low or security-severity >0 | info | Low |
 
 ### Blocking Rules
 
@@ -247,12 +250,18 @@ function trivySeverityList(threshold: string): string {
 
 async function runFoxguard(): Promise<ScanFinding[]> {
   const sarifPath = join(OUTPUT_DIR, 'foxguard.sarif');
-  await exec('npx', [
-    'foxguard', SCAN_DIR,
-    '--format', 'sarif',
-    '--output', sarifPath,
-    '--severity', 'medium',
-  ], { timeout: TIMEOUT }).catch(() => {});
+  let stdout = '';
+  try {
+    ({ stdout } = await exec('foxguard', [
+      SCAN_DIR,
+      '--format', 'sarif',
+      '--severity', process.env.FOXGUARD_SEVERITY_THRESHOLD || 'medium',
+      '--min-confidence', process.env.FOXGUARD_MIN_CONFIDENCE || '0.5',
+    ], { timeout: TIMEOUT }));
+  } catch (error: any) {
+    stdout = error.stdout || '';
+  }
+  await writeFile(sarifPath, stdout);
   return parseSarif(sarifPath, 'foxguard');
 }
 

@@ -140,6 +140,32 @@ test('invokes trivy with committed config, ignorefile, and threshold-aligned sev
   }
 });
 
+test('invokes foxguard with stdout SARIF, tuned thresholds, and maps numeric security severity', async () => {
+  const fixture = await createFixture();
+  try {
+    const recordPath = join(fixture.root, 'foxguard-invocation.json');
+    const rulesDir = join(fixture.root, 'foxguard-rules');
+    await mkdir(rulesDir);
+    await installRecordingFoxguard(fixture.binDir, recordPath);
+
+    const result = await runOrchestrator(fixture, {
+      FOXGUARD_RULES: rulesDir,
+    });
+
+    const invocation = JSON.parse(await readFile(recordPath, 'utf8'));
+    assert.equal(invocation.argv[0], fixture.scanDir);
+    assert.equal(invocation.argv[invocation.argv.indexOf('--format') + 1], 'sarif');
+    assert.equal(invocation.argv[invocation.argv.indexOf('--severity') + 1], 'medium');
+    assert.equal(invocation.argv[invocation.argv.indexOf('--min-confidence') + 1], '0.5');
+    assert.equal(invocation.argv[invocation.argv.indexOf('--rules') + 1], rulesDir);
+    assert.equal(invocation.argv.includes('--output'), false);
+    assert.equal(result.report.toolResults.foxguard.findingCount, 1);
+    assert.equal(result.report.findings.find((finding) => finding.tool === 'foxguard')?.severity, 'high');
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test('invokes veracode CLI with documented args when credentials are set', async () => {
   const fixture = await createFixture();
   try {
@@ -280,7 +306,7 @@ process.exit(findings.length ? 1 : 0);
   );
 
   await writeEmptySarifTool(join(binDir, 'trivy'), '--output');
-  await writeEmptySarifTool(join(binDir, 'foxguard'), '--output');
+  await writeStdoutSarifTool(join(binDir, 'foxguard'));
   await writeEmptySarifTool(join(binDir, 'opengrep'), '--sarif-output');
 }
 
@@ -292,6 +318,55 @@ import { writeFile } from 'node:fs/promises';
 
 const outputPath = process.argv[process.argv.indexOf('${outputFlag}') + 1];
 await writeFile(outputPath, JSON.stringify({ version: '2.1.0', runs: [{ tool: { driver: { name: 'mock' } }, results: [] }] }));
+`,
+  );
+}
+
+async function writeStdoutSarifTool(path) {
+  await writeExecutable(
+    path,
+    `#!/usr/bin/env node
+
+console.log(JSON.stringify({ version: '2.1.0', runs: [{ tool: { driver: { name: 'mock' } }, results: [] }] }));
+`,
+  );
+}
+
+async function installRecordingFoxguard(binDir, recordPath) {
+  await writeExecutable(
+    join(binDir, 'foxguard'),
+    `#!/usr/bin/env node
+import { writeFile } from 'node:fs/promises';
+
+const argv = process.argv.slice(2);
+await writeFile(${JSON.stringify(recordPath)}, JSON.stringify({ argv }));
+console.log(JSON.stringify({
+  version: '2.1.0',
+  runs: [{
+    tool: {
+      driver: {
+        name: 'foxguard',
+        rules: [{
+          id: 'js/command-injection',
+          shortDescription: { text: 'Command injection' },
+          properties: { 'security-severity': '8.0' },
+        }],
+      },
+    },
+    results: [{
+      ruleId: 'js/command-injection',
+      level: 'warning',
+      message: { text: 'User input reaches child_process.exec' },
+      locations: [{
+        physicalLocation: {
+          artifactLocation: { uri: 'scripts/deploy.ts' },
+          region: { startLine: 42 },
+        },
+      }],
+    }],
+  }],
+}));
+process.exit(1);
 `,
   );
 }

@@ -61,6 +61,28 @@ from the configured mirror-first repositories. Runtime scans leave
 `db.skip-update` disabled as a fallback, allowing Trivy to refresh stale DBs if
 egress is available.
 
+## Foxguard policy
+
+Foxguard runs its built-in 170+ rule pack by default. ASR keeps built-ins
+enabled and can add organization-owned Semgrep/OpenGrep-compatible rules by
+setting `FOXGUARD_RULES` to a rule file or directory; the orchestrator does not
+pass `--no-builtins`. The default threshold is
+`FOXGUARD_SEVERITY_THRESHOLD=medium` with `FOXGUARD_MIN_CONFIDENCE=0.5`, which
+keeps low-signal findings out of the review queue while preserving medium,
+high, and critical SAST results.
+
+The pinned `foxguard@0.8.1` CLI emits SARIF to stdout, so the orchestrator
+captures stdout into `foxguard.sarif` instead of passing an unsupported
+`--output` flag. Its supported languages cover the executable skill code ASR
+sees most often: Python, JavaScript, and TypeScript. Shell scripts are not a
+Foxguard-supported language in this release; ASR covers shell-specific risks
+with the ASR-authored Opengrep rules plus Gitleaks and Trivy.
+
+Foxguard SARIF commonly reports numeric `security-severity` metadata such as
+`8.0` instead of literal labels. The orchestrator maps numeric values using the
+standard SARIF convention: `>=9` critical, `>=7` high, `>=4` medium, and `>0`
+low, falling back to SARIF `level` when metadata is absent.
+
 ## Build check
 
 ```bash

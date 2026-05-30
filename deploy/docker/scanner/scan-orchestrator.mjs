@@ -14,6 +14,11 @@ const SEVERITY_THRESHOLD = (process.env.SCAN_SEVERITY_THRESHOLD || 'high').toLow
 const GITLEAKS_CONFIG = process.env.GITLEAKS_CONFIG || '/opt/scan/gitleaks.toml';
 const TRIVY_CONFIG = process.env.TRIVY_CONFIG || '/opt/scan/trivy.yaml';
 const TRIVY_IGNOREFILE = process.env.TRIVY_IGNOREFILE || '/opt/scan/.trivyignore';
+const FOXGUARD_SEVERITY_THRESHOLD = (
+  process.env.FOXGUARD_SEVERITY_THRESHOLD || 'medium'
+).toLowerCase();
+const FOXGUARD_MIN_CONFIDENCE = process.env.FOXGUARD_MIN_CONFIDENCE || '0.5';
+const FOXGUARD_RULES = process.env.FOXGUARD_RULES || '';
 
 const TOOLS = ['gitleaks', 'trivy', 'foxguard', 'opengrep', 'veracode'];
 
@@ -22,6 +27,23 @@ async function runCommand(command, args) {
     await exec(command, args, { timeout: TIMEOUT });
     return 0;
   } catch (error) {
+    return typeof error.code === 'number' ? error.code : 127;
+  }
+}
+
+async function runCommandWritingStdout(command, args, outputPath) {
+  try {
+    const { stdout } = await exec(command, args, {
+      timeout: TIMEOUT,
+      maxBuffer: 50 * 1024 * 1024,
+    });
+    await writeFile(outputPath, stdout);
+    return 0;
+  } catch (error) {
+    if (typeof error.stdout === 'string' && error.stdout.length > 0) {
+      await writeFile(outputPath, error.stdout);
+    }
+
     return typeof error.code === 'number' ? error.code : 127;
   }
 }
@@ -89,15 +111,21 @@ function trivySeverityList(threshold) {
 
 async function runFoxguard() {
   const sarifPath = join(OUTPUT_DIR, 'foxguard.sarif');
-  const exitCode = await runCommand('foxguard', [
+  const args = [
     SCAN_DIR,
     '--format',
     'sarif',
-    '--output',
-    sarifPath,
     '--severity',
-    'medium',
-  ]);
+    FOXGUARD_SEVERITY_THRESHOLD,
+    '--min-confidence',
+    FOXGUARD_MIN_CONFIDENCE,
+  ];
+
+  if (FOXGUARD_RULES) {
+    args.push('--rules', FOXGUARD_RULES);
+  }
+
+  const exitCode = await runCommandWritingStdout('foxguard', args, sarifPath);
 
   return {
     tool: 'foxguard',
@@ -217,6 +245,14 @@ function mapToolSeverity(tool, result, rule) {
   }
 
   if (tool === 'foxguard') {
+    const numericSecuritySeverity = Number.parseFloat(severity);
+    if (Number.isFinite(numericSecuritySeverity)) {
+      if (numericSecuritySeverity >= 9) return 'critical';
+      if (numericSecuritySeverity >= 7) return 'high';
+      if (numericSecuritySeverity >= 4) return 'medium';
+      if (numericSecuritySeverity > 0) return 'low';
+    }
+
     if (['critical', 'high', 'medium', 'low'].includes(severity)) return severity;
   }
 
