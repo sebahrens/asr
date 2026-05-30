@@ -1,1 +1,1 @@
-export const PRODUCT_NAME = 'Agent Skill Repository';
+export const PRODUCT_NAME = 'asr';

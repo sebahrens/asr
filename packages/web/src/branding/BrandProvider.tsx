@@ -1,21 +1,17 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
 
-export type BrandMode = 'pwc' | 'neutral';
+export type BrandMode = 'asr';
 
 interface BrandContextValue {
   mode: BrandMode;
 }
 
-const defaultBrandContext: BrandContextValue = { mode: 'pwc' };
+const defaultBrandContext: BrandContextValue = { mode: 'asr' };
 
 const BrandContext = createContext<BrandContextValue>(defaultBrandContext);
 
-function resolveBrandMode(value: string | undefined): BrandMode {
-  return value === 'neutral' ? 'neutral' : 'pwc';
-}
-
 export function BrandProvider({ children }: { children: ReactNode }) {
-  const mode = resolveBrandMode(import.meta.env.VITE_BRAND);
+  const mode: BrandMode = 'asr';
 
   useEffect(() => {
     document.documentElement.dataset.brand = mode;

@@ -1,28 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { PRODUCT_NAME } from '../product';
 import { BrandLogo, getBrandLogoProps } from './BrandLogo';
 
 describe('BrandLogo', () => {
-  it('renders the PwC logo when no provider is mounted', () => {
+  it('renders the asr logo when no provider is mounted', () => {
     render(<BrandLogo />);
 
-    expect(screen.getByRole('img', { name: 'PwC' })).toHaveAttribute('src', '/logo-pwc.svg');
+    expect(screen.getByRole('img', { name: 'asr' })).toHaveAttribute('src', '/logo.svg');
   });
 
-  it('uses the PwC SVG and accessible name in pwc mode', () => {
-    expect(getBrandLogoProps('pwc')).toEqual({
-      src: '/logo-pwc.svg',
-      alt: 'PwC',
-      className: 'brand-logo brand-logo-pwc',
-    });
-  });
-
-  it('uses the neutral product wordmark and accessible name in neutral mode', () => {
-    expect(getBrandLogoProps('neutral')).toEqual({
+  it('uses the asr wordmark and accessible name', () => {
+    expect(getBrandLogoProps('asr')).toEqual({
       src: '/logo.svg',
-      alt: PRODUCT_NAME,
-      className: 'brand-logo brand-logo-neutral',
+      alt: 'asr',
+      className: 'brand-logo brand-logo-asr',
     });
   });
 });

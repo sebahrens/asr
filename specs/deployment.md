@@ -65,7 +65,6 @@ services:
         - VITE_API_URL=http://localhost:3001
         - VITE_AUTH_MODE=mock
         - VITE_ENABLE_MOCK_AUTH=true
-        - VITE_BRAND=${VITE_BRAND:-pwc}   # build-time brand: pwc (default) | neutral
     ports:
       - "5173:5173"
     depends_on:
@@ -77,12 +76,8 @@ volumes:
   api-data:
 ```
 
-The web image defaults to the PwC brand. To build the neutral brand locally,
-set `VITE_BRAND=neutral` when building or starting the compose stack:
-
-```bash
-VITE_BRAND=neutral docker compose -f deploy/docker/docker-compose.yml up -d --build web
-```
+The web image always renders the `asr` product brand. Legacy build-time brand
+overrides such as `VITE_BRAND` are ignored.
 
 ### First-time setup (dev)
 

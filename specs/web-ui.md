@@ -12,14 +12,12 @@ React 19 + Vite 6 SPA living in `packages/web/`. Acts as the **registry browser*
 - Styling: CSS modules; design tokens in `packages/web/src/tokens.css` (colours, spacing, type scale)
 - Testing: Vitest + Testing Library; Playwright for E2E (drives the dev stack — see [ralph-scripts/PROMPT_visual_review.md](../ralph-scripts/PROMPT_visual_review.md))
 
-## Branding (build-time)
+## Branding
 
-The SPA ships a **build-time** brand selected by the `VITE_BRAND` env var (baked into the static bundle at `pnpm build` / Docker build):
-
-- `pwc` (**default**) — PwC logo (`/logo-pwc.svg`) + PwC accent palette.
-- `neutral` — generic **Agent Skill Repository** wordmark + neutral accent.
-
-`BrandProvider` resolves the mode from `import.meta.env.VITE_BRAND` (default `pwc`) and sets `data-brand` on `<html>` for the CSS accent override. There is **no runtime toggle** (the old localStorage `asr.brand` switch was removed); switching brand means rebuilding the web image with a different `VITE_BRAND`. The visible product name is **Agent Skill Repository** in both brands — only the logo and accent differ. Wired via a Docker build `ARG VITE_BRAND` (see [deployment.md](deployment.md)).
+The SPA renders a single product brand: `asr`. `BrandProvider` sets
+`data-brand="asr"` on `<html>` for CSS hooks. There is no runtime toggle and no
+build-time brand override; stale `asr.brand` localStorage values and legacy
+`VITE_BRAND` values are ignored.
 
 ## Routes
 
@@ -165,5 +163,5 @@ These are the deterministic Playwright assertions the visual-review prompt drive
 5. Yanked version appears in `/skills/:owner/:name` versions list with reason tooltip.
 6. Audit Explorer surfaces an `audit.verify.failed` event if injected (mock mode).
 7. No element in the DOM contains the string `ghp_`, `eyJ`, or any other token prefix.
-8. The product name renders as **Agent Skill Repository** across all screens (the bare wordmark `asr` is no longer used as the visible name); the strings `skify`, `json2pptx`, `github` MUST NOT appear in the rendered DOM.
-9. The active brand is fixed at build time by `VITE_BRAND` (`pwc` default, or `neutral`). In `pwc` the PwC logo + PwC accent render; in `neutral` the generic wordmark + neutral accent render. There is no runtime brand toggle. A stale `asr.brand` localStorage value MUST be ignored.
+8. The product name renders as **asr** across all screens; the strings `skify`, `json2pptx`, `github`, `PwC`, `Agent Skill Registry`, `Agent Skill Repository`, and `Skill Registry` MUST NOT appear in the rendered DOM.
+9. The active brand is fixed to `asr`. There is no runtime brand toggle and no build-time brand override. Stale `asr.brand` localStorage values and `VITE_BRAND` values MUST be ignored.

@@ -10,17 +10,12 @@
   --text: #1a1a1a;
   --text-secondary: #4a4a4a;
   --text-muted: #888888;
-  --accent: #d04a02;
-  --accent-light: rgba(208, 74, 2, 0.08);
+  --accent: #2563eb;
+  --accent-light: rgba(37, 99, 235, 0.08);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
   --sticky-header-offset: 96px;
-}
-
-[data-brand='neutral'] {
-  --accent: #2563eb;
-  --accent-light: rgba(37, 99, 235, 0.08);
 }
 
 .brand-logo {
@@ -28,12 +23,8 @@
   height: auto;
 }
 
-.brand-logo-neutral {
-  width: 80px;
-}
-
-.brand-logo-pwc {
-  width: 68px;
+.brand-logo-asr {
+  width: 56px;
 }
 
 .app-topbar-right {

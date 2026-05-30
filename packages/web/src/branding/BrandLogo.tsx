@@ -8,10 +8,7 @@ interface BrandLogoProps {
 }
 
 export function getBrandLogoProps(mode: BrandMode): BrandLogoProps {
-  if (mode === 'pwc') {
-    return { src: '/logo-pwc.svg', alt: 'PwC', className: 'brand-logo brand-logo-pwc' };
-  }
-  return { src: '/logo.svg', alt: PRODUCT_NAME, className: 'brand-logo brand-logo-neutral' };
+  return { src: '/logo.svg', alt: PRODUCT_NAME, className: `brand-logo brand-logo-${mode}` };
 }
 
 export function BrandLogo() {

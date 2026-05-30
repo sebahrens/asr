@@ -114,10 +114,10 @@ describe('BrowseRegistry empty state (asr-4e0)', () => {
 
     const { container } = renderBrowse();
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Agent Skill Repository' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'PwC' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'asr' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'asr' })).toHaveAttribute('src', '/logo.svg');
     expect(screen.queryByRole('button', { name: /switch brand/i })).not.toBeInTheDocument();
-    expect(container.textContent).not.toMatch(/Agent Skill Registry|Skill Registry/);
+    expect(container.textContent).not.toMatch(/Agent Skill Registry|Agent Skill Repository|Skill Registry|PwC/);
   });
 });
 
