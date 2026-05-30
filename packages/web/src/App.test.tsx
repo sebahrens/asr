@@ -65,6 +65,7 @@ describe('BrowseRegistry empty state (asr-4e0)', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    window.localStorage.clear();
     cleanup();
   });
 
@@ -106,6 +107,17 @@ describe('BrowseRegistry empty state (asr-4e0)', () => {
 
     expect(await screen.findByText(/no skills are available yet/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /clear search and filters/i })).not.toBeInTheDocument();
+  });
+
+  it('renders asr branding even when an old brand preference exists', async () => {
+    window.localStorage.setItem('asr.brand', 'pwc');
+
+    const { container } = renderBrowse();
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'asr' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'asr' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /switch brand/i })).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/PwC|Agent Skill Repository|Agent Skill Registry|Skill Registry/);
   });
 });
 

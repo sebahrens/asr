@@ -9,8 +9,6 @@ import { parseSkillMd, type SkillDetail, type SkillSummary, type VersionDiff } f
 import { SessionProvider, type Session } from './auth/SessionProvider';
 import { useSession } from './auth/useSession';
 import { BrandLogo } from './branding/BrandLogo';
-import { BrandToggle } from './branding/BrandToggle';
-import { useBrand } from './branding/BrandProvider';
 
 export { SessionProvider } from './auth/SessionProvider';
 
@@ -785,7 +783,7 @@ function PublishSkill() {
             <BrandLogo />
           </a>
           <PrimaryNav current="publish" />
-          <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
+          <div className="app-topbar-right"><MockAuthBanner /></div>
         </div>
       </header>
 
@@ -1159,8 +1157,6 @@ function BrowseLoadingSkeleton() {
 }
 
 export function BrowseRegistry() {
-  const { mode: brandMode } = useBrand();
-  const heroTitle = brandMode === 'pwc' ? 'Agent Skill Repository' : 'asr';
   const [search, setSearch] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [activeKind, setActiveKind] = useState<BrowseKindFilter>('all');
@@ -1238,7 +1234,7 @@ export function BrowseRegistry() {
           </div>
 
           <PrimaryNav current="browse" />
-          <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
+          <div className="app-topbar-right"><MockAuthBanner /></div>
 
           <div className="search-wrapper">
             <div className="search-box">
@@ -1261,7 +1257,7 @@ export function BrowseRegistry() {
       <main>
         <div className="container">
           <div className="hero">
-            <h1>{heroTitle}</h1>
+            <h1>asr</h1>
             <p>
               Browse, search and install skills for AI coding agents.
               Works with Claude Code, Copilot, and other AI agents.
@@ -1474,7 +1470,7 @@ function SkillNotFoundState({
             <BrandLogo />
           </a>
           <PrimaryNav current="browse" />
-          <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
+          <div className="app-topbar-right"><MockAuthBanner /></div>
         </div>
       </header>
 
@@ -1513,7 +1509,7 @@ function AccessDeniedState({
             <BrandLogo />
           </a>
           <PrimaryNav current={current} />
-          <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
+          <div className="app-topbar-right"><MockAuthBanner /></div>
         </div>
       </header>
 
@@ -1573,7 +1569,7 @@ function SkillVersionDiffPage({ owner, name, version }: { owner: string; name: s
               <BrandLogo />
             </a>
             <PrimaryNav current="browse" />
-            <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
+            <div className="app-topbar-right"><MockAuthBanner /></div>
           </div>
         </header>
         <main>
@@ -1625,7 +1621,7 @@ function SkillVersionDiffPage({ owner, name, version }: { owner: string; name: s
             <BrandLogo />
           </a>
           <PrimaryNav current="browse" />
-          <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
+          <div className="app-topbar-right"><MockAuthBanner /></div>
         </div>
       </header>
 
@@ -1702,7 +1698,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
               <BrandLogo />
             </a>
             <PrimaryNav current="browse" />
-            <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
+            <div className="app-topbar-right"><MockAuthBanner /></div>
           </div>
         </header>
         <main>
@@ -1772,7 +1768,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
             <BrandLogo />
           </a>
           <PrimaryNav current="browse" />
-          <div className="app-topbar-right"><BrandToggle /><MockAuthBanner /></div>
+          <div className="app-topbar-right"><MockAuthBanner /></div>
         </div>
       </header>
 

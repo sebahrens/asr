@@ -2,7 +2,6 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useSession } from '../auth/useSession';
 import { BrandLogo } from '../branding/BrandLogo';
-import { BrandToggle } from '../branding/BrandToggle';
 
 interface ReviewAppShellProps {
   current: 'browse' | 'publish' | 'review';
@@ -48,7 +47,6 @@ export function ReviewAppShell({ current, children }: ReviewAppShellProps) {
             <span aria-hidden="true" />
           </button>
           <div className="app-topbar-right">
-            <BrandToggle />
             {showSessionBanner ? (
               <div
                 className="mock-auth-banner"

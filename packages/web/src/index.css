@@ -18,17 +18,6 @@
   --sticky-header-offset: 96px;
 }
 
-/* PwC-branded palette override. Activated by BrandProvider setting
-   data-brand="pwc" on <html>. Keeps default-off so the visual-QA tests
-   (which assert no PwC strings) stay green out of the box.
-
-   Only the accent shifts to PwC orange (#FD5108) — surfaces stay neutral
-   so the chrome reads as "PwC-branded asr" rather than full re-skin. */
-[data-brand="pwc"] {
-  --accent: #fd5108;
-  --accent-light: rgba(253, 81, 8, 0.10);
-}
-
 .brand-logo {
   display: block;
   height: auto;
@@ -38,84 +27,10 @@
   width: 80px;
 }
 
-.brand-logo-pwc {
-  width: 64px;
-  height: 36px;
-}
-
 .app-topbar-right {
   align-items: center;
   display: flex;
   gap: 10px;
-}
-
-.brand-toggle {
-  align-items: center;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: inline-flex;
-  font-size: 0.72rem;
-  font-weight: 700;
-  gap: 8px;
-  letter-spacing: 0.04em;
-  padding: 4px 12px 4px 10px;
-  text-transform: uppercase;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.brand-toggle:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-.brand-toggle:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.brand-toggle-label {
-  color: var(--text-muted);
-  font-size: 0.66rem;
-}
-
-.brand-toggle-pill {
-  background: var(--bg-secondary);
-  border-radius: 999px;
-  display: inline-block;
-  height: 14px;
-  position: relative;
-  width: 26px;
-  transition: background 0.15s ease;
-}
-
-.brand-toggle-pill-pwc {
-  background: var(--accent);
-}
-
-.brand-toggle-thumb {
-  background: #fff;
-  border-radius: 50%;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-  height: 10px;
-  left: 2px;
-  position: absolute;
-  top: 2px;
-  transition: left 0.15s ease;
-  width: 10px;
-}
-
-.brand-toggle-pill-pwc .brand-toggle-thumb {
-  left: 14px;
-}
-
-.brand-toggle-value {
-  color: var(--text);
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 0.74rem;
 }
 
 * {
@@ -3543,16 +3458,6 @@ main {
     justify-content: flex-end;
     min-width: 0;
     width: auto;
-  }
-
-  .app-topbar-right .brand-toggle {
-    gap: 0;
-    padding: 8px;
-  }
-
-  .app-topbar-right .brand-toggle-label,
-  .app-topbar-right .brand-toggle-value {
-    display: none;
   }
 
   .mock-auth-banner {
