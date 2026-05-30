@@ -141,6 +141,35 @@ describe('emitAudit', () => {
     expect(rowCount).toBe(0);
   });
 
+  it('accepts the LLM content screening completion audit action', () => {
+    const database = db!;
+
+    const event = emitAudit(database, {
+      action: 'workflow.screening.completed',
+      submissionId: 'sub_1',
+      skillName: 'example-skill',
+      version: '1.0.0',
+      actor: 'system',
+      actorType: 'system',
+      detail: {
+        provider: 'openai',
+        model: 'gpt-4.1-mini',
+        status: 'warn',
+        findingCount: 2,
+        truncated: false,
+      },
+    });
+
+    expect(event.action).toBe('workflow.screening.completed');
+    expect(event.detail).toEqual({
+      provider: 'openai',
+      model: 'gpt-4.1-mini',
+      status: 'warn',
+      findingCount: 2,
+      truncated: false,
+    });
+  });
+
   it('leaves zero audit rows when the caller transaction rolls back', () => {
     const database = db!;
 

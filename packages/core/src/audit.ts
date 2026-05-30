@@ -8,6 +8,7 @@ export const AUDIT_ACTIONS = [
   'workflow.questionnaire.completed',
   'workflow.scan.started',
   'workflow.scan.completed',
+  'workflow.screening.completed',
   'workflow.confirmation.received',
   'workflow.review.assigned',
   'workflow.review.approved',
