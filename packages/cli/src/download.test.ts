@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HashMismatchError, downloadAndVerify } from './download.js';
+import { DownloadSizeLimitError, HashMismatchError, downloadAndVerify } from './download.js';
 
 function hashOf(buf: Buffer): string {
   return `sha256:${createHash('sha256').update(buf).digest('hex')}`;
@@ -46,6 +46,19 @@ describe('downloadAndVerify', () => {
 
     expect(Buffer.isBuffer(result)).toBe(true);
     expect(result.equals(BODY)).toBe(true);
+  });
+
+  it('streams the payload instead of reading it with arrayBuffer', async () => {
+    const res = bytesResponse(BODY);
+    res.arrayBuffer = vi.fn(async () => {
+      throw new Error('arrayBuffer should not be called');
+    });
+    fetchSpy.mockResolvedValueOnce(res);
+
+    const result = await downloadAndVerify(URL_, hashOf(BODY));
+
+    expect(result.equals(BODY)).toBe(true);
+    expect(res.arrayBuffer).not.toHaveBeenCalled();
   });
 
   it('compares hashes case-insensitively', async () => {
@@ -132,6 +145,47 @@ describe('downloadAndVerify', () => {
     fetchSpy.mockResolvedValueOnce(new Response('not found', { status: 404 }));
 
     await expect(downloadAndVerify(URL_, hashOf(BODY))).rejects.toThrow(/404/);
+  });
+
+  it('rejects with typed error when Content-Length exceeds the configured cap', async () => {
+    const cancel = vi.fn();
+    const stream = new ReadableStream<Uint8Array>({
+      cancel,
+      start(controller) {
+        controller.enqueue(new Uint8Array(BODY));
+      },
+    });
+    fetchSpy.mockResolvedValueOnce(
+      new Response(stream, {
+        status: 200,
+        headers: { 'Content-Length': '11', 'Content-Type': 'application/zip' },
+      }),
+    );
+
+    await expect(downloadAndVerify(URL_, hashOf(BODY), { maxBytes: 10 })).rejects.toMatchObject({
+      name: 'DownloadSizeLimitError',
+      code: 'download.size_limit_exceeded',
+      maxBytes: 10,
+      actualBytes: 11,
+    });
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it('cancels the response stream when cumulative bytes exceed the cap', async () => {
+    const cancel = vi.fn();
+    const stream = new ReadableStream<Uint8Array>({
+      cancel,
+      start(controller) {
+        controller.enqueue(new Uint8Array(Buffer.from('12345')));
+        controller.enqueue(new Uint8Array(Buffer.from('67890')));
+      },
+    });
+    fetchSpy.mockResolvedValueOnce(new Response(stream, { status: 200 }));
+
+    await expect(downloadAndVerify(URL_, hashOf(BODY), { maxBytes: 8 })).rejects.toBeInstanceOf(
+      DownloadSizeLimitError,
+    );
+    expect(cancel).toHaveBeenCalled();
   });
 });
 
