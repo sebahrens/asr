@@ -23,8 +23,12 @@
   height: auto;
 }
 
-.brand-logo-asr {
+.brand-logo-neutral {
   width: 80px;
+}
+
+.brand-logo-pwc {
+  width: 68px;
 }
 
 .app-topbar-right {
