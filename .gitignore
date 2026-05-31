@@ -36,6 +36,9 @@ AGENTS.md
 *.db
 .beads-credential-key
 
+# Local Docker dev stack runtime state and generated secrets
+deploy/docker/data/
+
 # Visual test artifacts
 .playwright-mcp/
 .dev-*.log

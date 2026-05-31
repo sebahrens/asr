@@ -10,7 +10,7 @@
     "dev": "turbo dev",
     "dev:api": "node deploy/docker/dev-api.mjs",
     "build": "turbo build",
-    "lint:e2e": "node ./scripts/check-e2e-specs.mjs && node ./scripts/check-docker-compose-security.mjs",
+    "lint:e2e": "node ./scripts/check-e2e-specs.mjs && node ./scripts/check-docker-compose-security.mjs && node ./scripts/check-dev-data-gitignore.mjs",
     "test": "pnpm lint:e2e && pnpm --filter @asr/core test && pnpm --filter @asr/cli test",
     "test:e2e": "node ./scripts/e2e-docker.mjs",
     "cli": "pnpm --filter @asr/cli",
