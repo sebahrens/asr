@@ -23,6 +23,10 @@ services:
       - USER_GID=1000
       - FORGEJO__server__ROOT_URL=http://localhost:3000
       - FORGEJO__server__SSH_PORT=2222
+      - FORGEJO__security__INSTALL_LOCK=true
+      - FORGEJO__security__SECRET_KEY=${FORGEJO_SECRET_KEY:?Run "node deploy/docker/prepare-env.mjs" to generate Forgejo secrets}
+      - FORGEJO__security__INTERNAL_TOKEN=${FORGEJO_INTERNAL_TOKEN:?Run "node deploy/docker/prepare-env.mjs" to generate Forgejo secrets}
+      - FORGEJO__security__REVERSE_PROXY_TRUSTED_PROXIES=127.0.0.0/8,::1/128
     restart: unless-stopped
 
   api:
@@ -82,28 +86,35 @@ overrides such as `VITE_BRAND` are ignored.
 ### First-time setup (dev)
 
 ```bash
-# 1. Start services
-docker compose up -d
+# 1. Generate local Forgejo secrets into deploy/docker/.env
+node deploy/docker/prepare-env.mjs
 
-# 2. Create Forgejo admin user
-docker exec forgejo forgejo admin user create \
+# 2. Start services
+docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml up -d
+
+# 3. Create Forgejo admin user
+docker exec asr-forgejo forgejo admin user create \
   --username asr-admin --password changeme --email admin@local.dev --admin
 
-# 3. Generate admin token
+# 4. Generate admin token
 # Visit http://localhost:3000/user/settings/applications → create token
 
-# 4. Set token in .env
-echo "FORGEJO_ADMIN_TOKEN=<token>" >> .env
+# 5. Set token in .env
+echo "FORGEJO_ADMIN_TOKEN=<token>" >> deploy/docker/.env
 
-# 5. Create skills-registry repo
+# 6. Create skills-registry repo
 curl -X POST http://localhost:3000/api/v1/user/repos \
   -H "Authorization: token <token>" \
   -H "Content-Type: application/json" \
   -d '{"name":"skills-registry","auto_init":true}'
 
-# 6. Restart API to pick up token
-docker compose restart api
+# 7. Restart API to pick up token
+docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml restart api
 ```
+
+The dev stack refuses to start without non-empty `FORGEJO_SECRET_KEY` and
+`FORGEJO_INTERNAL_TOKEN`. Keep `deploy/docker/.env` local-only; do not copy it
+to shared or production hosts.
 
 ## Production: Azure Container Apps
 

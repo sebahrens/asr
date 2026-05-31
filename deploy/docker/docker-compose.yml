@@ -16,6 +16,10 @@ services:
       - USER_GID=1000
       - FORGEJO__server__ROOT_URL=http://localhost:3000
       - FORGEJO__server__SSH_PORT=2222
+      - FORGEJO__security__INSTALL_LOCK=true
+      - FORGEJO__security__SECRET_KEY=${FORGEJO_SECRET_KEY:?Run "node deploy/docker/prepare-env.mjs" to generate Forgejo secrets}
+      - FORGEJO__security__INTERNAL_TOKEN=${FORGEJO_INTERNAL_TOKEN:?Run "node deploy/docker/prepare-env.mjs" to generate Forgejo secrets}
+      - FORGEJO__security__REVERSE_PROXY_TRUSTED_PROXIES=127.0.0.0/8,::1/128
       - FORGEJO__service__DISABLE_REGISTRATION=true
     restart: unless-stopped
 

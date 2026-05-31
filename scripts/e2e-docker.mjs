@@ -238,6 +238,7 @@ runProviderScreeningSmoke();
 assertDockerDaemon();
 
 console.log(`Starting dev stack via "${composeCmd}" in ${composeCwd}...`);
+execSync('node prepare-env.mjs', { cwd: composeCwd, stdio: 'inherit' });
 run(`${composeCmd} down -v`);
 run(`${composeCmd} up -d --build`);
 
