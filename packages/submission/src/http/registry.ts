@@ -70,6 +70,29 @@ export function createRegistryRoutes(options: RegistryRouteOptions = {}) {
       return apiError(c, 404, 'submission_not_found');
     }
 
+    if (resolved.skillVersion.yanked) {
+      c.header('Cache-Control', 'no-store');
+      return apiError(c, 410, 'version_yanked', {
+        details: {
+          owner: c.req.param('owner'),
+          name: c.req.param('name'),
+          version: c.req.param('version'),
+        },
+      });
+    }
+
+    const blockedHash = getBlockedHash(db, resolved.skillVersion.contentHash);
+    if (blockedHash) {
+      c.header('Cache-Control', 'no-store');
+      return apiError(c, 410, 'content_blocked', {
+        details: {
+          owner: c.req.param('owner'),
+          name: c.req.param('name'),
+          version: c.req.param('version'),
+        },
+      });
+    }
+
     c.header('Cache-Control', 'public, max-age=60');
     return c.json({
       manifest: resolved.manifest,
@@ -96,6 +119,7 @@ export function createRegistryRoutes(options: RegistryRouteOptions = {}) {
         contentHash: publishedVersion.contentHash,
         reason: 'yanked',
       });
+      c.header('Cache-Control', 'no-store');
       return apiError(c, 410, 'version_yanked', {
         details: { owner, name, version },
       });
@@ -111,6 +135,7 @@ export function createRegistryRoutes(options: RegistryRouteOptions = {}) {
         reason: 'blocked_hash',
         blockedSource: blockedHash.source,
       });
+      c.header('Cache-Control', 'no-store');
       return apiError(c, 410, 'content_blocked', {
         details: { owner, name, version },
       });

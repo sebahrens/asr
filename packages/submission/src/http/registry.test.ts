@@ -305,6 +305,55 @@ describe('registryRoutes', () => {
     });
   });
 
+  it('refuses pinned version detail for yanked versions', async () => {
+    const app = makeApp();
+    insertPublishedSubmission(db!, {
+      id: 'submission-x',
+      name: 'x',
+      version: '1.0.0',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+      yankedAt: '2026-05-25T10:05:00.000Z',
+      yankReason: 'security incident',
+    });
+
+    const res = await app.request('/api/v1/skills/acme/x/v/1.0.0');
+
+    expect(res.status).toBe(410);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    await expect(res.json()).resolves.toEqual({
+      error: 'version_yanked',
+      details: { owner: 'acme', name: 'x', version: '1.0.0' },
+    });
+  });
+
+  it('refuses pinned version detail when the content hash is blocked', async () => {
+    const app = makeApp();
+    insertPublishedSubmission(db!, {
+      id: 'submission-x',
+      name: 'x',
+      version: '1.0.0',
+      publishedAt: '2026-05-24T10:05:00.000Z',
+    });
+    insertBlockedHash(db!, {
+      content_hash: 'sha256:submission-x',
+      skill_name: 'x',
+      version: '1.0.0',
+      blocked_at: '2026-05-25T10:05:00.000Z',
+      blocked_by: 'compliance@example.com',
+      reason: 'incident response',
+      source: 'incident',
+    });
+
+    const res = await app.request('/api/v1/skills/acme/x/v/1.0.0');
+
+    expect(res.status).toBe(410);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    await expect(res.json()).resolves.toEqual({
+      error: 'content_blocked',
+      details: { owner: 'acme', name: 'x', version: '1.0.0' },
+    });
+  });
+
   it('returns the registry not-found envelope for a missing skill', async () => {
     const app = makeApp();
 
@@ -348,6 +397,7 @@ describe('registryRoutes', () => {
 
     expect(res.status).toBe(410);
     expect(res.headers.get('Location')).toBeNull();
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
     expect(res.headers.get('X-ASR-Yanked')).toBeNull();
     await expect(res.json()).resolves.toEqual({
       error: 'version_yanked',
@@ -392,6 +442,7 @@ describe('registryRoutes', () => {
 
     expect(res.status).toBe(410);
     expect(res.headers.get('Location')).toBeNull();
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
     await expect(res.json()).resolves.toEqual({
       error: 'content_blocked',
       details: { owner: 'acme', name: 'x', version: '1.0.0' },
