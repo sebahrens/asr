@@ -30,10 +30,52 @@ describe('computeVerdict', () => {
     ).toBe('block');
   });
 
-  it('allows foxguard exit 2 as a skipped-files result when counts are consistent', () => {
+  it('blocks raw foxguard exit 2 with no findings', () => {
     expect(
       computeVerdict([], 'high', toolResults({ foxguard: { exitCode: 2, findingCount: 0 } })),
-    ).toBe('pass');
+    ).toBe('block');
+  });
+
+  it('allows normalized foxguard findings when valid SARIF was proven by the wrapper', () => {
+    const findings: ScanFinding[] = [
+      {
+        tool: 'foxguard',
+        ruleId: 'js/command-injection',
+        severity: 'high',
+        file: 'scripts/deploy.ts',
+        line: 42,
+        message: 'User input reaches child_process.exec',
+      },
+    ];
+
+    expect(
+      computeVerdict(
+        findings,
+        'high',
+        toolResults({ foxguard: { exitCode: 0, findingCount: 1 } }),
+      ),
+    ).toBe('review_required');
+  });
+
+  it('blocks raw foxguard exit 2 even when findings were parsed', () => {
+    const findings: ScanFinding[] = [
+      {
+        tool: 'foxguard',
+        ruleId: 'js/command-injection',
+        severity: 'medium',
+        file: 'scripts/deploy.ts',
+        line: 42,
+        message: 'User input reaches child_process.exec',
+      },
+    ];
+
+    expect(
+      computeVerdict(
+        findings,
+        'high',
+        toolResults({ foxguard: { exitCode: 2, findingCount: 1 } }),
+      ),
+    ).toBe('block');
   });
 
   it('does not block optional skipped scanners with non-zero exits', () => {

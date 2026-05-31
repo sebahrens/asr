@@ -211,7 +211,55 @@ process.exit(2);
   }
 });
 
-test('allows raw foxguard skipped-files exit when SARIF parsing is unavailable', async () => {
+test('normalizes foxguard exit 2 with valid SARIF findings', async () => {
+  const fixture = await createFixture();
+  try {
+    await writeExecutable(
+      join(fixture.binDir, 'foxguard'),
+      `#!/usr/bin/env node
+
+console.log(JSON.stringify({
+  version: '2.1.0',
+  runs: [{
+    tool: {
+      driver: {
+        name: 'foxguard',
+        rules: [{
+          id: 'js/command-injection',
+          properties: { 'security-severity': '8.0' },
+        }],
+      },
+    },
+    results: [{
+      ruleId: 'js/command-injection',
+      level: 'warning',
+      message: { text: 'User input reaches child_process.exec' },
+      locations: [{
+        physicalLocation: {
+          artifactLocation: { uri: 'scripts/deploy.ts' },
+          region: { startLine: 42 },
+        },
+      }],
+    }],
+  }],
+}));
+process.exit(2);
+`,
+    );
+
+    const result = await runOrchestrator(fixture);
+
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.report.verdict, 'review_required');
+    assert.equal(result.report.toolResults.foxguard.exitCode, 0);
+    assert.equal(result.report.toolResults.foxguard.findingCount, 1);
+    assert.equal(result.report.findings.find((finding) => finding.tool === 'foxguard')?.severity, 'high');
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test('blocks raw foxguard exit 2 when SARIF parsing is unavailable', async () => {
   const fixture = await createFixture();
   try {
     await writeExecutable(
@@ -225,8 +273,8 @@ process.exit(2);
 
     const result = await runOrchestrator(fixture);
 
-    assert.equal(result.exitCode, 0);
-    assert.equal(result.report.verdict, 'pass');
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.report.verdict, 'block');
     assert.equal(result.report.toolResults.foxguard.exitCode, 2);
     assert.equal(result.report.toolResults.foxguard.findingCount, 0);
   } finally {

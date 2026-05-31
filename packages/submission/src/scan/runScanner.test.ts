@@ -182,7 +182,7 @@ describe('runScanner', () => {
     );
   });
 
-  it('accepts a pass report when foxguard exits 2 for skipped files', async () => {
+  it('rejects a pass report when foxguard exits 2 without wrapper validation', async () => {
     vi.stubEnv('SCANNER_IMAGE', 'asr-scanner:test');
     vi.stubEnv('SCAN_SIGNING_KEY', 'test-signing-key');
 
@@ -196,12 +196,9 @@ describe('runScanner', () => {
     );
     const runContainer = vi.fn<RunContainer>(async () => ({ stdout: JSON.stringify(report) }));
 
-    await expect(runScanner(input, runContainer)).resolves.toMatchObject({
-      verdict: 'pass',
-      toolResults: expect.objectContaining({
-        foxguard: { exitCode: 2, findingCount: 0 },
-      }),
-    });
+    await expect(runScanner(input, runContainer)).rejects.toThrow(
+      /Scanner verdict mismatch: expected block, received pass/,
+    );
   });
 
   it('rejects a report when toolResults findingCount disagrees with findings', async () => {

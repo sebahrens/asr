@@ -74,9 +74,5 @@ function isExpectedToolExit(tool: ScanTool, exitCode: number, findingCount: numb
     return exitCode === 1 && findingCount > 0;
   }
 
-  if (tool === 'foxguard') {
-    return exitCode === 2;
-  }
-
   return false;
 }

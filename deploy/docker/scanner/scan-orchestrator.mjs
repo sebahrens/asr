@@ -421,7 +421,6 @@ function hasFailedToolResult(findings, toolResults) {
 function isExpectedToolExit(tool, exitCode, findingCount) {
   if (exitCode === 0) return true;
   if (tool === 'gitleaks') return exitCode === 1 && findingCount > 0;
-  if (tool === 'foxguard') return exitCode === 2;
 
   return false;
 }
