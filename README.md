@@ -9,7 +9,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License">
-  <img src="https://img.shields.io/badge/node-%3E%3D20.6.0-brightgreen.svg" alt="Node.js">
+  <img src="https://img.shields.io/badge/node-22%20LTS-brightgreen.svg" alt="Node.js">
 </p>
 
 ---
@@ -57,11 +57,21 @@ specs/             # See SPEC.md for the index
 
 ## Local development
 
+Use Node.js 22 LTS before installing dependencies. The repository includes
+`.nvmrc` and `.node-version` for compatible version managers.
+
 ```bash
 pnpm install
 node deploy/docker/prepare-env.mjs                         # local Forgejo secrets
 docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml up -d
 pnpm dev                                                    # workspace dev
+```
+
+If `pnpm --filter @asr/submission test` reports that `better-sqlite3` was
+compiled for a different `NODE_MODULE_VERSION`, rebuild the native addon:
+
+```bash
+pnpm --filter @asr/submission rebuild better-sqlite3
 ```
 
 If Docker is unavailable and you only need the mock API for web UI development
