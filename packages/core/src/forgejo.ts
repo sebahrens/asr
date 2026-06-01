@@ -58,6 +58,13 @@ interface ForgejoGitRefResponse {
   };
 }
 
+export interface ProtectDefaultBranchInput {
+  branch?: string;
+  mergeWhitelistUsernames: string[];
+  statusCheckContexts?: string[];
+  requiredApprovals?: number;
+}
+
 export class ForgejoClient {
   private readonly cfg: ForgejoConfig;
   private readonly upload: Octokit;
@@ -166,6 +173,31 @@ export class ForgejoClient {
 
   async getDefaultBranchHeadSha(): Promise<string> {
     return this.getBranchHeadSha(this.cfg.defaultBranch ?? 'main');
+  }
+
+  async protectDefaultBranch(input: ProtectDefaultBranchInput): Promise<void> {
+    const { owner, repo } = this.cfg;
+    const branch = input.branch ?? this.cfg.defaultBranch ?? 'main';
+    const payload = branchProtectionPayload(branch, input);
+
+    try {
+      await this.merge.request('POST /repos/{owner}/{repo}/branch_protections', {
+        owner,
+        repo,
+        ...payload,
+      });
+    } catch (err) {
+      if (!isOctokitStatus(err, 409)) {
+        throw err;
+      }
+
+      await this.merge.request('PATCH /repos/{owner}/{repo}/branch_protections/{name}', {
+        owner,
+        repo,
+        name: branch,
+        ...payload,
+      });
+    }
   }
 
   async openSubmissionPR(input: {
@@ -530,6 +562,29 @@ const forgejoFileLastCommitSha = (file: ForgejoContentGetResponse): string => {
 };
 
 const forgejoPull = (data: unknown): ForgejoPullResponse => data as ForgejoPullResponse;
+
+const branchProtectionPayload = (branch: string, input: ProtectDefaultBranchInput) => {
+  if (input.mergeWhitelistUsernames.length === 0) {
+    throw new Error('at least one merge whitelist username is required');
+  }
+
+  return {
+    branch_name: branch,
+    enable_push: true,
+    enable_push_whitelist: true,
+    push_whitelist_usernames: [],
+    enable_merge_whitelist: true,
+    merge_whitelist_usernames: input.mergeWhitelistUsernames,
+    enable_status_check: true,
+    status_check_contexts: input.statusCheckContexts ?? ['validate-submission'],
+    required_approvals: input.requiredApprovals ?? 1,
+    block_on_rejected_reviews: true,
+    block_on_outdated_branch: true,
+    dismiss_stale_approvals: true,
+    enable_force_push: false,
+    enable_push_keys: false,
+  };
+};
 
 const joinPath = (prefix: string, path: string): string => {
   validateRepositoryPath(path);

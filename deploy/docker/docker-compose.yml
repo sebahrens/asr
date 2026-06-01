@@ -42,6 +42,7 @@ services:
       - FORGEJO_MERGE_TOKEN=${FORGEJO_ADMIN_TOKEN:-}
       - FORGEJO_OWNER=asr-admin
       - FORGEJO_REPO=skills-registry
+      - FORGEJO_BOOTSTRAP_BRANCH_PROTECTION=true
       - DATABASE_PATH=/app/data/workflow.db
       - PORT=3001
       - LLM_SCREEN_PROVIDER=${LLM_SCREEN_PROVIDER:-}

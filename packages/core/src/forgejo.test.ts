@@ -84,6 +84,80 @@ describe('ForgejoClient', () => {
     );
   });
 
+  it('protects the default branch with the merge token and Forgejo whitelist fields', async () => {
+    const rawClient = new ForgejoClient(cfg);
+    const client = internals(rawClient);
+    const mergeRequest = vi
+      .spyOn(client.merge, 'request')
+      .mockResolvedValueOnce({ data: {} } as never);
+
+    await expect(
+      rawClient.protectDefaultBranch({
+        mergeWhitelistUsernames: ['asr-merge-bot'],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(mergeRequest).toHaveBeenCalledWith('POST /repos/{owner}/{repo}/branch_protections', {
+      owner: 'asr',
+      repo: 'skills',
+      branch_name: 'main',
+      enable_push: true,
+      enable_push_whitelist: true,
+      push_whitelist_usernames: [],
+      enable_merge_whitelist: true,
+      merge_whitelist_usernames: ['asr-merge-bot'],
+      enable_status_check: true,
+      status_check_contexts: ['validate-submission'],
+      required_approvals: 1,
+      block_on_rejected_reviews: true,
+      block_on_outdated_branch: true,
+      dismiss_stale_approvals: true,
+      enable_force_push: false,
+      enable_push_keys: false,
+    });
+  });
+
+  it('updates existing branch protection when bootstrap is re-run', async () => {
+    const rawClient = new ForgejoClient(cfg);
+    const client = internals(rawClient);
+    const mergeRequest = vi
+      .spyOn(client.merge, 'request')
+      .mockRejectedValueOnce({ status: 409 })
+      .mockResolvedValueOnce({ data: {} } as never);
+
+    await expect(
+      rawClient.protectDefaultBranch({
+        mergeWhitelistUsernames: ['asr-merge-bot'],
+        statusCheckContexts: ['validate-submission', 'scanner'],
+        requiredApprovals: 2,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(mergeRequest).toHaveBeenNthCalledWith(
+      2,
+      'PATCH /repos/{owner}/{repo}/branch_protections/{name}',
+      {
+        owner: 'asr',
+        repo: 'skills',
+        name: 'main',
+        branch_name: 'main',
+        enable_push: true,
+        enable_push_whitelist: true,
+        push_whitelist_usernames: [],
+        enable_merge_whitelist: true,
+        merge_whitelist_usernames: ['asr-merge-bot'],
+        enable_status_check: true,
+        status_check_contexts: ['validate-submission', 'scanner'],
+        required_approvals: 2,
+        block_on_rejected_reviews: true,
+        block_on_outdated_branch: true,
+        dismiss_stale_approvals: true,
+        enable_force_push: false,
+        enable_push_keys: false,
+      },
+    );
+  });
+
   it('puts file content on the submission branch with a deterministic commit message', async () => {
     const client = internals(new ForgejoClient(cfg));
     const uploadRequest = vi.spyOn(client.upload, 'request').mockResolvedValueOnce({
