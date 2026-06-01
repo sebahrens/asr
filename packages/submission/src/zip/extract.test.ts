@@ -27,6 +27,27 @@ describe('extractSafe', () => {
     await expect(extractSafe(zipPath, targetDir)).rejects.toThrow(/path traversal/);
   });
 
+  it('rejects entries with Windows path separators', async () => {
+    await writeZip([{ path: 'docs/readme.txt', contents: 'owned' }]);
+    await replaceZipPath('docs/readme.txt', 'docs\\readme.txt');
+
+    await expect(extractSafe(zipPath, targetDir)).rejects.toThrow(/path traversal/);
+  });
+
+  it('rejects Windows drive-letter paths', async () => {
+    await writeZip([{ path: 'x_/evil.txt', contents: 'owned' }]);
+    await replaceZipPath('x_/evil.txt', 'C:/evil.txt');
+
+    await expect(extractSafe(zipPath, targetDir)).rejects.toThrow(/path traversal/);
+  });
+
+  it('rejects traversal segments split by backslashes', async () => {
+    await writeZip([{ path: 'a/xx/evil.txt', contents: 'owned' }]);
+    await replaceZipPath('a/xx/evil.txt', 'a\\..\\evil.txt');
+
+    await expect(extractSafe(zipPath, targetDir)).rejects.toThrow(/path traversal/);
+  });
+
   it('rejects archives that exceed the file count limit', async () => {
     await writeZip([
       { path: 'one.txt', contents: 'one' },

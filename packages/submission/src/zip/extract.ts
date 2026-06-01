@@ -1,6 +1,6 @@
 import { createWriteStream, statSync } from 'node:fs';
 import { mkdir, unlink } from 'node:fs/promises';
-import { dirname, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, win32 } from 'node:path';
 import { Transform, type TransformCallback } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import yauzl from 'yauzl';
@@ -20,6 +20,7 @@ const POSIX_FILE_TYPE_MASK = 0xf000;
 const POSIX_REGULAR_FILE = 0x8000;
 const POSIX_DIRECTORY = 0x4000;
 const POSIX_SYMLINK = 0xa000;
+const WINDOWS_DRIVE_RELATIVE_PATH = /^[A-Za-z]:/;
 
 export async function extractSafe(
   zipPath: string,
@@ -49,7 +50,10 @@ export async function extractSafe(
 
       settled = true;
       zip.close();
-      if (error instanceof Error && /^(absolute path|invalid relative path):/.test(error.message)) {
+      if (
+        error instanceof Error &&
+        /^(absolute path|invalid relative path|invalid characters in fileName):/.test(error.message)
+      ) {
         rejectFiles(new Error(`path traversal: ${error.message}`));
         return;
       }
@@ -93,13 +97,20 @@ export async function extractSafe(
       throw new Error(`illegal chars: ${name}`);
     }
 
+    assertSafeRelativeZipPath(name);
+
     const entryPath = resolve(canonical, name);
     const relativePath = relative(canonical, entryPath);
-    if (relativePath.startsWith('..') || relativePath === '' || resolve(canonical, relativePath) !== entryPath) {
+    if (
+      relativePath.startsWith('..') ||
+      relativePath === '' ||
+      isAbsolute(relativePath) ||
+      resolve(canonical, relativePath) !== entryPath
+    ) {
       throw new Error(`path traversal: ${name}`);
     }
 
-    if (relativePath.split(sep).length > limits.maxDepth) {
+    if (relativePath.split(/[\\/]/).length > limits.maxDepth) {
       throw new Error(`max depth: ${name}`);
     }
 
@@ -155,6 +166,21 @@ export async function extractSafe(
   }
 }
 
+function assertSafeRelativeZipPath(name: string): void {
+  if (
+    name.includes('\\') ||
+    name.startsWith('/') ||
+    win32.isAbsolute(name) ||
+    WINDOWS_DRIVE_RELATIVE_PATH.test(name)
+  ) {
+    throw new Error(`path traversal: ${name}`);
+  }
+
+  if (name.split(/[\\/]/).some((segment) => segment === '..')) {
+    throw new Error(`path traversal: ${name}`);
+  }
+}
+
 class ByteLimitTransform extends Transform {
   constructor(private readonly addBytes: (bytes: number) => void) {
     super();
@@ -190,18 +216,22 @@ function openReadStream(zip: yauzl.ZipFile, entry: yauzl.Entry): Promise<NodeJS.
 
 function openZip(path: string): Promise<yauzl.ZipFile> {
   return new Promise((resolveZip, rejectZip) => {
-    yauzl.open(path, { lazyEntries: true, autoClose: true, validateEntrySizes: false }, (error, zip) => {
-      if (error) {
-        rejectZip(error);
-        return;
-      }
+    yauzl.open(
+      path,
+      { lazyEntries: true, autoClose: true, validateEntrySizes: false, strictFileNames: true },
+      (error, zip) => {
+        if (error) {
+          rejectZip(error);
+          return;
+        }
 
-      if (!zip) {
-        rejectZip(new Error('failed to open zip'));
-        return;
-      }
+        if (!zip) {
+          rejectZip(new Error('failed to open zip'));
+          return;
+        }
 
-      resolveZip(zip);
-    });
+        resolveZip(zip);
+      },
+    );
   });
 }
