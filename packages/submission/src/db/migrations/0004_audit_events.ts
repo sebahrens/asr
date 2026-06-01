@@ -20,7 +20,7 @@ export const migration0004AuditEvents: Migration = {
         prev_hash TEXT NOT NULL,
         hash TEXT NOT NULL,
         hmac_key_id TEXT NOT NULL,
-        hash_version INTEGER NOT NULL DEFAULT 3,
+        hash_version INTEGER NOT NULL DEFAULT 4,
         FOREIGN KEY (submission_id) REFERENCES submissions(id)
       );
 

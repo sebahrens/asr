@@ -8,6 +8,7 @@ describe('audit exports', () => {
     const event: AuditEvent = {
       id: 'evt_01',
       submissionId: null,
+      skillOwner: null,
       skillName: null,
       version: null,
       timestamp: '2026-05-24T10:00:00.000Z',

@@ -7,6 +7,7 @@ const HMAC_KEY = Buffer.from('k'.repeat(32));
 const sampleEventWithoutHash: Omit<AuditEvent, 'hash'> = {
   id: '01J0000000000000000000000A',
   submissionId: 'sub_123',
+  skillOwner: 'owner-a',
   skillName: 'example-skill',
   version: '1.2.3',
   timestamp: '2026-05-23T12:00:00.000Z',
@@ -44,9 +45,12 @@ describe('computeHash', () => {
     expect(a).not.toBe(b);
   });
 
-  it('changes when actorType or hmacKeyId changes', () => {
+  it('changes when skillOwner, actorType, or hmacKeyId changes', () => {
     const digest = computeHash(sampleHashableEvent, HMAC_KEY);
 
+    expect(
+      computeHash({ ...sampleHashableEvent, skillOwner: 'owner-b' }, HMAC_KEY),
+    ).not.toBe(digest);
     expect(
       computeHash({ ...sampleHashableEvent, actorType: 'system' }, HMAC_KEY),
     ).not.toBe(digest);
@@ -81,6 +85,7 @@ describe('computeHash', () => {
     const nullEvent: Omit<AuditEvent, 'hash'> = {
       ...sampleEventWithoutHash,
       submissionId: null,
+      skillOwner: null,
       skillName: null,
       version: null,
     };
@@ -94,6 +99,7 @@ describe('computeHash', () => {
       {
         ...nullEvent,
         submissionId: '',
+        skillOwner: '',
         skillName: '',
         version: '',
         hashVersion: AUDIT_HASH_FORMAT_VERSION,

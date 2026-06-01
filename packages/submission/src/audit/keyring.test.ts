@@ -204,7 +204,8 @@ describe('rotateKey', () => {
 
     const firstRow = database
       .prepare(
-        `SELECT id, submission_id AS submissionId, skill_name AS skillName,
+        `SELECT id, submission_id AS submissionId, skill_owner AS skillOwner,
+                skill_name AS skillName,
                 version, timestamp, actor, actor_type AS actorType, action,
                 detail, prev_hash AS prevHash, hash, hmac_key_id AS hmacKeyId
            FROM audit_events
@@ -214,6 +215,7 @@ describe('rotateKey', () => {
       | {
           id: string;
           submissionId: string | null;
+          skillOwner: string | null;
           skillName: string | null;
           version: string | null;
           timestamp: string;
@@ -233,6 +235,7 @@ describe('rotateKey', () => {
       {
         id: firstRow!.id,
         submissionId: firstRow!.submissionId,
+        skillOwner: firstRow!.skillOwner,
         skillName: firstRow!.skillName,
         version: firstRow!.version,
         timestamp: firstRow!.timestamp,

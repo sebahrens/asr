@@ -132,6 +132,7 @@ const submission: Submission = {
 const auditEvent: AuditEvent = {
   id: 'audit_01',
   submissionId: submission.id,
+  skillOwner: 'asr',
   skillName: manifest.name,
   version: manifest.version,
   timestamp: '2026-05-24T10:08:00.000Z',

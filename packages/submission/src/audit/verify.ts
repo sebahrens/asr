@@ -24,6 +24,7 @@ interface AuditEventRow {
   rowid: number;
   id: string;
   submission_id: string | null;
+  skill_owner: string | null;
   skill_name: string | null;
   version: string | null;
   timestamp: string;
@@ -49,6 +50,7 @@ function rowToUnsignedEvent(
   return {
     id: row.id,
     submissionId: row.submission_id,
+    skillOwner: row.skill_owner,
     skillName: row.skill_name,
     version: row.version,
     timestamp: row.timestamp,
@@ -88,6 +90,8 @@ export function verifyChain(
       return { valid: false, brokenAt: row.id, reason: 'prev_hash mismatch' };
     }
 
+    // Older hash formats did not cover the same immutable field set.
+    // Treat them as legacy instead of attempting partial verification.
     if (row.hash_version !== AUDIT_HASH_FORMAT_VERSION) {
       return { valid: false, brokenAt: row.id, reason: 'legacy hash version' };
     }

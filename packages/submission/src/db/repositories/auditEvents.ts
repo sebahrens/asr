@@ -32,6 +32,7 @@ export function mapAuditEventRow(row: AuditEventRow): AuditEvent {
   return {
     id: row.id,
     submissionId: row.submission_id,
+    skillOwner: row.skill_owner,
     skillName: row.skill_name,
     version: row.version,
     timestamp: row.timestamp,

@@ -237,6 +237,7 @@ describe('registry canonical types', () => {
     const auditEvent: AuditEvent = {
       id: 'evt_01',
       submissionId: 'sub_01',
+      skillOwner: 'asr',
       skillName: 'security-reviewer',
       version: '1.0.0',
       timestamp: '2026-05-24T10:00:00.000Z',

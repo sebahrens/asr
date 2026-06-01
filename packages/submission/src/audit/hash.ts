@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
 import type { AuditEvent } from '@asr/core';
 
-export const AUDIT_HASH_FORMAT_VERSION = 3;
+export const AUDIT_HASH_FORMAT_VERSION = 4;
 
 export type HashableAuditEvent = Omit<AuditEvent, 'hash'> & {
   hashVersion: number;
@@ -16,6 +16,7 @@ export function computeHash(
   updateString(hmac, `v${event.hashVersion}`);
   updateString(hmac, event.id);
   updateNullableString(hmac, event.submissionId);
+  updateNullableString(hmac, event.skillOwner);
   updateNullableString(hmac, event.skillName);
   updateNullableString(hmac, event.version);
   updateString(hmac, event.timestamp);

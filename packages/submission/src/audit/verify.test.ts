@@ -176,6 +176,24 @@ describe('verifyChain', () => {
     });
   });
 
+  it('flags hash mismatch when skill_owner is tampered with after insertion', () => {
+    const database = db!;
+    const { e2 } = emitThree(database);
+
+    database
+      .prepare('UPDATE audit_events SET skill_owner = ? WHERE id = ?')
+      .run('attacker', e2.id);
+
+    const keys = loadKeyRing();
+    const result = verifyChain(database, keys);
+
+    expect(result).toEqual({
+      valid: false,
+      brokenAt: e2.id,
+      reason: 'hash mismatch',
+    });
+  });
+
   it('flags hash mismatch when hmac_key_id is swapped to another retained key', () => {
     const database = db!;
     const { e2 } = emitThree(database);

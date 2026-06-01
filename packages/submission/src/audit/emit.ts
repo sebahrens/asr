@@ -76,6 +76,7 @@ export function emitAudit(
   const unsigned: Omit<AuditEvent, 'hash'> = {
     id,
     submissionId: input.submissionId ?? null,
+    skillOwner,
     skillName: input.skillName ?? null,
     version: input.version ?? null,
     timestamp,
@@ -129,7 +130,7 @@ export function emitAudit(
   ).run({
     id,
     submissionId: unsigned.submissionId,
-    skillOwner,
+    skillOwner: unsigned.skillOwner,
     skillName: unsigned.skillName,
     version: unsigned.version,
     timestamp,

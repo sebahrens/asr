@@ -205,6 +205,7 @@ export type QuestionnaireAnswer = QuestionnaireResponse;
 export interface AuditEvent {
   id: string;
   submissionId: string | null;
+  skillOwner: string | null;
   skillName: string | null;
   version: string | null;
   timestamp: string;
