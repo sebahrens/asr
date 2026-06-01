@@ -623,7 +623,7 @@ describe('updateSkill', () => {
     await seedLockfile({
       demo: { source: 'registry:acme/demo', version: '1.0.0' },
       other: { source: 'registry:acme/other', version: '2.0.0' },
-      'gh-only': { source: 'github:foo/bar/qux', version: '0.1.0' },
+      'forgejo-only': { source: 'forgejo:foo/bar/qux', version: '0.1.0' },
     });
 
     getSkillDetail.mockImplementation(async (owner: string, name: string) => {
@@ -724,7 +724,7 @@ describe('updateSkill', () => {
   });
 
   it('throws when the named skill was installed from a non-registry source', async () => {
-    await seedLockfile({ demo: { source: 'github:foo/bar/demo', version: '1.0.0' } });
+    await seedLockfile({ demo: { source: 'forgejo:foo/bar/demo', version: '1.0.0' } });
 
     await expect(updateSkill('acme/demo')).rejects.toThrow(
       /acme\/demo is not installed from the registry/,
@@ -732,7 +732,7 @@ describe('updateSkill', () => {
   });
 
   it('returns empty list when no registry-sourced skills are installed and no slug is given', async () => {
-    await seedLockfile({ 'gh-only': { source: 'github:foo/bar/qux', version: '0.1.0' } });
+    await seedLockfile({ 'forgejo-only': { source: 'forgejo:foo/bar/qux', version: '0.1.0' } });
 
     const results = await updateSkill();
 

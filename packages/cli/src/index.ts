@@ -276,7 +276,7 @@ program
 
 program
   .command('config <action> [key] [value]')
-  .description('Manage configuration (get/set registry, token, githubToken, defaultTarget)')
+  .description('Manage configuration (get/set registry, token, forgejoToken, defaultTarget)')
   .action(async (action, key, value) => {
     if (action === 'get') {
       const config = await getConfigWithSecrets();
@@ -290,7 +290,7 @@ program
         console.log(JSON.stringify(redactConfig(config), null, 2));
       }
     } else if (action === 'set' && key && value) {
-      await setConfig(key as 'registry' | 'token' | 'githubToken' | 'defaultTarget', value);
+      await setConfig(key as 'registry' | 'token' | 'forgejoToken' | 'defaultTarget', value);
       const displayedValue = isSecretConfigKey(key) ? '<redacted>' : value;
       console.log(pc.green(`Set ${key} = ${displayedValue}`));
     } else {

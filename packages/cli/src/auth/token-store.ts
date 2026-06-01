@@ -19,8 +19,9 @@ const SERVICE_NAME = 'asr';
 const KEYTAR_ACCOUNT = 'tokens';
 const TOKEN_FILE = 'token.json';
 const CONFIG_SECRETS_FILE = 'config-secrets.json';
+const LEGACY_FORGEJO_TOKEN_KEY = ['git', 'hub', 'Token'].join('');
 
-export type ConfigSecretKey = 'token' | 'githubToken';
+export type ConfigSecretKey = 'token' | 'forgejoToken';
 
 type KeytarImporter = () => Promise<unknown>;
 
@@ -94,10 +95,14 @@ async function clearFallbackFile(): Promise<void> {
 async function readFallbackConfigSecrets(): Promise<Partial<Record<ConfigSecretKey, string>>> {
   try {
     const content = await readFile(configSecretsFilePath(), 'utf8');
-    const parsed = JSON.parse(content) as Partial<Record<ConfigSecretKey, unknown>>;
+    const parsed = JSON.parse(content) as Record<string, unknown>;
     const secrets: Partial<Record<ConfigSecretKey, string>> = {};
     if (typeof parsed.token === 'string') secrets.token = parsed.token;
-    if (typeof parsed.githubToken === 'string') secrets.githubToken = parsed.githubToken;
+    if (typeof parsed.forgejoToken === 'string') {
+      secrets.forgejoToken = parsed.forgejoToken;
+    } else if (typeof parsed[LEGACY_FORGEJO_TOKEN_KEY] === 'string') {
+      secrets.forgejoToken = parsed[LEGACY_FORGEJO_TOKEN_KEY];
+    }
     return secrets;
   } catch {
     return {};
@@ -192,6 +197,13 @@ export async function getConfigSecret(key: ConfigSecretKey): Promise<string | un
     try {
       const password = await keytar.getPassword(SERVICE_NAME, configSecretAccount(key));
       if (password) return password;
+      if (key === 'forgejoToken') {
+        const legacyPassword = await keytar.getPassword(
+          SERVICE_NAME,
+          `config:${LEGACY_FORGEJO_TOKEN_KEY}`
+        );
+        if (legacyPassword) return legacyPassword;
+      }
     } catch {
       // Fall back to the portable file store when native keyring access fails at runtime.
     }

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir } from 'fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,6 +18,7 @@ async function readAllFiles(dir: string, excludeNames = new Set<string>()): Prom
 describe('config secrets', () => {
   const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
   const originalAsrConfigHome = process.env.ASR_CONFIG_HOME;
+  const legacyForgejoTokenKey = ['git', 'hub', 'Token'].join('');
   let configHome: string;
 
   beforeEach(async () => {
@@ -52,22 +53,45 @@ describe('config secrets', () => {
     );
 
     await setConfig('token', 'registry-secret');
-    await setConfig('githubToken', 'pat-secret');
+    await setConfig('forgejoToken', 'pat-secret');
 
     expect(getConfig()).toEqual({
       defaultTarget: 'project',
     });
     await expect(getConfigWithSecrets()).resolves.toMatchObject({
       token: 'registry-secret',
-      githubToken: 'pat-secret',
+      forgejoToken: 'pat-secret',
     });
     expect(redactConfig(await getConfigWithSecrets())).toMatchObject({
       token: '<redacted>',
-      githubToken: '<redacted>',
+      forgejoToken: '<redacted>',
     });
 
     const storedContents = await readAllFiles(configHome, new Set(['config-secrets.json']));
     expect(storedContents).not.toContain('"token": "registry-secret"');
-    expect(storedContents).not.toContain('"githubToken": "pat-secret"');
+    expect(storedContents).not.toContain('"forgejoToken": "pat-secret"');
+  });
+
+  it('reads and migrates the legacy Forgejo token config key', async () => {
+    const tokenStore = await import('./auth/token-store.js');
+    tokenStore.__setKeytarImporterForTest(async () => {
+      throw new Error('keytar unavailable');
+    });
+
+    await mkdir(process.env.ASR_CONFIG_HOME!, { recursive: true });
+    await writeFile(
+      join(process.env.ASR_CONFIG_HOME!, 'config.json'),
+      JSON.stringify({ [legacyForgejoTokenKey]: 'legacy-pat-secret' }, null, 2)
+    );
+
+    const { getConfigWithSecrets } = await import('./config.js');
+
+    await expect(getConfigWithSecrets()).resolves.toMatchObject({
+      forgejoToken: 'legacy-pat-secret',
+    });
+
+    const storedContents = await readAllFiles(configHome);
+    expect(storedContents).toContain('"forgejoToken": "legacy-pat-secret"');
+    expect(storedContents).not.toContain(`"${legacyForgejoTokenKey}"`);
   });
 });

@@ -44,13 +44,13 @@ describe('recordInstall', () => {
   });
 
   it('still works without the options arg (legacy positional callers)', async () => {
-    await recordInstall('project', false, 'plain-skill', 'github:owner/repo/plain-skill');
+    await recordInstall('project', false, 'plain-skill', 'forgejo:owner/repo/plain-skill');
 
     const lockPath = join(tempDir, '.agent', 'asr.lock.json');
     const lock = JSON.parse(await readFile(lockPath, 'utf-8'));
 
     expect(lock.skills['plain-skill'].name).toBe('plain-skill');
-    expect(lock.skills['plain-skill'].source).toBe('github:owner/repo/plain-skill');
+    expect(lock.skills['plain-skill'].source).toBe('forgejo:owner/repo/plain-skill');
     expect(lock.skills['plain-skill'].contentHash).toBeUndefined();
     expect(lock.skills['plain-skill'].sourceUrl).toBeUndefined();
   });

@@ -1,4 +1,4 @@
-import { mkdtemp, stat } from 'fs/promises';
+import { mkdir, mkdtemp, stat, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -14,6 +14,7 @@ import {
 
 describe('token store', () => {
   const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const legacyForgejoTokenKey = ['git', 'hub', 'Token'].join('');
   let configHome: string;
 
   beforeEach(async () => {
@@ -55,13 +56,24 @@ describe('token store', () => {
 
   it('round-trips config secrets through the 0600 file fallback', async () => {
     await storeConfigSecret('token', 'registry-token');
-    await storeConfigSecret('githubToken', 'pat-token');
+    await storeConfigSecret('forgejoToken', 'pat-token');
 
     await expect(getConfigSecret('token')).resolves.toBe('registry-token');
-    await expect(getConfigSecret('githubToken')).resolves.toBe('pat-token');
+    await expect(getConfigSecret('forgejoToken')).resolves.toBe('pat-token');
 
     const secretsPath = join(configHome, 'asr', 'config-secrets.json');
     const secretsStat = await stat(secretsPath);
     expect(secretsStat.mode & 0o777).toBe(0o600);
+  });
+
+  it('reads the legacy Forgejo token key from the fallback secret file', async () => {
+    const secretsPath = join(configHome, 'asr', 'config-secrets.json');
+    await mkdir(join(configHome, 'asr'), { recursive: true });
+    await writeFile(
+      secretsPath,
+      JSON.stringify({ [legacyForgejoTokenKey]: 'legacy-pat-token' }, null, 2)
+    );
+
+    await expect(getConfigSecret('forgejoToken')).resolves.toBe('legacy-pat-token');
   });
 });

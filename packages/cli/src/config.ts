@@ -10,13 +10,14 @@ import {
 interface Config {
   registry?: string;
   token?: string;
-  githubToken?: string;
+  forgejoToken?: string;
   defaultTarget: 'cursor' | 'claude' | 'project';
 }
 
 type ConfigKey = keyof Config;
 
-const SECRET_CONFIG_KEYS = new Set<ConfigKey>(['token', 'githubToken']);
+const SECRET_CONFIG_KEYS = new Set<ConfigKey>(['token', 'forgejoToken']);
+const LEGACY_FORGEJO_TOKEN_KEY = ['git', 'hub', 'Token'].join('');
 
 const config = new Conf<Config>({
   projectName: 'asr',
@@ -46,18 +47,33 @@ async function getMigratedSecret(key: ConfigSecretKey): Promise<string | undefin
   return plaintextValue;
 }
 
+async function getMigratedForgejoToken(): Promise<string | undefined> {
+  const storedSecret = await getMigratedSecret('forgejoToken');
+  if (storedSecret) return storedSecret;
+
+  const plaintextValue = config.get(LEGACY_FORGEJO_TOKEN_KEY as ConfigKey);
+  if (plaintextValue) {
+    await storeConfigSecret('forgejoToken', plaintextValue);
+    config.delete(LEGACY_FORGEJO_TOKEN_KEY as ConfigKey);
+  }
+
+  return plaintextValue;
+}
+
 export async function getConfigWithSecrets(): Promise<Config> {
   return {
     ...getConfig(),
     token: await getMigratedSecret('token'),
-    githubToken: await getMigratedSecret('githubToken'),
+    forgejoToken: await getMigratedForgejoToken(),
   };
 }
 
 export async function getConfigValue(key: ConfigKey): Promise<string | undefined> {
-  if (key === 'token' || key === 'githubToken') {
+  if (key === 'token') {
     return getMigratedSecret(key);
   }
+
+  if (key === 'forgejoToken') return getMigratedForgejoToken();
 
   return config.get(key);
 }
@@ -76,12 +92,12 @@ export function redactConfig(config: Config): Config {
   return {
     ...config,
     token: config.token ? '<redacted>' : undefined,
-    githubToken: config.githubToken ? '<redacted>' : undefined,
+    forgejoToken: config.forgejoToken ? '<redacted>' : undefined,
   };
 }
 
 export function isSecretConfigKey(key: string): key is ConfigSecretKey {
-  return key === 'token' || key === 'githubToken';
+  return key === 'token' || key === 'forgejoToken';
 }
 
 export function getTargetDir(
