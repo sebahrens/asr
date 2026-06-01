@@ -20,6 +20,7 @@ import {
   reviewDiffViewerStyles,
 } from '../App';
 import { apiUrl } from '../api';
+import { useAuthenticatedFetch, type AuthenticatedFetch } from '../auth/authenticatedFetch';
 import { DecisionPanel } from './DecisionPanel';
 
 interface DiffFile {
@@ -220,8 +221,8 @@ class HttpError extends Error {
   }
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+async function fetchJson<T>(authenticatedFetch: AuthenticatedFetch, url: string): Promise<T> {
+  const res = await authenticatedFetch(url);
   if (!res.ok) {
     throw new HttpError(res.status, `Request to ${url} failed with ${res.status}`);
   }
@@ -242,6 +243,7 @@ function isDevMockMode(): boolean {
 // evidence instead. Tests run in MODE='test' and stub fetch directly, so this
 // branch is inert there.
 async function fetchSubmissionEvidence<T>(
+  authenticatedFetch: AuthenticatedFetch,
   id: string,
   kind: SubmissionEvidenceKey,
   url: string,
@@ -253,7 +255,7 @@ async function fetchSubmissionEvidence<T>(
       return mock[kind] as unknown as T;
     }
   }
-  return fetchJson<T>(url);
+  return fetchJson<T>(authenticatedFetch, url);
 }
 
 // react-query retries failed queries 3 times by default. For client errors
@@ -269,10 +271,12 @@ function retryUnless4xx(failureCount: number, error: unknown): boolean {
 export function ReviewDetail() {
   const params = useParams<{ id: string }>();
   const id = params.id ?? '';
+  const authenticatedFetch = useAuthenticatedFetch();
 
   const submissionQuery = useQuery({
     queryKey: ['submission', id],
     queryFn: () => fetchSubmissionEvidence<Submission>(
+      authenticatedFetch,
       id,
       'submission',
       apiUrl(`/api/v1/submissions/${encodeURIComponent(id)}`),
@@ -283,6 +287,7 @@ export function ReviewDetail() {
   const diffQuery = useQuery({
     queryKey: ['submission', id, 'diff'],
     queryFn: () => fetchSubmissionEvidence<VersionDiff>(
+      authenticatedFetch,
       id,
       'diff',
       apiUrl(`/api/v1/submissions/${encodeURIComponent(id)}/diff`),
@@ -293,6 +298,7 @@ export function ReviewDetail() {
   const scanQuery = useQuery({
     queryKey: ['submission', id, 'scan'],
     queryFn: () => fetchSubmissionEvidence<ScanReport>(
+      authenticatedFetch,
       id,
       'scan',
       apiUrl(`/api/v1/submissions/${encodeURIComponent(id)}/scan`),
@@ -303,6 +309,7 @@ export function ReviewDetail() {
   const screeningQuery = useQuery({
     queryKey: ['submission', id, 'screening'],
     queryFn: () => fetchSubmissionEvidence<ScreeningReport>(
+      authenticatedFetch,
       id,
       'screening',
       apiUrl(`/api/v1/submissions/${encodeURIComponent(id)}/screening`),

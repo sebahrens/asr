@@ -2,6 +2,7 @@ import { useMemo, useState, type UIEvent } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiUrl } from '../api';
+import { useAuthenticatedFetch, type AuthenticatedFetch } from '../auth/authenticatedFetch';
 
 const REVIEW_QUEUE_PAGE_SIZE = 50;
 const REVIEW_QUEUE_ROW_HEIGHT = 82;
@@ -30,8 +31,10 @@ interface PendingSubmissionsPage {
 }
 
 async function fetchPendingSubmissionsPage({
+  authenticatedFetch,
   pageParam,
 }: {
+  authenticatedFetch: AuthenticatedFetch;
   pageParam: string | null;
 }): Promise<PendingSubmissionsPage> {
   const params = new URLSearchParams({
@@ -42,7 +45,7 @@ async function fetchPendingSubmissionsPage({
     params.set('cursor', pageParam);
   }
 
-  const res = await fetch(apiUrl(`/api/v1/submissions?${params.toString()}`));
+  const res = await authenticatedFetch(apiUrl(`/api/v1/submissions?${params.toString()}`));
   if (!res.ok) {
     throw new Error(`Pending submissions request failed with ${res.status}`);
   }
@@ -57,10 +60,11 @@ async function fetchPendingSubmissionsPage({
 }
 
 export function ReviewQueue() {
+  const authenticatedFetch = useAuthenticatedFetch();
   const [scrollTop, setScrollTop] = useState(0);
   const { data, isLoading, isError, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['submissions', 'pending'],
-    queryFn: ({ pageParam }) => fetchPendingSubmissionsPage({ pageParam }),
+    queryFn: ({ pageParam }) => fetchPendingSubmissionsPage({ authenticatedFetch, pageParam }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
   });

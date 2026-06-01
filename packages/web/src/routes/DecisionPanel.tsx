@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiUrl } from '../api';
+import { useAuthenticatedFetch, type AuthenticatedFetch } from '../auth/authenticatedFetch';
 import { useSession } from '../auth/useSession';
 
 type DecisionAction = 'approve' | 'reject';
@@ -34,6 +35,7 @@ class DecisionRequestError extends Error {
 }
 
 async function postDecision(
+  authenticatedFetch: AuthenticatedFetch,
   url: string,
   payload: ApprovePayload | RejectPayload | undefined,
 ): Promise<void> {
@@ -42,7 +44,7 @@ async function postDecision(
     init.headers = { 'Content-Type': 'application/json' };
     init.body = JSON.stringify(payload);
   }
-  const res = await fetch(url, init);
+  const res = await authenticatedFetch(url, init);
   if (!res.ok) {
     const body = await parseErrorBody(res);
     throw new DecisionRequestError(res.status, body.error, body.message);
@@ -113,6 +115,7 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
 
 export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
   const session = useSession();
+  const authenticatedFetch = useAuthenticatedFetch();
   const queryClient = useQueryClient();
   const isSelf = submission.submittedBy === session.sub;
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -127,6 +130,7 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
   const approveMutation = useMutation({
     mutationFn: () =>
       postDecision(
+        authenticatedFetch,
         apiUrl(`/api/v1/submissions/${encodeURIComponent(submission.id)}/approve`),
         undefined,
       ),
@@ -141,6 +145,7 @@ export function DecisionPanel({ submission, risk }: DecisionPanelProps) {
   const rejectMutation = useMutation({
     mutationFn: (rejectReason: string) =>
       postDecision(
+        authenticatedFetch,
         apiUrl(`/api/v1/submissions/${encodeURIComponent(submission.id)}/reject`),
         { reason: rejectReason },
       ),

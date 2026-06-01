@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm';
 import { useLocation } from 'react-router-dom';
 import { parseSkillMd, type SkillDetail, type SkillSummary, type VersionDiff } from '@asr/core';
 import { SessionProvider, type Session } from './auth/SessionProvider';
+import { useAuthenticatedFetch } from './auth/authenticatedFetch';
 import { useSession } from './auth/useSession';
 import { BrandLogo } from './branding/BrandLogo';
 import { PRODUCT_NAME } from './product';
@@ -482,6 +483,7 @@ function createManifestDraft(content: string): PublishManifestDraft {
 
 function PublishSkill() {
   const session = useSession();
+  const authenticatedFetch = useAuthenticatedFetch();
   const validationSummaryRef = useRef<HTMLDivElement>(null);
   const [owner, setOwner] = useState('');
   const [skillMd, setSkillMd] = useState('');
@@ -735,7 +737,7 @@ function PublishSkill() {
       body.set('skillMd', skillMd);
       body.set('file', skillArchive);
 
-      const res = await fetch(SUBMISSIONS_API_BASE, {
+      const res = await authenticatedFetch(SUBMISSIONS_API_BASE, {
         method: 'POST',
         body,
       });

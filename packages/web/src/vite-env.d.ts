@@ -10,6 +10,7 @@ interface ImportMetaEnv {
   readonly VITE_ENTRA_TENANT_ID?: string;
   readonly VITE_ENTRA_AUTHORITY?: string;
   readonly VITE_ENTRA_SCOPES?: string;
+  readonly VITE_ENTRA_API_SCOPES?: string;
 }
 
 interface ImportMeta {

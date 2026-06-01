@@ -1,12 +1,18 @@
 import { createContext, useEffect, useMemo, type ReactNode } from 'react';
 import {
   BrowserCacheLocation,
+  InteractionRequiredAuthError,
   InteractionStatus,
   PublicClientApplication,
   type AccountInfo,
   type Configuration,
 } from '@azure/msal-browser';
 import { MsalProvider, useAccount, useMsal } from '@azure/msal-react';
+import {
+  AuthenticatedFetchContext,
+  createBearerAuthenticatedFetch,
+  type AuthenticatedFetch,
+} from './authenticatedFetch';
 
 export type SessionRole = 'Submitter' | 'Compliance' | 'Admin';
 export type AuthMode = 'mock' | 'msal';
@@ -86,6 +92,22 @@ function readLoginScopes(): string[] {
     .filter(Boolean);
 }
 
+function readApiScopes(clientId?: string): string[] {
+  const configuredScopes = (
+    import.meta.env.VITE_ENTRA_API_SCOPES ||
+    import.meta.env.VITE_ENTRA_SCOPES
+  ) as string | undefined;
+
+  if (configuredScopes) {
+    return configuredScopes
+      .split(',')
+      .map((scope) => scope.trim())
+      .filter(Boolean);
+  }
+
+  return clientId ? [`api://${clientId}/access_as_user`] : [];
+}
+
 function readMsalConfig(): Configuration {
   const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID as string | undefined;
   if (!clientId) {
@@ -134,9 +156,11 @@ function MockSessionProvider({ children }: SessionProviderProps) {
   const session = readMockSession();
 
   return (
-    <SessionContext.Provider value={session}>
-      {children}
-    </SessionContext.Provider>
+    <AuthenticatedFetchContext.Provider value={fetch}>
+      <SessionContext.Provider value={session}>
+        {children}
+      </SessionContext.Provider>
+    </AuthenticatedFetchContext.Provider>
   );
 }
 
@@ -144,6 +168,10 @@ function MsalSessionBridge({ children }: SessionProviderProps) {
   const { instance, accounts, inProgress } = useMsal();
   const account = useAccount(accounts[0] ?? null);
   const loginScopes = useMemo(readLoginScopes, []);
+  const apiScopes = useMemo(
+    () => readApiScopes(import.meta.env.VITE_ENTRA_CLIENT_ID as string | undefined),
+    [],
+  );
 
   useEffect(() => {
     if (account || accounts.length > 0 || inProgress !== InteractionStatus.None) {
@@ -152,6 +180,30 @@ function MsalSessionBridge({ children }: SessionProviderProps) {
 
     void instance.loginRedirect({ scopes: loginScopes });
   }, [account, accounts.length, inProgress, instance, loginScopes]);
+
+  const authenticatedFetch = useMemo<AuthenticatedFetch>(() => createBearerAuthenticatedFetch(async () => {
+    if (!account) {
+      throw new Error('Cannot call protected API before sign-in completes.');
+    }
+
+    const request = {
+      account,
+      scopes: apiScopes,
+    };
+
+    try {
+      const result = await instance.acquireTokenSilent(request);
+      return result.accessToken;
+    } catch (error) {
+      if (error instanceof InteractionRequiredAuthError) {
+        await instance.acquireTokenRedirect({
+          ...request,
+          redirectStartPage: window.location.href,
+        });
+      }
+      throw error;
+    }
+  }), [account, apiScopes, instance]);
 
   if (!account) {
     return (
@@ -162,9 +214,11 @@ function MsalSessionBridge({ children }: SessionProviderProps) {
   }
 
   return (
-    <SessionContext.Provider value={sessionFromAccount(account)}>
-      {children}
-    </SessionContext.Provider>
+    <AuthenticatedFetchContext.Provider value={authenticatedFetch}>
+      <SessionContext.Provider value={sessionFromAccount(account)}>
+        {children}
+      </SessionContext.Provider>
+    </AuthenticatedFetchContext.Provider>
   );
 }
 
