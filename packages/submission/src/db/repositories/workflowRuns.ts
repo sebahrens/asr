@@ -6,6 +6,8 @@ export interface WorkflowRunRecord {
   submittedBy: string;
   serializedContext: string;
   context: ApprovalPipelineContext;
+  submissionLockVersion?: number;
+  submissionStatusPhase?: string;
 }
 
 interface WorkflowRunRow {
@@ -13,6 +15,8 @@ interface WorkflowRunRow {
   submitted_by: string;
   serialized_context: string;
   context_json: string;
+  lock_version: number;
+  status_phase: string;
 }
 
 export function getWorkflowRun(
@@ -26,7 +30,9 @@ export function getWorkflowRun(
           wr.submission_id,
           s.submitted_by,
           wr.serialized_context,
-          wr.context_json
+          wr.context_json,
+          s.lock_version,
+          s.status_phase
         FROM workflow_runs wr
         JOIN submissions s ON s.id = wr.submission_id
         WHERE wr.submission_id = ?
@@ -45,7 +51,9 @@ export function listWorkflowRuns(db: Database.Database): WorkflowRunRecord[] {
           wr.submission_id,
           s.submitted_by,
           wr.serialized_context,
-          wr.context_json
+          wr.context_json,
+          s.lock_version,
+          s.status_phase
         FROM workflow_runs wr
         JOIN submissions s ON s.id = wr.submission_id
         ORDER BY wr.updated_at DESC
@@ -101,5 +109,7 @@ function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRunRecord {
     submittedBy: row.submitted_by,
     serializedContext: row.serialized_context,
     context,
+    submissionLockVersion: row.lock_version,
+    submissionStatusPhase: row.status_phase,
   };
 }

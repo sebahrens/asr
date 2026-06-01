@@ -19,6 +19,10 @@ export interface SubmissionStatusUpdate {
   statusJson: string;
 }
 
+export interface ConditionalSubmissionStatusUpdate extends SubmissionStatusUpdate {
+  expectedStatusPhase: string;
+}
+
 export interface SubmissionRow {
   id: string;
   manifest_json: string;
@@ -192,6 +196,37 @@ export function updateSubmissionStatus(
       `,
     )
     .run(next.statusPhase, next.statusJson, id, expectedLockVersion);
+
+  return info.changes === 1;
+}
+
+export function updateSubmissionStatusIfCurrent(
+  db: Database.Database,
+  id: string,
+  expectedLockVersion: number,
+  next: ConditionalSubmissionStatusUpdate,
+): boolean {
+  const info = db
+    .prepare(
+      `
+        UPDATE submissions
+        SET
+          status_phase = ?,
+          status_json = ?,
+          lock_version = lock_version + 1
+        WHERE id = ?
+          AND lock_version = ?
+          AND status_phase = ?
+          AND status_phase NOT IN ('published', 'rejected', 'withdrawn')
+      `,
+    )
+    .run(
+      next.statusPhase,
+      next.statusJson,
+      id,
+      expectedLockVersion,
+      next.expectedStatusPhase,
+    );
 
   return info.changes === 1;
 }

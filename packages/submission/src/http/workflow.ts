@@ -6,7 +6,9 @@ import { requireRole } from '../auth/requireRole.js';
 import { SeparationOfDutiesError, assertSeparation } from '../auth/separation.js';
 import type { AuthVariables, Identity } from '../auth/types.js';
 import { getSkillVersion, insertSkillVersion } from '../db/repositories/skillVersions.js';
-import { getSubmissionById, updateSubmissionStatus } from '../db/repositories/submissions.js';
+import {
+  updateSubmissionStatusIfCurrent,
+} from '../db/repositories/submissions.js';
 import { forgejoFromEnv } from '../forgejo/index.js';
 import { ownerFromPrincipal } from '../identity/owners.js';
 import {
@@ -25,7 +27,7 @@ import { releasePendingVersion } from '../workflow/pendingVersionLock.js';
 
 type WorkflowNodeId = 'questionnaire' | 'confirmation' | 'review';
 
-const terminalWorkflowPhases = new Set<string>(['published', 'rejected', 'error']);
+const terminalWorkflowPhases = new Set<string>(['published', 'rejected', 'withdrawn', 'error']);
 const DEFAULT_SUBMISSIONS_PAGE_SIZE = 50;
 const MAX_SUBMISSIONS_PAGE_SIZE = 100;
 
@@ -34,6 +36,8 @@ export interface WorkflowSubmissionRecord {
   submittedBy: string;
   serializedContext: string;
   context: ApprovalPipelineContext;
+  submissionLockVersion?: number;
+  submissionStatusPhase?: string;
 }
 
 export interface WorkflowSubmissionStore {
@@ -146,6 +150,9 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       roles: identity.roles,
       responses: body.responses,
     }, dependencies, now);
+    if (!result) {
+      return staleSubmissionError(c);
+    }
 
     return c.json({ status: result.context.submission.status });
   });
@@ -199,6 +206,9 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       roles: identity.roles,
       confirmed: true,
     }, dependencies, now);
+    if (!result) {
+      return staleSubmissionError(c);
+    }
 
     return c.json({ status: result.context.submission.status });
   });
@@ -232,6 +242,9 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       roles: identity.roles,
       decision: 'approved',
     }, dependencies, now);
+    if (!result) {
+      return staleSubmissionError(c);
+    }
     const publishedAt = now().toISOString();
     const status = {
       phase: 'published',
@@ -269,12 +282,15 @@ export function createWorkflowRoutes(options: WorkflowRouteOptions = {}) {
       return apiError(c, 400, 'invalid_manifest', { message: 'reason must be 10-500 characters' });
     }
 
-    await resumeAndSave(options, store, record, 'review', {
+    const result = await resumeAndSave(options, store, record, 'review', {
       actor: identity.sub,
       roles: identity.roles,
       decision: 'rejected',
       reason: body.reason,
     }, dependencies, now);
+    if (!result) {
+      return staleSubmissionError(c);
+    }
 
     return c.json({ status: rejectedStatus(now(), body.reason) });
   });
@@ -351,30 +367,66 @@ async function resumeAndSave(
       status,
     },
   };
-  await store.save({
-    ...record,
-    serializedContext: result.serializedContext,
-    context,
-  });
   if (options.db) {
     const db = options.db;
-    updatePersistedSubmissionStatus(db, record.id, status);
-    if (isTerminalSubmissionStatus(status)) {
-      try {
-        if (status.phase === 'published') {
-          persistPublishedVersion(db, record.id, record.submittedBy, context, status);
-          await options.regenerateRegistryIndex?.();
-        }
-      } finally {
-        releasePendingVersion(db, context.manifest.name, context.manifest.version);
-      }
+    const persisted = persistWorkflowResume(db, record, result.serializedContext, context, status, now);
+    if (!persisted) {
+      return undefined;
     }
+    if (status.phase === 'published') {
+      await options.regenerateRegistryIndex?.();
+    }
+  } else {
+    await store.save({
+      ...record,
+      serializedContext: result.serializedContext,
+      context,
+    });
   }
   return { ...result, context };
 }
 
+function persistWorkflowResume(
+  db: Database.Database,
+  record: WorkflowSubmissionRecord,
+  serializedContext: string,
+  context: ApprovalPipelineContext,
+  status: SubmissionStatus,
+  now: () => Date,
+): boolean {
+  return db.transaction(() => {
+    const expectedLockVersion = record.submissionLockVersion;
+    const expectedStatusPhase = record.submissionStatusPhase ?? currentWorkflowPhase(record);
+    if (expectedLockVersion === undefined || expectedStatusPhase === undefined) {
+      return false;
+    }
+
+    const updated = updateSubmissionStatusIfCurrent(db, record.id, expectedLockVersion, {
+      statusPhase: status.phase,
+      statusJson: JSON.stringify(status),
+      expectedStatusPhase,
+    });
+    if (!updated) {
+      return false;
+    }
+
+    saveWorkflowRun(db, {
+      ...record,
+      serializedContext,
+      context,
+    }, now());
+    if (isTerminalSubmissionStatus(status) && status.phase === 'published') {
+      persistPublishedVersion(db, record.id, record.submittedBy, context, status);
+    }
+    if (isTerminalSubmissionStatus(status)) {
+      releasePendingVersion(db, context.manifest.name, context.manifest.version);
+    }
+    return true;
+  })();
+}
+
 function isTerminalSubmissionStatus(status: SubmissionStatus): boolean {
-  return status.phase === 'published' || status.phase === 'rejected';
+  return status.phase === 'published' || status.phase === 'rejected' || status.phase === 'withdrawn';
 }
 
 function persistPublishedVersion(
@@ -405,21 +457,6 @@ function persistPublishedVersion(
     yanked_at: null,
     yanked_by: null,
     yank_reason: null,
-  });
-}
-
-function updatePersistedSubmissionStatus(
-  db: Database.Database,
-  submissionId: string,
-  status: SubmissionStatus,
-): void {
-  const row = getSubmissionById(db, submissionId);
-  if (!row) {
-    return;
-  }
-  updateSubmissionStatus(db, submissionId, row.lock_version, {
-    statusPhase: status.phase,
-    statusJson: JSON.stringify(status),
   });
 }
 
@@ -641,7 +678,7 @@ function isSubmitter(record: WorkflowSubmissionRecord, identity: Identity): bool
 }
 
 function currentWorkflowPhase(record: WorkflowSubmissionRecord): string | undefined {
-  return record.context.status ?? record.context.submission.status.phase;
+  return record.submissionStatusPhase ?? record.context.status ?? record.context.submission.status.phase;
 }
 
 function isTerminalWorkflowRecord(record: WorkflowSubmissionRecord): boolean {
@@ -668,6 +705,12 @@ function terminalStateError(c: Parameters<typeof apiError>[0], record: WorkflowS
   const phase = currentWorkflowPhase(record) ?? 'unknown';
   return apiError(c, 409, 'submission_not_in_expected_state', {
     message: `submission is already ${phase}`,
+  });
+}
+
+function staleSubmissionError(c: Parameters<typeof apiError>[0]): Response {
+  return apiError(c, 409, 'submission_not_in_expected_state', {
+    message: 'submission state changed while the workflow was resuming',
   });
 }
 

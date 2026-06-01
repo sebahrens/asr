@@ -1,7 +1,7 @@
 import { ForgejoClient, type AuditAction, type ScanReport, type SkillManifest, type Submission } from '@asr/core';
 import Database from 'better-sqlite3';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import yazl from 'yazl';
 import type { AuthVariables, Identity } from '../auth/types.js';
 import { runMigrations } from '../db/migrations/index.js';
@@ -18,6 +18,7 @@ describe('POST /api/v1/submissions (Flowcraft pipeline)', () => {
   afterEach(() => {
     db?.close();
     db = undefined;
+    vi.unstubAllEnvs();
   });
 
   it('publishes an md-only submission through Flowcraft and exposes published status via GET', async () => {
@@ -337,6 +338,94 @@ describe('POST /api/v1/submissions (Flowcraft pipeline)', () => {
       version: '1.0.0',
       approved_by: 'reviewer-1',
     });
+  });
+
+  it('rejects stale workflow approval after the submission is withdrawn', async () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    const forgejo = new FakeForgejoClient();
+    const dependencies = makeDependencies(forgejo, makeScanReport('pass'));
+    const app = new Hono<{ Variables: AuthVariables }>();
+    let identity: Identity = { sub: 'alice-entra-sub', roles: ['Submitter'] };
+    app.use('*', async (c, next) => {
+      c.set('identity', identity);
+      await next();
+    });
+    app.route(
+      '/api/v1/submissions',
+      createSubmissionRoutes({
+        db,
+        forgejo: forgejo as unknown as ForgejoClient,
+        workflowDependencies: dependencies,
+      }),
+    );
+    app.route('/api/v1/submissions', createWorkflowRoutes({ db, dependencies }));
+
+    const zipBytes = await buildZip([
+      {
+        path: 'SKILL.md',
+        contents: skillMdFixture({ name: 'stale-workflow-skill', version: '1.0.0', author: 'alice' }),
+      },
+      { path: 'run.py', contents: 'print("hi")\n' },
+    ]);
+    const formData = new FormData();
+    formData.set(
+      'file',
+      new Blob([new Uint8Array(zipBytes)], { type: 'application/zip' }),
+      'skill.zip',
+    );
+
+    const createdRes = await app.request('/api/v1/submissions', {
+      method: 'POST',
+      body: formData,
+    });
+    const created = (await createdRes.json()) as { id: string };
+
+    await app.request(`/api/v1/submissions/${created.id}/questionnaire`, {
+      method: 'POST',
+      body: JSON.stringify({ responses: [{ questionId: 'network', answer: false }] }),
+      headers: { 'content-type': 'application/json' },
+    });
+    await app.request(`/api/v1/submissions/${created.id}/confirm`, { method: 'POST' });
+
+    const staleRecord = getWorkflowRun(db, created.id);
+    expect(staleRecord?.context.status).toBe('compliance-review');
+
+    vi.stubEnv('AUDIT_HMAC_KEY_ID', 'k-test');
+    vi.stubEnv('AUDIT_HMAC_KEY_BYTES', Buffer.alloc(32, 0x42).toString('base64'));
+    const withdrawRes = await app.request(`/api/v1/submissions/${created.id}`, {
+      method: 'DELETE',
+    });
+    expect(withdrawRes.status).toBe(200);
+    expect(getWorkflowRun(db, created.id)?.context.status).toBe('withdrawn');
+
+    const staleStore = {
+      get: vi.fn(() => staleRecord),
+      save: vi.fn(),
+    };
+    const staleApp = new Hono<{ Variables: AuthVariables }>();
+    staleApp.use('*', async (c, next) => {
+      c.set('identity', { sub: 'reviewer-1', roles: ['Compliance'] });
+      await next();
+    });
+    staleApp.route(
+      '/api/v1/submissions',
+      createWorkflowRoutes({ db, dependencies, store: staleStore }),
+    );
+
+    const approveRes = await staleApp.request(`/api/v1/submissions/${created.id}/approve`, {
+      method: 'POST',
+    });
+    expect(approveRes.status).toBe(409);
+    await expect(approveRes.json()).resolves.toMatchObject({
+      error: 'submission_not_in_expected_state',
+    });
+    expect(staleStore.save).not.toHaveBeenCalled();
+    expect(
+      db.prepare('SELECT status_phase FROM submissions WHERE id = ?').pluck().get(created.id),
+    ).toBe('withdrawn');
+    expect(getSkillVersion(db, 'stale-workflow-skill', '1.0.0', 'alice-entra-sub')).toBeUndefined();
   });
 
   it('rejects approval when the authenticated submitter is also the Compliance reviewer', async () => {

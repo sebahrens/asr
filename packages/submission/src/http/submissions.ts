@@ -148,6 +148,20 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
       if (!ok) {
         return false;
       }
+      const workflowRun = getWorkflowRun(options.db!, id);
+      if (workflowRun) {
+        saveWorkflowRun(options.db!, {
+          ...workflowRun,
+          context: {
+            ...workflowRun.context,
+            status: nextStatus.phase,
+            submission: {
+              ...workflowRun.context.submission,
+              status: nextStatus,
+            },
+          },
+        }, now());
+      }
       releasePendingVersion(options.db!, manifest.name, manifest.version);
       emitAudit(options.db!, {
         action: 'submission.withdrawn',
