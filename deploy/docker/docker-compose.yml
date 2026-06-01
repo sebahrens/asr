@@ -72,7 +72,7 @@ services:
         - VITE_ENABLE_MOCK_AUTH=true
     container_name: asr-web
     ports:
-      - "5173:5173"
+      - "5173:80"
     depends_on:
       - api
     restart: unless-stopped
