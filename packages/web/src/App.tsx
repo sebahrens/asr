@@ -73,6 +73,28 @@ interface QuestionnaireDraft {
 
 type ParsedSkillMd = ReturnType<typeof parseSkillMd>;
 
+export function SkillMarkdownPreview({ markdown }: { markdown: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        a({ children, href }) {
+          return (
+            <a href={href} target="_blank" rel="noopener noreferrer">
+              {children}
+            </a>
+          );
+        },
+        img() {
+          return null;
+        },
+      }}
+    >
+      {markdown}
+    </ReactMarkdown>
+  );
+}
+
 const publishWizardSteps: { id: PublishWizardStep; label: string }[] = [
   { id: 'upload', label: 'Upload' },
   { id: 'manifest', label: 'Manifest' },
@@ -1826,20 +1848,7 @@ function SkillDetailPage({ owner, name }: { owner: string; name: string }) {
           >
             {activeTab === 'preview' && (
               <div className="skill-content">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    a({ children, href }) {
-                      return (
-                        <a href={href} target="_blank" rel="noopener noreferrer">
-                          {children}
-                        </a>
-                      );
-                    },
-                  }}
-                >
-                  {markdownPreview}
-                </ReactMarkdown>
+                <SkillMarkdownPreview markdown={markdownPreview} />
               </div>
             )}
 

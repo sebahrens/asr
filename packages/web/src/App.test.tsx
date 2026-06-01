@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SkillSummary } from '@asr/core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowseRegistry, SessionProvider } from './App';
+import { BrowseRegistry, SessionProvider, SkillMarkdownPreview } from './App';
 import { BrandProvider } from './branding/BrandProvider';
 
 const skills = [
@@ -171,5 +171,20 @@ describe('BrowseRegistry skill card tags (asr-d5yj)', () => {
     });
     expect(screen.getByText('release-notes')).toBeInTheDocument();
     expect(container.querySelector('.skill-card a[href] button')).toBeNull();
+  });
+});
+
+describe('SkillMarkdownPreview security (asr-69om)', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('does not render markdown images from untrusted SKILL.md content', () => {
+    const { container } = render(
+      <SkillMarkdownPreview markdown={'# Preview\n\n![tracking pixel](https://attacker.example/pixel.png)\n\n[docs](https://example.com)'} />,
+    );
+
+    expect(container.querySelector('img')).toBeNull();
+    expect(screen.getByRole('link', { name: 'docs' })).toHaveAttribute('rel', 'noopener noreferrer');
   });
 });
