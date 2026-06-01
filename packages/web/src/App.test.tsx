@@ -117,7 +117,8 @@ describe('BrowseRegistry empty state (asr-4e0)', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'asr' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'asr' })).toHaveAttribute('src', '/logo.svg');
     expect(screen.queryByRole('button', { name: /switch brand/i })).not.toBeInTheDocument();
-    expect(container.textContent).not.toMatch(/Agent Skill Registry|Agent Skill Repository|Skill Registry|PwC/);
+    expect(container.textContent).toMatch(/asr/);
+    expect(container.textContent).not.toMatch(/Agent Skill Repository|Agent Skill Registry|Skill Registry|PwC/);
   });
 });
 
