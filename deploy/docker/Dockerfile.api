@@ -9,6 +9,7 @@ RUN apt-get update \
 RUN corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY scripts/check-node-version.mjs scripts/check-node-version.mjs
 COPY packages/core/package.json packages/core/package.json
 COPY packages/submission/package.json packages/submission/package.json
 
