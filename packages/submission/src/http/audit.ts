@@ -11,17 +11,22 @@ import {
   getByUser,
 } from '../db/repositories/auditEvents.js';
 import { getSubmissionById } from '../db/repositories/submissions.js';
+import { createRateLimiter, type RateLimiter } from '../mcp/rateLimit.js';
 import { apiError } from './errors.js';
 import { getDefaultRegistryDb } from './registry.js';
 
 export interface AuditRouteOptions {
   db?: Database.Database;
   keys?: KeyRing | (() => KeyRing);
+  limiter?: RateLimiter;
 }
+
+const defaultAuditVerifyLimiter = createRateLimiter();
 
 export function createAuditRoutes(options: AuditRouteOptions = {}) {
   const routes = new Hono<{ Variables: AuthVariables }>();
   const db = options.db ?? getDefaultRegistryDb();
+  const limiter = options.limiter ?? defaultAuditVerifyLimiter;
   const resolveKeys = (): KeyRing => {
     if (!options.keys) return loadKeyRing();
     return typeof options.keys === 'function' ? options.keys() : options.keys;
@@ -116,11 +121,21 @@ export function createAuditRoutes(options: AuditRouteOptions = {}) {
     );
   });
 
-  // TODO(asr-3f8): rate-limit this admin-only chain scan (specs/audit.md L189).
   routes.get(
     '/verify',
     requireRole('Admin'),
-    (c) => c.json(verifyChain(db, resolveKeys())),
+    (c) => {
+      const identity = c.get('identity');
+      const limit = limiter.check(identity.sub, 'audit_verify');
+      if (!limit.ok) {
+        c.header('Retry-After', String(limit.retryAfterSeconds));
+        return apiError(c, 429, 'too_many_requests', {
+          retryAfterSeconds: limit.retryAfterSeconds,
+        });
+      }
+
+      return c.json(verifyChain(db, resolveKeys()));
+    },
   );
 
   return routes;

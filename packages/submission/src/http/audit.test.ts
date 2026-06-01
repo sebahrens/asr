@@ -6,6 +6,7 @@ import { loadKeyRing } from '../audit/keyring.js';
 import type { VerifyResult } from '../audit/verify.js';
 import type { AuthVariables, Identity } from '../auth/types.js';
 import { runMigrations } from '../db/migrations/index.js';
+import type { RateLimiter } from '../mcp/rateLimit.js';
 import { createAuditRoutes } from './audit.js';
 
 const HMAC_KEY_BYTES = Buffer.alloc(32, 0x42);
@@ -42,13 +43,17 @@ function seedSubmission(
   );
 }
 
-function makeApp(db: Database.Database, identity: Identity | null) {
+function makeApp(
+  db: Database.Database,
+  identity: Identity | null,
+  limiter?: RateLimiter,
+) {
   const app = new Hono<{ Variables: AuthVariables }>();
   app.use('*', async (c, next) => {
     if (identity) c.set('identity', identity);
     await next();
   });
-  app.route('/api/v1/audit', createAuditRoutes({ db, keys: loadKeyRing() }));
+  app.route('/api/v1/audit', createAuditRoutes({ db, keys: loadKeyRing(), limiter }));
   return app;
 }
 
@@ -216,6 +221,27 @@ describe('GET /api/v1/audit routes', () => {
     expect(result.valid).toBe(true);
     expect(result.eventCount).toBe(4);
     expect(result.lastHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('GET /verify returns 429 with retryAfterSeconds when the Admin principal is rate-limited', async () => {
+    const checks: Array<{ principalSub: string; tool: string }> = [];
+    const limiter: RateLimiter = {
+      check(principalSub, tool) {
+        checks.push({ principalSub, tool });
+        return { ok: false, retryAfterSeconds: 12 };
+      },
+    };
+    const app = makeApp(db!, { sub: 'admin-sub', roles: ['Admin'] }, limiter);
+
+    const res = await app.request('/api/v1/audit/verify');
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('12');
+    expect(await res.json()).toEqual({
+      error: 'too_many_requests',
+      retryAfterSeconds: 12,
+    });
+    expect(checks).toEqual([{ principalSub: 'admin-sub', tool: 'audit_verify' }]);
   });
 
   it('GET /verify as Compliance returns 403', async () => {
