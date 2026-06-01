@@ -218,6 +218,54 @@ describe('GET /api/v1/submissions/:id', () => {
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe('submission_not_found');
   });
+
+  it('returns 200 for the submitter owner', async () => {
+    const submission = makeSubmission({ id: 'sub-1', submittedBy: 'submitter-1' });
+    const app = makeLookupApp(submission, { sub: 'submitter-1', roles: ['Submitter'] });
+
+    const res = await app.request('/api/v1/submissions/sub-1');
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Submission;
+    expect(body.id).toBe('sub-1');
+  });
+
+  it.each([
+    ['Compliance', { sub: 'reviewer-1', roles: ['Compliance'] }],
+    ['Admin', { sub: 'admin-1', roles: ['Admin'] }],
+  ] satisfies Array<[string, Identity]>)('returns 200 for a %s caller', async (_role, identity) => {
+    const submission = makeSubmission({ id: 'sub-1', submittedBy: 'submitter-1' });
+    const app = makeLookupApp(submission, identity);
+
+    const res = await app.request('/api/v1/submissions/sub-1');
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Submission;
+    expect(body.id).toBe('sub-1');
+  });
+
+  it('returns 403 for a non-owner submitter', async () => {
+    const submission = makeSubmission({ id: 'sub-1', submittedBy: 'submitter-1' });
+    const app = makeLookupApp(submission, { sub: 'submitter-2', roles: ['Submitter'] });
+
+    const res = await app.request('/api/v1/submissions/sub-1');
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({ error: 'insufficient_permissions' });
+  });
+
+  it('returns 403 for an authenticated caller without an allowed role', async () => {
+    const submission = makeSubmission({ id: 'sub-1', submittedBy: 'submitter-1' });
+    const app = makeLookupApp(submission, { sub: 'submitter-1', roles: [] });
+
+    const res = await app.request('/api/v1/submissions/sub-1');
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({
+      error: 'insufficient_permissions',
+      required: 'Submitter,Compliance,Admin',
+    });
+  });
 });
 
 describe('GET /api/v1/submissions/:id/screening', () => {
@@ -398,6 +446,47 @@ function insertRowToSubmission(row: SubmissionInsertRow): Submission {
     ...(row.branchName != null ? { branchName: row.branchName } : {}),
     ...(row.prNumber != null ? { prNumber: row.prNumber } : {}),
     status,
+  };
+}
+
+function makeLookupApp(submission: Submission, identity: Identity) {
+  const app = new Hono<{ Variables: AuthVariables }>();
+  app.use('*', async (c, next) => {
+    c.set('identity', identity);
+    await next();
+  });
+  app.route(
+    '/api/v1/submissions',
+    createSubmissionRoutes({
+      persist: () => {},
+      lookup: (id) => (id === submission.id ? submission : undefined),
+    }),
+  );
+  return app;
+}
+
+function makeSubmission(input: { id: string; submittedBy: string }): Submission {
+  return {
+    id: input.id,
+    manifest: {
+      name: 'demo-skill',
+      version: '1.0.0',
+      author: 'alice',
+      description: 'A demo skill for integration testing',
+      tags: ['demo'],
+      kind: 'skill',
+      permissions: {
+        network: false,
+        filesystem: 'none',
+        subprocess: false,
+        environment: [],
+      },
+    },
+    classification: 'md-only',
+    contentHash: `${input.id}-hash`,
+    submittedAt: '2026-05-30T00:00:00.000Z',
+    submittedBy: input.submittedBy,
+    status: { phase: 'uploaded' },
   };
 }
 

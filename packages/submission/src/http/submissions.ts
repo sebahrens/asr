@@ -212,7 +212,12 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
     return c.json(report satisfies ScreeningReport);
   });
 
-  routes.get('/:id', async (c, next) => {
+  routes.get('/:id', requireRole('Submitter', 'Compliance', 'Admin'), async (c, next) => {
+    const identity = c.get('identity');
+    if (!identity) {
+      return apiError(c, 401, 'authentication_required');
+    }
+
     const id = c.req.param('id');
     const submission = lookup ? await lookup(id) : undefined;
     if (!submission) {
@@ -223,6 +228,9 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
         }
       }
       return apiError(c, 404, 'submission_not_found');
+    }
+    if (!canViewSubmission(submission, identity)) {
+      return apiError(c, 403, 'insufficient_permissions');
     }
     return c.json(submission);
   });
