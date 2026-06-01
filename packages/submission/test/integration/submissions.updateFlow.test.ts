@@ -142,6 +142,84 @@ describe('POST /api/v1/submissions update flow', () => {
     expect(persistedStatus.approvalPath).toBe('full-review');
   });
 
+  it('scopes the prior snapshot to the submitter owner when published versions collide', async () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    const otherOwnerSkillMd = skillMdFixture({
+      name: SKILL_NAME,
+      version: PRIOR_VERSION,
+      author: 'bob',
+      description: 'Other owner release',
+    });
+    const alicePriorSkillMd = skillMdFixture({
+      name: SKILL_NAME,
+      version: PRIOR_VERSION,
+      author: 'alice',
+      description: 'Alice owner release',
+    });
+    const alicePrior = seedPriorVersion(db, {
+      owner: 'alice',
+      submissionId: 'prior-submission-alice',
+      skillName: SKILL_NAME,
+      version: PRIOR_VERSION,
+      manifest: parseManifestFromMd(alicePriorSkillMd),
+      files: [{ path: 'SKILL.md', content: Buffer.from(alicePriorSkillMd) }],
+    });
+    seedPriorVersion(db, {
+      owner: 'bob',
+      submissionId: 'prior-submission-bob',
+      skillName: SKILL_NAME,
+      version: PRIOR_VERSION,
+      manifest: parseManifestFromMd(otherOwnerSkillMd),
+      files: [{ path: 'SKILL.md', content: Buffer.from(otherOwnerSkillMd) }],
+    });
+
+    const priorFileCalls: Array<{ skillName: string; version: string; owner: string }> = [];
+    const getPriorFiles: GetPriorFiles = async (skillName, version, owner) => {
+      priorFileCalls.push({ skillName, version, owner });
+      return owner === 'alice'
+        ? [{ path: 'SKILL.md', content: Buffer.from(alicePriorSkillMd) }]
+        : [{ path: 'SKILL.md', content: Buffer.from(otherOwnerSkillMd) }];
+    };
+
+    const newSkillMd = skillMdFixture({
+      name: SKILL_NAME,
+      version: '1.1.0',
+      author: 'alice',
+      description: 'Alice update',
+    });
+
+    const app = makeApp(db, getPriorFiles);
+    const res = await app.request('/api/v1/submissions', {
+      method: 'POST',
+      body: await buildFormData([{ path: 'SKILL.md', contents: newSkillMd }]),
+    });
+
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      id: string;
+      status: { phase: string; approvalPath?: string };
+    };
+    expect(body.status.approvalPath).toBe('auto-approve');
+    expect(priorFileCalls).toEqual([
+      { skillName: SKILL_NAME, version: PRIOR_VERSION, owner: 'alice' },
+    ]);
+
+    const diffRow = db
+      .prepare('SELECT diff_json FROM version_diffs WHERE submission_id = ?')
+      .get(body.id) as { diff_json: string } | undefined;
+    expect(diffRow).toBeDefined();
+    const diff = JSON.parse(diffRow!.diff_json) as {
+      fromContentHash: string | null;
+      filesModified: string[];
+      filesAdded: string[];
+    };
+    expect(diff.fromContentHash).toBe(alicePrior.contentHash);
+    expect(diff.filesModified).toEqual(['SKILL.md']);
+    expect(diff.filesAdded).toEqual([]);
+  });
+
   it('returns 409 version_not_greater when the submitted version is lower than the current published version', async () => {
     db = new Database(':memory:');
     runMigrations(db);
@@ -229,15 +307,21 @@ function makeFakeForgejo() {
 }
 
 interface SeedInput {
+  owner?: string;
+  submissionId?: string;
   skillName: string;
   version: string;
   manifest: SkillManifest;
   files: Array<{ path: string; content: Buffer }>;
 }
 
-function seedPriorVersion(db: Database.Database, input: SeedInput): void {
-  const submissionId = 'prior-submission-1';
-  const contentHash = `sha256:prior-${input.skillName}-${input.version}`;
+function seedPriorVersion(
+  db: Database.Database,
+  input: SeedInput,
+): { contentHash: string; submissionId: string } {
+  const owner = input.owner ?? 'alice';
+  const submissionId = input.submissionId ?? 'prior-submission-1';
+  const contentHash = `sha256:prior-${owner}-${input.skillName}-${input.version}`;
 
   db.prepare(
     `
@@ -253,7 +337,7 @@ function seedPriorVersion(db: Database.Database, input: SeedInput): void {
     'md-only',
     contentHash,
     '2026-05-20T00:00:00.000Z',
-    'alice',
+    owner,
     'published',
     JSON.stringify({
       phase: 'published',
@@ -272,13 +356,13 @@ function seedPriorVersion(db: Database.Database, input: SeedInput): void {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
-    'alice',
+    owner,
     input.skillName,
     input.version,
     contentHash,
     submissionId,
     '2026-05-20T00:00:00.000Z',
-    'alice',
+    owner,
     null,
     1,
     'prior-merge-sha',
@@ -291,6 +375,7 @@ function seedPriorVersion(db: Database.Database, input: SeedInput): void {
 
   // input.files is reserved for future use (e.g., a real file-store seeding helper).
   void input.files;
+  return { contentHash, submissionId };
 }
 
 function skillMdFixture(input: {

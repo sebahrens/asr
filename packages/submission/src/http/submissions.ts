@@ -64,6 +64,7 @@ export type SubmissionLookup = (
 export type GetPriorFiles = (
   skillName: string,
   version: string,
+  owner: string,
 ) => Promise<Array<{ path: string; content: Buffer }> | null | undefined>;
 
 export interface SubmissionRouteOptions {
@@ -302,6 +303,7 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
       if (submittedBy.trim() === '') {
         return apiError(c, 401, 'authentication_required');
       }
+      const owner = ownerFromPrincipal(submittedBy);
 
       if (db) {
         const blocked = getBlockedHash(db, contentHash);
@@ -317,7 +319,7 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
           });
         }
 
-        currentVersion = resolveLatestVersion(db, manifest.name, ownerFromPrincipal(submittedBy));
+        currentVersion = resolveLatestVersion(db, manifest.name, owner);
 
         if (currentVersion !== undefined) {
           const upgrade = validateVersionUpgrade(manifest.version, currentVersion);
@@ -337,6 +339,7 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
             db,
             manifest.name,
             currentVersion,
+            owner,
             options.getPriorFiles,
           );
           const incomingSnapshot: VersionSnapshot = {
@@ -591,9 +594,10 @@ async function buildPriorSnapshot(
   db: Database.Database,
   skillName: string,
   currentVersion: string,
+  owner: string,
   getPriorFiles: GetPriorFiles | undefined,
 ): Promise<VersionSnapshot | null> {
-  const versionRow = getSkillVersion(db, skillName, currentVersion);
+  const versionRow = getSkillVersion(db, skillName, currentVersion, owner);
   if (versionRow === undefined) {
     return null;
   }
@@ -610,7 +614,7 @@ async function buildPriorSnapshot(
     return null;
   }
 
-  const priorFiles = getPriorFiles ? await getPriorFiles(skillName, currentVersion) : null;
+  const priorFiles = getPriorFiles ? await getPriorFiles(skillName, currentVersion, owner) : null;
 
   return {
     version: versionRow.version,
