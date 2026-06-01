@@ -529,8 +529,10 @@ function PublishSkill() {
   }
 
   useEffect(() => {
-    if (validationSummary.length > 0) {
-      validationSummaryRef.current?.focus();
+    const validationSummaryElement = validationSummaryRef.current;
+    if (validationSummary.length > 0 && validationSummaryElement) {
+      validationSummaryElement.focus({ preventScroll: true });
+      validationSummaryElement.scrollIntoView?.({ block: 'start', inline: 'nearest' });
     }
   }, [validationSummary]);
 

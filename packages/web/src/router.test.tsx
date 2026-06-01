@@ -423,6 +423,12 @@ describe('router', () => {
 
   it('keeps upload advancement disabled while required fields are missing', () => {
     const { container } = renderPublishRoute();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    });
 
     const continueButton = screen.getByRole('button', { name: /^continue$/i });
     expect(continueButton).toBeDisabled();
@@ -447,6 +453,16 @@ describe('router', () => {
     expect(within(summary).getByRole('link', { name: /upload a skill archive/i })).toHaveAttribute('href', '#publish-archive');
     expect(within(summary).getByRole('link', { name: /paste the skill.md content/i })).toHaveAttribute('href', '#publish-skill-md');
     expect(summary).toHaveFocus();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start', inline: 'nearest' });
+
+    if (originalScrollIntoView) {
+      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: originalScrollIntoView,
+      });
+    } else {
+      delete (HTMLElement.prototype as { scrollIntoView?: Element['scrollIntoView'] }).scrollIntoView;
+    }
   });
 
   it('marks every required upload-step field with aria-required and a visible indicator', () => {

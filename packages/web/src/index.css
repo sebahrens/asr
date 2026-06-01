@@ -1395,6 +1395,7 @@ main {
   font-size: 0.86rem;
   font-weight: 700;
   padding: 12px 14px;
+  scroll-margin-top: calc(var(--sticky-header-offset) + 16px);
 }
 
 .publish-validation-summary:focus {
