@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFile } from 'node:child_process';
-import { createHmac, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -444,31 +444,6 @@ function encodeBase32(value, length) {
   return output;
 }
 
-function canonicalJson(value) {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => canonicalJson(item)).join(',')}]`;
-  }
-
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
-      .join(',')}}`;
-  }
-
-  return JSON.stringify(value);
-}
-
-function signReport(report) {
-  const key = process.env.SCAN_SIGNING_KEY;
-  if (!key) return report;
-
-  return {
-    ...report,
-    signature: createHmac('sha256', key).update(canonicalJson(report)).digest('hex'),
-  };
-}
-
 function buildToolResults(results) {
   return Object.fromEntries(
     TOOLS.map((tool) => {
@@ -501,7 +476,7 @@ async function main() {
   const findings = results.flatMap((result) => result.findings);
   const toolResults = buildToolResults(results);
 
-  const report = signReport({
+  const report = {
     submissionId: process.env.SUBMISSION_ID || 'unknown',
     scanId: createUlid(new Date(start)),
     contentHash: process.env.CONTENT_HASH || '',
@@ -512,7 +487,7 @@ async function main() {
     verdict: computeVerdict(findings, toolResults),
     findings,
     toolResults,
-  });
+  };
 
   const json = JSON.stringify(report, null, 2);
   await writeFile(join(OUTPUT_DIR, 'report.json'), `${json}\n`);

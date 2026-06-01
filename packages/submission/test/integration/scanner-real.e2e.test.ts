@@ -52,8 +52,8 @@ describe.skipIf(!shouldRunScannerE2E)('scanner container integration — real sk
           extractedDir: skillDir,
         });
 
-        // runScanner already throws on verdict mismatch / bad signature, so a
-        // returned report is internally consistent. Pin down the shape here.
+        // runScanner already throws on verdict or metadata mismatch, then signs
+        // the accepted report on the host. Pin down the shape here.
         expect(['pass', 'review_required', 'block']).toContain(report.verdict);
         expect(report.signature).toEqual(expect.any(String));
         expect(report.submissionId).toBe(`sub_real_${skill.name}`);

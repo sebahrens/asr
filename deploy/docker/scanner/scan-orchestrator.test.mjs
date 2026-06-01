@@ -20,7 +20,7 @@ test('blocks when gitleaks reports a secret finding', async () => {
     assert.equal(result.report.verdict, 'block');
     assert.ok(result.report.toolResults.gitleaks.findingCount >= 1);
     assert.equal(result.report.findings[0].severity, 'high');
-    assert.match(result.report.signature, /^[a-f0-9]{64}$/);
+    assert.equal(result.report.signature, undefined);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -333,7 +333,6 @@ async function runOrchestrator(fixture, extraEnv = {}) {
         SUBMISSION_ID: 'sub-test',
         CONTENT_HASH: 'sha256:test',
         SCANNER_IMAGE: 'asr-scanner:test',
-        SCAN_SIGNING_KEY: 'test-key',
         GITLEAKS_CONFIG: resolve('deploy/docker/scanner/gitleaks.toml'),
         ...extraEnv,
       },

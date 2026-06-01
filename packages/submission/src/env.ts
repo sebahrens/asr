@@ -151,7 +151,7 @@ export function parseEnv(raw: NodeJS.ProcessEnv): Env {
     !env.SCAN_SIGNING_KEY &&
     env.SCAN_SIGNING_DISABLED === 'true'
   ) {
-    console.warn('WARNING: scanner report signature verification is disabled');
+    console.warn('WARNING: scanner report signing is disabled');
   }
   return env;
 }

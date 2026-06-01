@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -82,9 +82,9 @@ export async function runScanner(
     });
 
     const report = parseReport(result.stdout);
+    assertReportMetadata(report, input, scannerImage);
     assertExpectedVerdict(report, severityThreshold);
-    assertSignature(report, signingKey);
-    return report;
+    return signingKey ? signReport(report, signingKey) : stripSignature(report);
   } finally {
     await rm(outputDir, { recursive: true, force: true });
   }
@@ -114,8 +114,6 @@ function buildDockerArgs(input: RunScannerInput, outputDir: string, scannerImage
     'SCAN_SEVERITY_THRESHOLD',
     '--env',
     'SCAN_TIMEOUT_SECONDS',
-    '--env',
-    'SCAN_SIGNING_KEY',
   ];
 
   for (const name of veracodeEnvNames) {
@@ -134,14 +132,14 @@ function buildContainerEnv(
   severityThreshold: ScanSeverity,
   timeoutSeconds: number,
 ): NodeJS.ProcessEnv {
+  const { SCAN_SIGNING_KEY: _scanSigningKey, ...containerEnv } = process.env;
   return {
-    ...process.env,
+    ...containerEnv,
     SUBMISSION_ID: input.submissionId,
     CONTENT_HASH: input.contentHash,
     SCANNER_IMAGE: scannerImage,
     SCAN_SEVERITY_THRESHOLD: severityThreshold,
     SCAN_TIMEOUT_SECONDS: String(timeoutSeconds),
-    SCAN_SIGNING_KEY: process.env.SCAN_SIGNING_KEY ?? '',
   };
 }
 
@@ -150,6 +148,30 @@ function parseReport(stdout: string): ScanReport {
     return JSON.parse(stdout.trim()) as ScanReport;
   } catch (error) {
     throw new Error(`Scanner did not return valid JSON: ${errorMessage(error)}`);
+  }
+}
+
+function assertReportMetadata(
+  report: ScanReport,
+  input: RunScannerInput,
+  scannerImage: string,
+): void {
+  if (report.submissionId !== input.submissionId) {
+    throw new Error(
+      `Scanner report submissionId mismatch: expected ${input.submissionId}, received ${report.submissionId}`,
+    );
+  }
+
+  if (report.contentHash !== input.contentHash) {
+    throw new Error(
+      `Scanner report contentHash mismatch: expected ${input.contentHash}, received ${report.contentHash}`,
+    );
+  }
+
+  if (report.scannerImage !== scannerImage) {
+    throw new Error(
+      `Scanner report image mismatch: expected ${scannerImage}, received ${report.scannerImage}`,
+    );
   }
 }
 
@@ -162,27 +184,17 @@ function assertExpectedVerdict(report: ScanReport, severityThreshold: ScanSeveri
   }
 }
 
-function assertSignature(report: ScanReport, signingKey: string | undefined): void {
-  if (!signingKey) {
-    return;
-  }
-
-  if (!report.signature) {
-    throw new Error('Scanner report signature is missing');
-  }
-
-  const expected = signReport(report, signingKey);
-  const actual = Buffer.from(report.signature, 'hex');
-  const expectedBytes = Buffer.from(expected, 'hex');
-
-  if (actual.length !== expectedBytes.length || !timingSafeEqual(actual, expectedBytes)) {
-    throw new Error('Scanner report signature is invalid');
-  }
+function signReport(report: ScanReport, signingKey: string): ScanReport {
+  const unsignedReport = stripSignature(report);
+  return {
+    ...unsignedReport,
+    signature: createHmac('sha256', signingKey).update(canonicalJson(unsignedReport)).digest('hex'),
+  };
 }
 
-function signReport(report: ScanReport, signingKey: string): string {
+function stripSignature(report: ScanReport): ScanReport {
   const { signature: _signature, ...unsignedReport } = report;
-  return createHmac('sha256', signingKey).update(canonicalJson(unsignedReport)).digest('hex');
+  return unsignedReport;
 }
 
 function canonicalJson(value: unknown): string {
@@ -216,11 +228,11 @@ function resolveSigningKey(): string | undefined {
   }
 
   if (process.env.NODE_ENV !== 'production' && process.env.SCAN_SIGNING_DISABLED === 'true') {
-    console.warn('WARNING: scanner report signature verification is disabled');
+    console.warn('WARNING: scanner report signing is disabled');
     return undefined;
   }
 
-  throw new Error('SCAN_SIGNING_KEY is required to verify scanner reports');
+  throw new Error('SCAN_SIGNING_KEY is required to sign scanner reports');
 }
 
 function parseTimeoutSeconds(raw: string | undefined): number {

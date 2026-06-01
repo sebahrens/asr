@@ -105,9 +105,7 @@ describe('parseEnv', () => {
       SCAN_SIGNING_DISABLED: 'true',
     });
 
-    expect(warn).toHaveBeenCalledWith(
-      'WARNING: scanner report signature verification is disabled',
-    );
+    expect(warn).toHaveBeenCalledWith('WARNING: scanner report signing is disabled');
     warn.mockRestore();
   });
 
