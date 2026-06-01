@@ -82,7 +82,7 @@ Responsive collapse: sidebar becomes a slide-out drawer below 900px.
 Four steps with progress indicator:
 1. **Upload** — drag/drop zip; client-side validation (size, single root dir, manifest present)
 2. **Manifest** — show parsed `manifest.yaml`, allow inline edit of description/tags, derive `kind`/`permissions` read-only
-3. **Questionnaire** — render dynamic form from `GET /questionnaire/template`
+3. **Questionnaire** — collect the current publish-wizard security questions and submit them as the workflow `responses` payload
 4. **Review & Submit** — summarise; submit calls `POST /submissions` (multipart); on success redirect to `/submissions/:id`
 
 Form validation messages appear inline next to fields, never via toast.

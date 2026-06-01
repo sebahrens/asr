@@ -100,8 +100,8 @@ export const approvalPipeline = new Blueprint<Submission>('skill-approval')
   }))
 
   .node(new HitlNode('questionnaire', {
-    prompt: () => ({ type: 'questionnaire', questions: generateSecurityQuestions() }),
-    validate: (responses) => responses.every(r => r.answer !== undefined),
+    params: { type: 'questionnaire', timeout: '7d' },
+    validate: (signal) => signal.type === 'questionnaire' && signal.responses !== undefined,
     timeout: '7d',
   }))
 
