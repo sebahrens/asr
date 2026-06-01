@@ -16,12 +16,18 @@ COPY packages/core packages/core
 COPY packages/web packages/web
 COPY turbo.json ./
 
-ARG VITE_API_URL=http://localhost:3001
-ARG VITE_AUTH_MODE=mock
-ARG VITE_ENABLE_MOCK_AUTH=true
+ARG ASR_WEB_BUILD_PROFILE=production
+ARG VITE_API_URL=/api
+ARG VITE_AUTH_MODE=msal
+ARG VITE_ENABLE_MOCK_AUTH=false
 ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_AUTH_MODE=${VITE_AUTH_MODE}
 ENV VITE_ENABLE_MOCK_AUTH=${VITE_ENABLE_MOCK_AUTH}
+
+RUN if [ "$ASR_WEB_BUILD_PROFILE" = "production" ] && { [ "$VITE_AUTH_MODE" = "mock" ] || [ "$VITE_ENABLE_MOCK_AUTH" = "true" ]; }; then \
+    echo "Production web image builds must not enable mock auth. Set ASR_WEB_BUILD_PROFILE=development for local mock-auth images." >&2; \
+    exit 1; \
+  fi
 
 RUN pnpm --filter @asr/web... build
 
