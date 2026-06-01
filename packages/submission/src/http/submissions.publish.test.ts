@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import yazl from 'yazl';
 import type { AuthVariables, Identity } from '../auth/types.js';
 import { runMigrations } from '../db/migrations/index.js';
+import { getSkillVersion } from '../db/repositories/skillVersions.js';
+import { updateSubmissionStatus } from '../db/repositories/submissions.js';
 import { getWorkflowRun } from '../db/repositories/workflowRuns.js';
 import type { ApprovalPipelineDependencies } from '../workflow/approvalPipeline.js';
 import { createSubmissionRoutes } from './submissions.js';
@@ -86,6 +88,67 @@ describe('POST /api/v1/submissions (Flowcraft pipeline)', () => {
     const workflowRun = getWorkflowRun(db, created.id);
     expect(workflowRun?.serializedContext).not.toBe('{}');
     expect(workflowRun?.context.status).toBe('published');
+  });
+
+  it('does not insert skill_versions when the publish status update loses its lock', async () => {
+    db = new Database(':memory:');
+    runMigrations(db);
+
+    const forgejo = new FakeForgejoClient();
+    const dependencies = makeDependencies(forgejo, makeScanReport('pass'));
+    const baseAudit = dependencies.audit;
+    dependencies.audit = (action, detail) => {
+      baseAudit(action, detail);
+      if (action === 'submission.created') {
+        const updated = updateSubmissionStatus(db!, detail.submissionId as string, 0, {
+          statusPhase: 'scanning',
+          statusJson: JSON.stringify({ phase: 'scanning', scanJobId: 'concurrent-scan' }),
+        });
+        expect(updated).toBe(true);
+      }
+    };
+    const app = new Hono<{ Variables: AuthVariables }>();
+    app.use('*', async (c, next) => {
+      c.set('identity', { sub: 'alice', roles: ['Submitter'] });
+      await next();
+    });
+    app.route(
+      '/api/v1/submissions',
+      createSubmissionRoutes({
+        db,
+        forgejo: forgejo as unknown as ForgejoClient,
+        workflowDependencies: dependencies,
+      }),
+    );
+
+    const zipBytes = await buildZip([
+      {
+        path: 'SKILL.md',
+        contents: skillMdFixture({ name: 'stale-lock-skill', version: '1.0.0', author: 'alice' }),
+      },
+    ]);
+    const formData = new FormData();
+    formData.set(
+      'file',
+      new Blob([new Uint8Array(zipBytes)], { type: 'application/zip' }),
+      'skill.zip',
+    );
+
+    const postRes = await app.request('/api/v1/submissions', {
+      method: 'POST',
+      body: formData,
+    });
+
+    expect(postRes.status).toBe(409);
+    await expect(postRes.json()).resolves.toMatchObject({
+      error: 'submission_in_progress',
+    });
+    expect(getSkillVersion(db, 'stale-lock-skill', '1.0.0', 'alice')).toBeUndefined();
+    expect(
+      db.prepare('SELECT status_phase FROM submissions WHERE id = ?').pluck().get(
+        forgejo.openCalls[0].submissionId,
+      ),
+    ).toBe('scanning');
   });
 
   it('starts Flowcraft for code-containing submissions and stores the awaiting questionnaire run', async () => {

@@ -1,8 +1,7 @@
 import type { ForgejoClient, Submission } from '@asr/core';
 import type { Database } from '../db/index.js';
-import { getSkillVersion, insertSkillVersion } from '../db/repositories/skillVersions.js';
+import { publishSubmissionVersion } from '../db/repositories/publishedSubmissions.js';
 import { ownerFromPrincipal } from '../identity/owners.js';
-import { updateSubmissionStatus } from '../db/repositories/submissions.js';
 import { packSkillZip } from '../zip/pack.js';
 import { LockVersionMismatchError } from './errors.js';
 import { buildPublishRecord, serializePublishRecord } from './publishRecord.js';
@@ -67,8 +66,21 @@ export async function publishMdOnly(
 
   await forgejo.deleteBranch(branch);
 
-  if (!getSkillVersion(db, manifest.name, manifest.version, owner)) {
-    insertSkillVersion(db, {
+  const updated = publishSubmissionVersion(db, {
+    submissionId: submission.id,
+    expectedLockVersion: lockVersion,
+    status: {
+      statusPhase: 'published',
+      statusJson: JSON.stringify({
+        phase: 'published',
+        publishedAt,
+        mergeCommit: sha,
+      }),
+    },
+    owner,
+    skillName: manifest.name,
+    version: manifest.version,
+    skillVersion: {
       owner,
       skill_name: manifest.name,
       version: manifest.version,
@@ -83,16 +95,7 @@ export async function publishMdOnly(
       yanked_at: null,
       yanked_by: null,
       yank_reason: null,
-    });
-  }
-
-  const updated = updateSubmissionStatus(db, submission.id, lockVersion, {
-    statusPhase: 'published',
-    statusJson: JSON.stringify({
-      phase: 'published',
-      publishedAt,
-      mergeCommit: sha,
-    }),
+    },
   });
   if (!updated) {
     throw new LockVersionMismatchError(submission.id, lockVersion);

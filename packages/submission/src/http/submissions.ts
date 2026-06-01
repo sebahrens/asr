@@ -26,9 +26,9 @@ import { ulid } from 'ulid';
 import type { AuthVariables, Identity } from '../auth/types.js';
 import {
   getSkillVersion,
-  insertSkillVersion,
   resolveLatestVersion,
 } from '../db/repositories/skillVersions.js';
+import { publishSubmissionVersion } from '../db/repositories/publishedSubmissions.js';
 import {
   getSubmissionById,
   insertSubmission,
@@ -424,29 +424,37 @@ export function createSubmissionRoutes(options: SubmissionRouteOptions = {}) {
             serializedContext: result.serializedContext,
             context,
           }, now());
-          const owner = ownerFromPrincipal(submittedBy);
-          if (workflowStatus.phase === 'published' && !getSkillVersion(db, manifest.name, manifest.version, owner)) {
-            insertSkillVersion(db, {
-              owner,
-              skill_name: manifest.name,
-              version: manifest.version,
-              content_hash: contentHash,
-              submission_id: id,
-              published_at: workflowStatus.publishedAt,
-              published_by: submittedBy,
-              approved_by: null,
-              pr_number: result.context.prNumber ?? 0,
-              merge_commit: workflowStatus.mergeCommit,
-              scan_report_id: null,
-              yanked_at: null,
-              yanked_by: null,
-              yank_reason: null,
-            });
-          }
-          const statusUpdated = updateSubmissionStatus(db, id, submissionLockVersion, {
+          const statusUpdate = {
             statusPhase: workflowStatus.phase,
             statusJson: JSON.stringify(statusJsonWithApprovalPath(workflowStatus, approvalPath)),
-          });
+          };
+          const owner = ownerFromPrincipal(submittedBy);
+          const statusUpdated = workflowStatus.phase === 'published'
+            ? publishSubmissionVersion(db, {
+              submissionId: id,
+              expectedLockVersion: submissionLockVersion,
+              status: statusUpdate,
+              owner,
+              skillName: manifest.name,
+              version: manifest.version,
+              skillVersion: {
+                owner,
+                skill_name: manifest.name,
+                version: manifest.version,
+                content_hash: contentHash,
+                submission_id: id,
+                published_at: workflowStatus.publishedAt,
+                published_by: submittedBy,
+                approved_by: null,
+                pr_number: result.context.prNumber ?? 0,
+                merge_commit: workflowStatus.mergeCommit,
+                scan_report_id: null,
+                yanked_at: null,
+                yanked_by: null,
+                yank_reason: null,
+              },
+            })
+            : updateSubmissionStatus(db, id, submissionLockVersion, statusUpdate);
           if (!statusUpdated) {
             throw new LockVersionMismatchError(id, submissionLockVersion);
           }

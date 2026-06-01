@@ -271,6 +271,7 @@ describe('publishMdOnly', () => {
     const row = getSubmissionById(db, submission.id);
     expect(row?.status_phase).toBe('scanning');
     expect(row?.lock_version).toBe(1);
+    expect(getSkillVersion(db, manifest.name, manifest.version, submission.submittedBy)).toBeUndefined();
   });
 
   it('invokes triggerMarketplaceSync exactly once with the published skill name after publish', async () => {
