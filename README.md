@@ -58,7 +58,10 @@ specs/             # See SPEC.md for the index
 ## Local development
 
 Use Node.js 22 LTS before installing dependencies. The repository includes
-`.nvmrc` and `.node-version` for compatible version managers.
+`.nvmrc` and `.node-version` for compatible version managers. Root install,
+build, and test commands run a preflight guard and fail early on other Node
+majors; set `ASR_ALLOW_UNSUPPORTED_NODE=1` only when deliberately debugging an
+unsupported runtime.
 
 ```bash
 pnpm install
