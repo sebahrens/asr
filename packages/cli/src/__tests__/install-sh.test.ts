@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync, existsSync, statSync, rmSync 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawn, execSync } from "node:child_process";
+import { spawn, execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,6 +17,9 @@ const wrongHash = "0".repeat(64);
 let server: Server;
 let baseUrl: string;
 let shaPayload = `${correctHash}  asr.mjs\n`;
+let sigPayload: Buffer;
+let publicKeyPem: string;
+let keyDir: string;
 
 const scriptPath = join(__dirname, "..", "..", "..", "..", "scripts", "install.sh");
 
@@ -29,7 +32,7 @@ function which(bin: string): boolean {
   }
 }
 
-const canRun = process.platform !== "win32" && which("curl") && which("shasum");
+const canRun = process.platform !== "win32" && which("curl") && which("shasum") && which("openssl");
 
 interface RunResult {
   status: number | null;
@@ -55,6 +58,38 @@ function runInstall(env: NodeJS.ProcessEnv): Promise<RunResult> {
 
 describe.skipIf(!canRun)("scripts/install.sh", () => {
   beforeAll(async () => {
+    keyDir = mkdtempSync(join(tmpdir(), "asr-install-key-"));
+    const privateKeyPath = join(keyDir, "private.pem");
+    const publicKeyPath = join(keyDir, "public.pem");
+    const fixturePath = join(keyDir, "asr.mjs");
+    const signaturePath = join(keyDir, "asr.mjs.sig");
+    writeFileSync(fixturePath, fixture);
+    execFileSync(
+      "openssl",
+      [
+        "genpkey",
+        "-algorithm",
+        "RSA",
+        "-pkeyopt",
+        "rsa_keygen_bits:2048",
+        "-out",
+        privateKeyPath,
+      ],
+      { stdio: "ignore" },
+    );
+    execFileSync("openssl", ["pkey", "-in", privateKeyPath, "-pubout", "-out", publicKeyPath]);
+    execFileSync("openssl", [
+      "dgst",
+      "-sha256",
+      "-sign",
+      privateKeyPath,
+      "-out",
+      signaturePath,
+      fixturePath,
+    ]);
+    publicKeyPem = readFileSync(publicKeyPath, "utf8");
+    sigPayload = readFileSync(signaturePath);
+
     server = createServer((req, res) => {
       if (req.url === "/org/aks/releases/latest/download/asr.mjs") {
         res.writeHead(200, { "Content-Type": "application/octet-stream" });
@@ -64,6 +99,11 @@ describe.skipIf(!canRun)("scripts/install.sh", () => {
       if (req.url === "/org/aks/releases/latest/download/asr.mjs.sha256") {
         res.writeHead(200, { "Content-Type": "text/plain" });
         res.end(shaPayload);
+        return;
+      }
+      if (req.url === "/org/aks/releases/latest/download/asr.mjs.sig") {
+        res.writeHead(200, { "Content-Type": "application/octet-stream" });
+        res.end(sigPayload);
         return;
       }
       res.writeHead(404);
@@ -79,6 +119,7 @@ describe.skipIf(!canRun)("scripts/install.sh", () => {
     await new Promise<void>((resolve, reject) =>
       server.close((err) => (err ? reject(err) : resolve())),
     );
+    rmSync(keyDir, { recursive: true, force: true });
   });
 
   it("installs the launcher when the SHA-256 matches", async () => {
@@ -88,6 +129,8 @@ describe.skipIf(!canRun)("scripts/install.sh", () => {
       const result = await runInstall({
         ...process.env,
         ASR_FORGEJO_URL: baseUrl,
+        ASR_ALLOW_INSECURE_INSTALL: "1",
+        ASR_INSTALL_PUBLIC_KEY_PEM: publicKeyPem,
         ASR_INSTALL_DIR: dest,
         PATH: process.env.PATH ?? "",
         HOME: process.env.HOME ?? "",
@@ -113,6 +156,8 @@ describe.skipIf(!canRun)("scripts/install.sh", () => {
       const result = await runInstall({
         ...process.env,
         ASR_FORGEJO_URL: baseUrl,
+        ASR_ALLOW_INSECURE_INSTALL: "1",
+        ASR_INSTALL_PUBLIC_KEY_PEM: publicKeyPem,
         ASR_INSTALL_DIR: dest,
         PATH: process.env.PATH ?? "",
         HOME: process.env.HOME ?? "",
@@ -123,6 +168,52 @@ describe.skipIf(!canRun)("scripts/install.sh", () => {
       expect(existsSync(join(dest, "asr.mjs.sha256"))).toBe(false);
       expect(existsSync(join(dest, "asr"))).toBe(false);
     } finally {
+      rmSync(dest, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects non-HTTPS release URLs unless explicitly allowed", async () => {
+    shaPayload = `${correctHash}  asr.mjs\n`;
+    const dest = mkdtempSync(join(tmpdir(), "asr-install-http-"));
+    try {
+      const result = await runInstall({
+        ...process.env,
+        ASR_FORGEJO_URL: baseUrl,
+        ASR_INSTALL_PUBLIC_KEY_PEM: publicKeyPem,
+        ASR_INSTALL_DIR: dest,
+        PATH: process.env.PATH ?? "",
+        HOME: process.env.HOME ?? "",
+      });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("Refusing non-HTTPS release URL");
+      expect(existsSync(join(dest, "asr.mjs"))).toBe(false);
+      expect(existsSync(join(dest, "asr"))).toBe(false);
+    } finally {
+      rmSync(dest, { recursive: true, force: true });
+    }
+  });
+
+  it("aborts and leaves no bundle when the detached signature is invalid", async () => {
+    shaPayload = `${correctHash}  asr.mjs\n`;
+    const originalSigPayload = sigPayload;
+    sigPayload = Buffer.alloc(originalSigPayload.length, 1);
+    const dest = mkdtempSync(join(tmpdir(), "asr-install-sig-bad-"));
+    try {
+      const result = await runInstall({
+        ...process.env,
+        ASR_FORGEJO_URL: baseUrl,
+        ASR_ALLOW_INSECURE_INSTALL: "1",
+        ASR_INSTALL_PUBLIC_KEY_PEM: publicKeyPem,
+        ASR_INSTALL_DIR: dest,
+        PATH: process.env.PATH ?? "",
+        HOME: process.env.HOME ?? "",
+      });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("Signature verification failed");
+      expect(existsSync(join(dest, "asr.mjs"))).toBe(false);
+      expect(existsSync(join(dest, "asr"))).toBe(false);
+    } finally {
+      sigPayload = originalSigPayload;
       rmSync(dest, { recursive: true, force: true });
     }
   });

@@ -34,7 +34,7 @@ Enable local download of the CLI binary from Forgejo Releases — no global npm 
 
 ## Install Scripts
 
-Two scripts are published as Release assets alongside `asr.mjs`. Both pin to a release version (or `latest`) and verify the artefact's SHA-256 against `asr.mjs.sha256` from the same Release before installing.
+Two scripts are published as Release assets alongside `asr.mjs`. Both pin to a release version (or `latest`), reject non-HTTPS release URLs unless `ASR_ALLOW_INSECURE_INSTALL=1` is set for local development, verify the artefact's SHA-256 against `asr.mjs.sha256`, and authenticate the artefact with a detached `asr.mjs.sig` signature against the pinned installer public key. Operators can replace the pinned key with `ASR_INSTALL_PUBLIC_KEY_PEM` when testing a self-hosted release key.
 
 ### `scripts/install.sh` (POSIX shells: macOS, Linux)
 
@@ -53,17 +53,19 @@ else
 fi
 
 mkdir -p "$DEST"
-curl -fsSL "$ASSET_BASE/asr.mjs" -o "$DEST/asr.mjs"
-curl -fsSL "$ASSET_BASE/asr.mjs.sha256" -o "$DEST/asr.mjs.sha256"
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/asr-install.XXXXXX")
+curl -fsSL "$ASSET_BASE/asr.mjs" -o "$TMP/asr.mjs"
+curl -fsSL "$ASSET_BASE/asr.mjs.sha256" -o "$TMP/asr.mjs.sha256"
+curl -fsSL "$ASSET_BASE/asr.mjs.sig" -o "$TMP/asr.mjs.sig"
 
-EXPECTED=$(cut -d' ' -f1 < "$DEST/asr.mjs.sha256")
-ACTUAL=$(shasum -a 256 "$DEST/asr.mjs" | cut -d' ' -f1)
+EXPECTED=$(cut -d' ' -f1 < "$TMP/asr.mjs.sha256")
+ACTUAL=$(shasum -a 256 "$TMP/asr.mjs" | cut -d' ' -f1)
 if [ "$EXPECTED" != "$ACTUAL" ]; then
   echo "SHA-256 mismatch: expected $EXPECTED got $ACTUAL" >&2
-  rm -f "$DEST/asr.mjs" "$DEST/asr.mjs.sha256"
   exit 1
 fi
-rm "$DEST/asr.mjs.sha256"
+openssl dgst -sha256 -verify "$TMP/asr-release.pub" -signature "$TMP/asr.mjs.sig" "$TMP/asr.mjs"
+mv -f "$TMP/asr.mjs" "$DEST/asr.mjs"
 
 printf '#!/bin/sh\nexec node "%s/asr.mjs" "$@"\n' "$DEST" > "$DEST/asr"
 chmod +x "$DEST/asr"
@@ -80,6 +82,8 @@ $Repo       = 'org/aks'
 $Version    = if ($args.Count -gt 0) { $args[0] } else { 'latest' }
 $Dest       = if ($env:ASR_INSTALL_DIR) { $env:ASR_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\asr' }
 New-Item -ItemType Directory -Force -Path $Dest | Out-Null
+$TempDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
 
 $Base = if ($Version -eq 'latest') {
   "$ForgejoUrl/$Repo/releases/latest/download"
@@ -87,16 +91,17 @@ $Base = if ($Version -eq 'latest') {
   "$ForgejoUrl/$Repo/releases/download/$Version"
 }
 
-Invoke-WebRequest "$Base/asr.mjs"          -OutFile (Join-Path $Dest 'asr.mjs')
-Invoke-WebRequest "$Base/asr.mjs.sha256"   -OutFile (Join-Path $Dest 'asr.mjs.sha256')
+Invoke-WebRequest "$Base/asr.mjs"          -OutFile (Join-Path $TempDir 'asr.mjs')
+Invoke-WebRequest "$Base/asr.mjs.sha256"   -OutFile (Join-Path $TempDir 'asr.mjs.sha256')
+Invoke-WebRequest "$Base/asr.mjs.sig"      -OutFile (Join-Path $TempDir 'asr.mjs.sig')
 
-$Expected = (Get-Content (Join-Path $Dest 'asr.mjs.sha256')).Split(' ')[0]
-$Actual   = (Get-FileHash (Join-Path $Dest 'asr.mjs') -Algorithm SHA256).Hash.ToLower()
+$Expected = (Get-Content (Join-Path $TempDir 'asr.mjs.sha256')).Split(' ')[0]
+$Actual   = (Get-FileHash (Join-Path $TempDir 'asr.mjs') -Algorithm SHA256).Hash.ToLower()
 if ($Expected -ne $Actual) {
-  Remove-Item -Force (Join-Path $Dest 'asr.mjs'), (Join-Path $Dest 'asr.mjs.sha256')
   throw "SHA-256 mismatch: expected $Expected got $Actual"
 }
-Remove-Item -Force (Join-Path $Dest 'asr.mjs.sha256')
+openssl dgst -sha256 -verify (Join-Path $TempDir 'asr-release.pub') -signature (Join-Path $TempDir 'asr.mjs.sig') (Join-Path $TempDir 'asr.mjs')
+Move-Item -Force (Join-Path $TempDir 'asr.mjs') (Join-Path $Dest 'asr.mjs')
 
 @"
 @echo off
@@ -112,9 +117,9 @@ Write-Host "Add $Dest to your PATH if it isn't already."
 Triggers on `v*` tags. Steps:
 1. Checkout + pnpm install
 2. `pnpm build` (tsup produces `packages/cli/dist/asr.mjs`)
-3. Compute SHA-256, write `asr.mjs.sha256`
+3. Compute SHA-256, write `asr.mjs.sha256`, and sign `asr.mjs` with `ASR_RELEASE_SIGNING_KEY_PEM` into `asr.mjs.sig`
 4. Create Forgejo Release via the Forgejo REST API (`POST /api/v1/repos/:o/:r/releases`)
-5. Upload `asr.mjs`, `asr.mjs.sha256`, `install.sh`, `install.ps1` as release assets
+5. Upload `asr.mjs`, `asr.mjs.sha256`, `asr.mjs.sig`, `install.sh`, `install.ps1` as release assets
 
 ```yaml
 name: Release
@@ -132,10 +137,13 @@ jobs:
           node-version: 22
       - run: corepack enable && pnpm install --frozen-lockfile
       - run: pnpm build
-      - name: Compute SHA-256
+      - name: Compute SHA-256 and detached signature
         run: |
           cd packages/cli/dist
           sha256sum asr.mjs > asr.mjs.sha256
+          printf '%s\n' "$ASR_RELEASE_SIGNING_KEY_PEM" > asr-release.key
+          openssl dgst -sha256 -sign asr-release.key -out asr.mjs.sig asr.mjs
+          rm -f asr-release.key
       - name: Create release via Forgejo API
         env:
           FORGEJO_TOKEN: ${{ secrets.FORGEJO_RELEASE_TOKEN }}
@@ -151,7 +159,7 @@ jobs:
             -d "{\"tag_name\":\"$TAG\",\"name\":\"$TAG\"}" \
             | jq -r .id)
           # 2) upload each asset
-          for f in packages/cli/dist/asr.mjs packages/cli/dist/asr.mjs.sha256 scripts/install.sh scripts/install.ps1; do
+          for f in packages/cli/dist/asr.mjs packages/cli/dist/asr.mjs.sha256 packages/cli/dist/asr.mjs.sig scripts/install.sh scripts/install.ps1; do
             curl -fsS -X POST \
               -H "Authorization: token $FORGEJO_TOKEN" \
               -F "attachment=@$f;filename=$(basename $f)" \

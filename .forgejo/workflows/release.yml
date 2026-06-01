@@ -13,10 +13,21 @@ jobs:
           node-version: 22
       - run: corepack enable && pnpm install --frozen-lockfile
       - run: pnpm build
-      - name: Compute SHA-256
+      - name: Compute SHA-256 and detached signature
+        env:
+          ASR_RELEASE_SIGNING_KEY_PEM: ${{ secrets.ASR_RELEASE_SIGNING_KEY_PEM }}
         run: |
+          set -euo pipefail
           cd packages/cli/dist
           sha256sum asr.mjs > asr.mjs.sha256
+          if [ -z "${ASR_RELEASE_SIGNING_KEY_PEM:-}" ]; then
+            echo "ASR_RELEASE_SIGNING_KEY_PEM is required to sign asr.mjs" >&2
+            exit 1
+          fi
+          printf '%s\n' "$ASR_RELEASE_SIGNING_KEY_PEM" > asr-release.key
+          chmod 600 asr-release.key
+          openssl dgst -sha256 -sign asr-release.key -out asr.mjs.sig asr.mjs
+          rm -f asr-release.key
       - name: Create release via Forgejo API
         env:
           FORGEJO_TOKEN: ${{ secrets.FORGEJO_RELEASE_TOKEN }}
@@ -31,7 +42,7 @@ jobs:
             "$FORGEJO_URL/api/v1/repos/$REPO/releases" \
             -d "{\"tag_name\":\"$TAG\",\"name\":\"$TAG\"}" \
             | jq -r .id)
-          for f in packages/cli/dist/asr.mjs packages/cli/dist/asr.mjs.sha256 scripts/install.sh scripts/install.ps1; do
+          for f in packages/cli/dist/asr.mjs packages/cli/dist/asr.mjs.sha256 packages/cli/dist/asr.mjs.sig scripts/install.sh scripts/install.ps1; do
             curl -fsS -X POST \
               -H "Authorization: token $FORGEJO_TOKEN" \
               -F "attachment=@$f;filename=$(basename $f)" \
