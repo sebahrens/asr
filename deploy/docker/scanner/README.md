@@ -10,14 +10,16 @@ images must use resolved version pins and must not use `:latest` tags or
 | Tool | Pin | Distribution | Resolved digest / integrity |
 | --- | --- | --- | --- |
 | Gitleaks | `v8.30.1` | `zricethezav/gitleaks:v8.30.1`, binary copied from `/usr/bin/gitleaks` | `sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f` (image index) |
-| Trivy | `v0.70.0` | Installer fetched from `aquasecurity/trivy` raw tag `v0.70.0` (`contrib/install.sh`), then `trivy image --download-db-only` | Tag-pinned source URL; verify via `trivy_0.70.0_checksums.txt` from the release |
-| Foxguard | `0.8.1` | npm package `foxguard@0.8.1`, which exposes the `foxguard` bin | `sha512-RGk/S/0fFSaPvft41ZMHjTMoblFjdDuUTITcE2NfT7yKPp8giN4ICk1l4e9M6kPC/yDGVB/pvIZzrFDdCM2JvA==` (npm tarball integrity) |
-| Opengrep | `v1.22.0` | GitHub release asset `opengrep_manylinux_x86` or `opengrep_manylinux_aarch64`, selected from Docker `TARGETARCH` | `sha256:45bcd58440e397ed52c50e953ccf5948909ea77087c9186fc7d277216f62e319` (x86), `sha256:8df71670e20336646687c6f4ddf9b4532f1a7fcd8a8ea7bfa4ea46747f61e088` (aarch64) |
-| Veracode | `2.49.0` | Installer from `tools.veracode.com/veracode-cli/install` with `VERACODE_CLI_VERSION=2.49.0` (Tier 3, optional). Layer is build-safe (`\|\| true`); the orchestrator only invokes `veracode` when `VERACODE_API_KEY_ID`/`VERACODE_API_KEY_SECRET` are set, so a missing binary is a clean skip. | Upstream installer does not publish a per-version artifact digest; the `VERACODE_CLI_VERSION` env pins the resolver output. |
+| Node | `22-slim` | `node:22-slim` base image | `sha256:7af03b14a13c8cdd38e45058fd957bf00a72bbe17feac43b1c15a689c029c732` (image index) |
+| Trivy | `v0.70.0` | Release tarball `trivy_0.70.0_Linux-{64bit,ARM64}.tar.gz`, selected from Docker `TARGETARCH` | `sha256:8b4376d5d6befe5c24d503f10ff136d9e0c49f9127a4279fd110b727929a5aa9` (amd64), `sha256:2f6bb988b553a1bbac6bdd1ce890f5e412439564e17522b88a4541b4f364fc8d` (arm64) |
+| Foxguard | `0.8.1` | npm wrapper tarball plus native release asset `foxguard-linux-{x86_64,aarch64}`, selected from Docker `TARGETARCH` | wrapper `sha512:44693f4bfd1f15268fbdfb78d593078d33286e5163743b944c84dc13635f4fbc8a3e9f2088de080a4d65e1ef4cea43c2ff20c6541fe9bc8673ac50dd08cd89bc`; native `sha256:ad49914507d390888d4ae481dd7de2a0374e2a03fe1558603edc408daf303851` (amd64), `sha256:a4e8faabdb814eb2eddf77c7c4b2dc5a36ce0fb7c463fa359e562bc2f2386e22` (arm64) |
+| Opengrep | `v1.22.0` | Release asset `opengrep_manylinux_x86` or `opengrep_manylinux_aarch64`, selected from Docker `TARGETARCH` | `sha256:45bcd58440e397ed52c50e953ccf5948909ea77087c9186fc7d277216f62e319` (x86), `sha256:8df71670e20336646687c6f4ddf9b4532f1a7fcd8a8ea7bfa4ea46747f61e088` (aarch64) |
+| Veracode | `2.49.0` | Not installed by default (Tier 3, optional). The orchestrator only invokes `veracode` when `VERACODE_API_KEY_ID`/`VERACODE_API_KEY_SECRET` are set, so a missing binary is a clean skip. | Upstream installer does not publish a per-version artifact digest; `INSTALL_VERACODE_CLI=true` fails closed until a verifiable artifact is available. |
 
 Every pin is parameterised by a Dockerfile `ARG` so future bumps are explicit
 and auditable. `grep -REn ':latest|@latest|releases/latest'
 deploy/docker/scanner/Dockerfile` must return no matches.
+The scanner Dockerfile also must not pipe downloaded scripts into a shell.
 
 ## Opengrep rules
 
@@ -116,6 +118,7 @@ Veracode severities into ASR severities. `Very High` maps to `critical`.
 ```bash
 docker build -t asr-scanner:test -f deploy/docker/scanner/Dockerfile deploy/docker/scanner
 docker run --rm --entrypoint sh asr-scanner:test -c 'command -v gitleaks && command -v trivy && command -v opengrep && command -v foxguard'
-# Veracode is optional; presence depends on tools.veracode.com reachability at build time.
+# Veracode is optional and omitted by default because upstream does not publish
+# a per-version artifact digest for the installer.
 docker run --rm --entrypoint sh asr-scanner:test -c 'command -v veracode || echo "veracode not installed (Tier 3 optional)"'
 ```
