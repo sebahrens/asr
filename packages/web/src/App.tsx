@@ -11,6 +11,7 @@ import { useAuthenticatedFetch } from './auth/authenticatedFetch';
 import { useSession } from './auth/useSession';
 import { BrandLogo } from './branding/BrandLogo';
 import { PRODUCT_NAME } from './product';
+import { apiUrl } from './api';
 
 export { SessionProvider } from './auth/SessionProvider';
 
@@ -22,8 +23,7 @@ function stripFrontmatter(content: string): string {
   return content.replace(/^---\n[\s\S]*?\n---\n*/, '');
 }
 
-const API_URL = import.meta.env.VITE_API_URL || '';
-const SUBMISSIONS_API_BASE = `${API_URL}/api/v1/submissions`;
+const SUBMISSIONS_API_BASE = apiUrl('/api/v1/submissions');
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 interface RegistrySkillsResponse {
@@ -117,7 +117,7 @@ async function fetchRegistrySkills(query: string): Promise<BrowseSkill[]> {
   const params = new URLSearchParams();
   if (query) params.set('q', query);
   const queryString = params.toString();
-  const res = await fetch(`${API_URL}/api/v1/skills${queryString ? `?${queryString}` : ''}`);
+  const res = await fetch(apiUrl(`/api/v1/skills${queryString ? `?${queryString}` : ''}`));
   if (!res.ok) {
     throw new RegistryRequestError(`Skills request failed with ${res.status}`, res.status);
   }
@@ -128,7 +128,7 @@ async function fetchRegistrySkills(query: string): Promise<BrowseSkill[]> {
 
 async function fetchSkillVersionDiff(owner: string, name: string, version: string): Promise<VersionDiff> {
   const res = await fetch(
-    `${API_URL}/api/v1/skills/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/diff`,
+    apiUrl(`/api/v1/skills/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/diff`),
   );
   if (!res.ok) {
     throw new RegistryRequestError(`Skill version diff request failed with ${res.status}`, res.status);
@@ -138,7 +138,7 @@ async function fetchSkillVersionDiff(owner: string, name: string, version: strin
 }
 
 async function fetchSkillDetail(owner: string, name: string): Promise<SkillDetail> {
-  const res = await fetch(`${API_URL}/api/v1/skills/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`);
+  const res = await fetch(apiUrl(`/api/v1/skills/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`));
   if (!res.ok) {
     throw new RegistryRequestError(`Skill detail request failed with ${res.status}`, res.status);
   }

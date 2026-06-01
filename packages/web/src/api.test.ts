@@ -13,4 +13,13 @@ describe('apiUrlWithBase', () => {
       'http://localhost:3001/api/v1/submissions?status=pending',
     );
   });
+
+  it('does not duplicate a configured API path prefix', () => {
+    expect(apiUrlWithBase('/api/v1/submissions?status=pending', '/api')).toBe(
+      '/api/v1/submissions?status=pending',
+    );
+    expect(apiUrlWithBase('/api/v1/submissions?status=pending', 'http://localhost:3001/api/')).toBe(
+      'http://localhost:3001/api/v1/submissions?status=pending',
+    );
+  });
 });
